@@ -14,3 +14,43 @@ datasource db {
 }
 
 // Add your models here
+
+enum RoleEnum {
+  admin
+  portfolio
+  sub_portfolio
+  property
+}
+
+
+model User {
+  id                            String   @id @default(auto()) @map("_id") @db.ObjectId
+  email                         String   @unique
+  password                      String
+  name                          String
+  role                          RoleEnum
+  image                         String?
+  phone_number                  String?
+  invited_user_id               String?  @db.ObjectId
+  is_verified                   Boolean  @default(false)
+  download_report               Boolean  @default(false)
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+
+  invited_user                  User?     @relation("UserInvites", fields: [invited_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  invitedUsers                  User[]    @relation("UserInvites") 
+  connected_entity_id           ConnectedEntity[]
+
+  @@map("users")
+}
+
+model ConnectedEntity {
+  id                            String   @id @default(auto()) @map("_id") @db.ObjectId
+  user_id                       String   @db.ObjectId
+  portfolio_id                  String?
+  sub_portfolio_id              String?
+  property_id                   String?
+
+  user                          User?     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+}
