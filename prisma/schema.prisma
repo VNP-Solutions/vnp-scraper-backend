@@ -54,3 +54,10 @@ model ConnectedEntity {
 
   user                          User?     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 }
+
+model Portfolio {
+  id                            String   @id @default(auto()) @map("_id") @db.ObjectId
+  name                          String   @unique
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+}
