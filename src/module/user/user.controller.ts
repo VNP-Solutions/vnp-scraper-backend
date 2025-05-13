@@ -81,7 +81,7 @@ export class UserController {
     );
   }
 
-  @Get(':id')
+  @Get('/:id')
   @ApiOperation({ summary: 'Get user by ID' })
   @ApiResponse({ status: 200, description: 'Returns a user' })
   @ApiResponse({ status: 404, description: 'User not found' })
@@ -100,7 +100,7 @@ export class UserController {
     );
   }
 
-  @Put(':id')
+  @Put('/:id')
   @ApiOperation({ summary: 'Update user by ID' })
   @ApiResponse({ status: 200, description: 'User updated successfully' })
   @ApiResponse({ status: 404, description: 'User not found' })
@@ -123,7 +123,7 @@ export class UserController {
     );
   }
 
-  @Delete(':id')
+  @Delete('/:id')
   @ApiOperation({ summary: 'Delete user by ID' })
   @ApiResponse({ status: 200, description: 'User deleted successfully' })
   @ApiResponse({ status: 404, description: 'User not found' })

@@ -1,4 +1,4 @@
-import { User } from './../../../node_modules/.prisma/client/index.d';
+import { User } from '@prisma/client';
 import { Injectable, Logger } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { CreateUserDto, UpdateUserDto } from './user.dto';
