@@ -131,11 +131,11 @@ export class UserController {
     return ResponseHandler.handler(
       response,
       async () => {
-        const user = await this.userService.deleteUser(id);
+        await this.userService.deleteUser(id);
         return {
           statusCode: 200,
           message: 'User deleted successfully',
-          data: user,
+          data: true,
         };
       },
       this.logger,

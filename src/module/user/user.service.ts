@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { CreateUserDto, UpdateUserDto } from './user.dto';
 import { User } from '@prisma/client';
 import { IUserRepository, IUserService } from './user.interface';
@@ -35,7 +35,7 @@ export class UserService implements IUserService {
     try {
       const user = await this.repository.findById(id);
       if (!user) {
-        throw new Error(`User with ID ${id} not found`);
+        throw new NotFoundException(`User with ID ${id} not found`);
       }
       return user;
     } catch (error) {
@@ -54,10 +54,9 @@ export class UserService implements IUserService {
     }
   }
 
-  async deleteUser(id: string): Promise<User> {
+  async deleteUser(id: string): Promise<any> {
     try {
-      const user = await this.repository.delete(id);
-      return user;
+      await this.repository.delete(id);
     } catch (error) {
       this.logger.error(`Error deleting user: ${error.message}`, error.stack);
       throw error;
