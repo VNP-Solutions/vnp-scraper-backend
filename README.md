@@ -29,16 +29,16 @@
 ## Project setup
 
 ```bash
-$ npm install
+$ npm install --legacy-per-deps
 ```
 
 ## Compile and run the project
 
 ```bash
-# development
+# development(don't follow)
 $ npm run start
 
-# watch mode
+# watch mode/development
 $ npm run start:dev
 
 # production mode
