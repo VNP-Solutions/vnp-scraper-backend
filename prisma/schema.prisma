@@ -63,8 +63,20 @@ model Portfolio {
   updatedBy                     String?
   createdAt                     DateTime @default(now())
   updatedAt                     DateTime @updatedAt
+
+  sub_portfolios                SubPortfolio[]
 }
 
+model SubPortfolio {
+  id                            String   @id @default(auto()) @map("_id") @db.ObjectId
+  name                          String   @unique
+  description                   String?
+  portfolio_id                  String   @db.ObjectId
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+
+  portfolio                     Portfolio? @relation(fields: [portfolio_id], references: [id])
+}
 model Property {
   id                            String   @id @default(auto()) @map("_id") @db.ObjectId
   portfolioId                   String?  @db.ObjectId
