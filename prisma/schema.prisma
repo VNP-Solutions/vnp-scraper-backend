@@ -22,6 +22,24 @@ enum RoleEnum {
   property
 }
 
+enum JobStatus {
+  Pending
+  Running
+  Completed
+  Partial
+  Failed
+}
+
+enum PostingType {
+  OTA
+  OTA_PLUS
+}
+
+enum OTAProvider {
+  Expedia
+  Booking
+  Agoda
+}
 
 model User {
   id                            String   @id @default(auto()) @map("_id") @db.ObjectId
@@ -42,6 +60,7 @@ model User {
   invitedUsers                  User[]    @relation("UserInvites") 
   connected_entities            ConnectedEntity[]
   otps                          Otp[]
+  jobs                          Job[]
 
   @@map("users")
 }
@@ -65,6 +84,7 @@ model Portfolio {
   updatedAt                     DateTime @updatedAt
 
   sub_portfolios                SubPortfolio[]
+  jobs                          Job[]
 }
 
 model SubPortfolio {
@@ -76,7 +96,46 @@ model SubPortfolio {
   updatedAt                     DateTime @updatedAt
 
   portfolio                     Portfolio? @relation(fields: [portfolio_id], references: [id])
+
+  jobs                          Job[]
 }
+
+model Job {
+  id                            String      @id @default(auto()) @map("_id") @db.ObjectId
+  job_status                    JobStatus   @default(Pending)
+  portfolio_id                  String      @db.ObjectId
+  sub_portfolio_id              String      @db.ObjectId
+  property_id                   String      @db.ObjectId
+  user_id                       String      @db.ObjectId
+  posting_type                  PostingType
+  portfolio_name                String
+  sub_portfolio_name            String
+  property_name                 String
+  billing_type                  String
+  next_due_date                 DateTime
+  ota_provider                  OTAProvider @map("OTA")
+  remaining_direct_billed       Float
+  total_collectable             Float
+  total_amount_confirmed        Float
+  execution_type                String      
+  retries_attempted             Int         @default(0)
+  max_retries                   Int         @default(3)
+  retry_delay_ms                Int?
+  priority                      Int         @default(0)
+  job_backoff_length            Int         
+  queue_name                    String?
+  worker_assigned               String?
+  batch_execution_id            String?
+  createdAt                     DateTime    @default(now())
+  updatedAt                     DateTime    @updatedAt
+
+  portfolio                     Portfolio   @relation(fields: [portfolio_id], references: [id])
+  subPortfolio                  SubPortfolio @relation(fields: [sub_portfolio_id], references: [id])
+  user                          User        @relation(fields: [user_id], references: [id])
+
+  @@map("jobs")
+}
+
 model Property {
   id                            String   @id @default(auto()) @map("_id") @db.ObjectId
   portfolioId                   String?  @db.ObjectId
