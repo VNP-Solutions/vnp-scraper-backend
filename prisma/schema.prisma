@@ -63,3 +63,41 @@ model Portfolio {
   createdAt                     DateTime @default(now())
   updatedAt                     DateTime @updatedAt
 }
+
+model Property {
+  id                            String   @id @default(auto()) @map("_id") @db.ObjectId
+  portfolioId                   String?  @db.ObjectId
+  subPortfolioId                String?
+  name                          String
+  expediaId                     Int?
+  expediaStatus                 String?
+  bookingId                     Int?
+  bookingStatus                 String?
+  agodaId                       Int?
+  agodaStatus                   String?
+  credentialsId                 String?  @db.ObjectId
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+  
+  credentials                   PropertyCredentials? @relation(fields: [credentialsId], references: [id])
+
+  @@map("properties")
+}
+
+model PropertyCredentials {
+  id                           String   @id @default(()) @map("_id") @db.ObjectId
+  expediaUsername              String?
+  expediaPassword              String?
+  agodaUsername                String?
+  agodaPassword                String?
+  bookingUsername              String?
+  bookingPassword              String?
+  expediaEmailAssociated       String?
+  propertyContactEmail         String?
+  portfolioContactEmail        String?
+  multiplePortfolioEmails      String[]
+
+  properties                   Property[]
+
+  @@map("property_credentials")
+}

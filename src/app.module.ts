@@ -4,6 +4,8 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { UserModule } from './module/user/user.module';
 import { PortfolioModule } from './module/portfolio/portfolio.module';
+import { PropertyCredentialsModule } from './module/property-credentials/property-credentials.module';
+import { PropertyModule } from './module/property/property.module';
 
 @Module({
   imports: [
@@ -12,6 +14,8 @@ import { PortfolioModule } from './module/portfolio/portfolio.module';
     }),
     UserModule,
     PortfolioModule,
+    PropertyCredentialsModule,
+    PropertyModule,
   ],
   controllers: [AppController],
   providers: [AppService],
