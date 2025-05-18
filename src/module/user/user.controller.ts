@@ -10,6 +10,7 @@ import {
   Inject,
   Res,
   Logger,
+  UseGuards,
 } from '@nestjs/common';
 import { Response } from 'express';
 import {
@@ -22,6 +23,7 @@ import {
 import { CreateUserDto, UpdateUserDto } from './user.dto';
 import { IUserService } from './user.interface';
 import { ResponseHandler } from 'src/common/utils/response-handler';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('Users')
 @ApiBearerAuth('JWT-auth')
@@ -55,6 +57,7 @@ export class UserController {
     );
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get()
   @ApiOperation({ summary: 'Get all users with optional search query' })
   @ApiQuery({
