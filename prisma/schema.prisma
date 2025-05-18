@@ -41,6 +41,7 @@ model User {
 
   invitedUsers                  User[]    @relation("UserInvites") 
   connected_entities            ConnectedEntity[]
+  otps                          Otp[]
 
   @@map("users")
 }
@@ -100,4 +101,19 @@ model PropertyCredentials {
   properties                   Property[]
 
   @@map("property_credentials")
+}
+
+model Otp {
+  id                            String   @id @default(auto()) @map("_id") @db.ObjectId
+  user_id                       String   @db.ObjectId
+  otp_code                      String
+  expires_at                    DateTime
+  is_used                      Boolean  @default(false)
+  created_at                    DateTime @default(now())
+  updated_at                    DateTime @updatedAt
+
+  user                          User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([otp_code])
 }
