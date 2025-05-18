@@ -86,7 +86,7 @@ model Property {
 }
 
 model PropertyCredentials {
-  id                           String   @id @default(()) @map("_id") @db.ObjectId
+  id                           String   @id @default(auto()) @map("_id") @db.ObjectId
   expediaUsername              String?
   expediaPassword              String?
   agodaUsername                String?

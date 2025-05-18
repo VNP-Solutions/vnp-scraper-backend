@@ -7,6 +7,7 @@ import { VerifyOtpDto } from './dto/verify-otp.dto';
 import * as nodemailer from 'nodemailer';
 import { ConfigService } from '@nestjs/config';
 import { AuthRepository } from './auth.repository';
+const crypto = require('crypto');
 
 @Injectable()
 export class AuthService {
@@ -33,7 +34,7 @@ export class AuthService {
   }
 
   private generateOTP(): string {
-    return Math.floor(100000 + Math.random() * 900000).toString();
+    return crypto.randomInt(100000, 999999).toString().padStart(6, '0');
   }
 
   private async sendOTPEmail(email: string, otp: string): Promise<void> {
@@ -100,7 +101,7 @@ export class AuthService {
   }
 
   async validateUser(email: string, password: string): Promise<any> {
-    const user = await this.authRepository.findUserByEmail(email);
+    const user = await this.authRepository.findUserByEmail(email.toLowerCase());
     if (user && (await bcrypt.compare(password, user.password))) {
       const otp = this.generateOTP();
       
@@ -113,7 +114,7 @@ export class AuthService {
   }
 
   async verifyOTP(verifyOtpDto: VerifyOtpDto) {
-    const user = await this.authRepository.findUserByEmail(verifyOtpDto.email);
+    const user = await this.authRepository.findUserByEmail(verifyOtpDto.email.toLowerCase());
 
     if (!user) {
       throw new UnauthorizedException('User not found');
@@ -127,12 +128,12 @@ export class AuthService {
 
     await this.authRepository.deleteOTP(otpRecord.id);
 
-    const payload = { email: user.email, userId: user.id, role: user.role };
+    const payload = { email: user.email.toLowerCase(), userId: user.id, role: user.role };
     return {
       access_token: this.jwtService.sign(payload),
       user: {
         id: user.id,
-        email: user.email,
+        email: user.email.toLowerCase(),
         role: user.role,
         name: user.name,
       },
@@ -145,7 +146,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const payload = { email: user.email, userId: user.id, role: user.role };
+    const payload = { email: user.email.toLowerCase(), userId: user.id, role: user.role };
     return {
       access_token: this.jwtService.sign(payload),
       user,
@@ -156,7 +157,7 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(registerDto.password, 10);
     const user = await this.authRepository.createUser(
       registerDto.name,
-      registerDto.email,
+      registerDto.email.toLowerCase(),
       registerDto.role as RoleEnum,
       hashedPassword
     );
