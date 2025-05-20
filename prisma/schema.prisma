@@ -103,9 +103,9 @@ model SubPortfolio {
 model Job {
   id                            String      @id @default(auto()) @map("_id") @db.ObjectId
   job_status                    JobStatus   @default(Pending)
-  portfolio_id                  String      @db.ObjectId
-  sub_portfolio_id              String      @db.ObjectId
-  property_id                   String      @db.ObjectId
+  portfolio_id                  String?     @db.ObjectId
+  sub_portfolio_id              String?     @db.ObjectId
+  property_id                   String?     @db.ObjectId
   user_id                       String      @db.ObjectId
   posting_type                  PostingType
   portfolio_name                String
@@ -129,9 +129,10 @@ model Job {
   createdAt                     DateTime    @default(now())
   updatedAt                     DateTime    @updatedAt
 
-  portfolio                     Portfolio   @relation(fields: [portfolio_id], references: [id])
-  subPortfolio                  SubPortfolio @relation(fields: [sub_portfolio_id], references: [id])
-  user                          User        @relation(fields: [user_id], references: [id])
+  portfolio                     Portfolio?  @relation(fields: [portfolio_id], references: [id])
+  subPortfolio                  SubPortfolio? @relation(fields: [sub_portfolio_id], references: [id])
+  property                      Property?   @relation(fields: [property_id], references: [id])
+  user                          User?       @relation(fields: [user_id], references: [id])
 
   @@map("jobs")
 }
@@ -152,6 +153,8 @@ model Property {
   updatedAt                     DateTime @updatedAt
   
   credentials                   PropertyCredentials? @relation(fields: [credentialsId], references: [id])
+
+  jobs                          Job[]
 
   @@map("properties")
 }
