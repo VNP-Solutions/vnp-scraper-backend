@@ -7,6 +7,8 @@ import { PortfolioModule } from './module/portfolio/portfolio.module';
 import { PropertyCredentialsModule } from './module/property-credentials/property-credentials.module';
 import { PropertyModule } from './module/property/property.module';
 import { AuthModule } from './module/auth/auth.module';
+import { SubPortfolioModule } from './module/sub-portfolio/sub-portfolio.module';
+import { JobModule } from './module/job/job.module'
 
 @Module({
   imports: [
@@ -18,6 +20,8 @@ import { AuthModule } from './module/auth/auth.module';
     PortfolioModule,
     PropertyCredentialsModule,
     PropertyModule,
+    SubPortfolioModule,
+    JobModule,
   ],
   controllers: [AppController],
   providers: [AppService],
