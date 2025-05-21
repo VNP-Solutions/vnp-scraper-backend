@@ -9,6 +9,7 @@ import { PropertyModule } from './module/property/property.module';
 import { AuthModule } from './module/auth/auth.module';
 import { SubPortfolioModule } from './module/sub-portfolio/sub-portfolio.module';
 import { JobModule } from './module/job/job.module'
+import { UploadModule } from './module/upload/upload.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { JobModule } from './module/job/job.module'
     PropertyModule,
     SubPortfolioModule,
     JobModule,
+    UploadModule,
   ],
   controllers: [AppController],
   providers: [AppService],
