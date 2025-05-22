@@ -15,10 +15,14 @@ export class PortfolioRepository implements IPortfolioRepository {
     return this.db;
   }
 
-  async create(data: CreatePortfolioDto): Promise<Portfolio> {
+  async create(data: CreatePortfolioDto, id: string): Promise<Portfolio> {
     try {
       const portfolio = await this.db.portfolio.create({
-        data,
+        data: {
+          ...data,
+          createdBy: id,
+          updatedBy: id,
+        },
       });
       return portfolio;
     } catch (error) {
@@ -59,13 +63,16 @@ export class PortfolioRepository implements IPortfolioRepository {
     }
   }
 
-  async update(id: string, data: UpdatePortfolioDto): Promise<Portfolio> {
+  async update(id: string, data: UpdatePortfolioDto, userId: string): Promise<Portfolio> {
     try {
       const portfolio = await this.db.portfolio.update({
         where: {
           id,
         },
-        data,
+        data: {
+          ...data,
+          updatedBy: userId,
+        },
       });
       return portfolio;
     } catch (error) {
@@ -85,6 +92,37 @@ export class PortfolioRepository implements IPortfolioRepository {
     } catch (error) {
       this.logger.error(error);
       return null;
+    }
+  }
+
+  async findFilteredPortfolio(userId: string): Promise<any> {
+    try {
+      return this.db.portfolio.findMany({
+        where: {
+          userFeatureAccessPermissions: {
+            some: {
+              user_id: userId,
+            },
+          }
+        },
+      });
+    } catch (error) {
+      this.logger.error(error);
+      return null;
+    }
+  }
+
+  async findPermission(id: string, userId: string): Promise<any> {
+    try {
+      return this.db.userFeatureAccessPermission.findFirst({
+        where: {
+          user_id: userId,
+          portfolio_id: id,
+        },
+      });
+    } catch (error) {
+      this.logger.error(error);
+      throw error;
     }
   }
 }

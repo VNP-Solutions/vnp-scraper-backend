@@ -1,5 +1,6 @@
 import {
   Body,
+  ConsoleLogger,
   Controller,
   Delete,
   Get,
@@ -9,7 +10,9 @@ import {
   Post,
   Put,
   Query,
+  Req,
   Res,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -25,6 +28,7 @@ import { IPortfolioService } from './portfolio.interface';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
 
 import { createPortfolioSchema } from './portfolio.validation';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 @ApiTags('Portfolios')
 @ApiBearerAuth('JWT-auth')
 @Controller('/portfolios')
@@ -40,15 +44,31 @@ export class PortfolioController {
   @ApiResponse({ status: 201, description: 'Portfolio created successfully' })
   @ApiResponse({ status: 400, description: 'Bad request' })
   @ValidateBody(createPortfolioSchema)
+  @UseGuards(JwtAuthGuard)
   async createPortfolio(
+    @Req() request: Request,
     @Body() createPortfolioDto: CreatePortfolioDto,
     @Res() response: Response,
   ) {
+    const { user } = request as any;
+    if (user.role !== 'admin') {
+      return ResponseHandler.handler(
+        response,
+        async () => {
+          return {
+            statusCode: 403,
+            message: 'You are not authorized to create a portfolio',
+            data: null,
+          };
+        },
+        this.logger,
+      );
+    }
     return ResponseHandler.handler(
       response,
       async () => {
         const res =
-          await this.portfolioService.createPortfolio(createPortfolioDto);
+          await this.portfolioService.createPortfolio(createPortfolioDto, user.userId);
         return {
           statusCode: 200,
           message: 'Portfolio created successfully',
@@ -60,6 +80,7 @@ export class PortfolioController {
   }
 
   @Get()
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get all portfolios with optional name filter' })
   @ApiQuery({
     name: 'name',
@@ -68,13 +89,21 @@ export class PortfolioController {
   })
   @ApiResponse({ status: 200, description: 'Returns list of portfolios' })
   async getAllPortfolios(
+    @Req() request: Request,
     @Query('name') name: string = '',
     @Res() response: Response,
   ) {
+    const { user } = request as any;
+    console.log(user);
+    let portfolios: any = [];
+    if (user?.role !== 'admin') {
+      portfolios = await this.portfolioService.getFilteredPortfolio(user?.userId);
+    } else {
+      portfolios = await this.portfolioService.getAllPortfolios(name);
+    }
     return ResponseHandler.handler(
       response,
       async () => {
-        const portfolios = await this.portfolioService.getAllPortfolios(name);
         return {
           statusCode: 200,
           message: 'Portfolios retrieved successfully',
@@ -85,11 +114,33 @@ export class PortfolioController {
     );
   }
 
-  @Get(':id')
+  @Get('/:id')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get portfolio by ID' })
   @ApiResponse({ status: 200, description: 'Returns a portfolio' })
   @ApiResponse({ status: 404, description: 'Portfolio not found' })
-  async getPortfolioById(@Param('id') id: string, @Res() response: Response) {
+  async getPortfolioById(
+    @Req() request: Request,
+    @Param('id') id: string,
+    @Res() response: Response
+  ) {
+    const { user } = request as any;
+    if (user.role !== 'admin') {
+      const permissionData = await this.portfolioService.getPermission(id, user.userId);
+      if (!permissionData) {
+        return ResponseHandler.handler(
+          response,
+          async () => {
+            return {
+              statusCode: 403,
+              message: 'You are not authorized to access this portfolio',
+              data: null,
+            };
+          },
+          this.logger,
+        );
+      }
+    }
     return ResponseHandler.handler(
       response,
       async () => {
@@ -104,21 +155,38 @@ export class PortfolioController {
     );
   }
 
-  @Put(':id')
+  @Put('/:id')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Update portfolio by ID' })
   @ApiResponse({ status: 200, description: 'Portfolio updated successfully' })
   @ApiResponse({ status: 404, description: 'Portfolio not found' })
   async updatePortfolio(
+    @Req() request: Request,
     @Param('id') id: string,
     @Body() updatePortfolioDto: UpdatePortfolioDto,
     @Res() response: Response,
   ) {
+    const { user } = request as any;
+    if (user.role!== 'admin') {
+      return ResponseHandler.handler(
+        response,
+        async () => {
+          return {
+            statusCode: 403,
+            message: 'You are not authorized to update this portfolio',
+            data: null,
+          };
+        },
+        this.logger,
+      );
+    }
     return ResponseHandler.handler(
       response,
       async () => {
         const portfolio = await this.portfolioService.updatePortfolio(
           id,
           updatePortfolioDto,
+          user.userId
         );
         return {
           statusCode: 200,
@@ -130,11 +198,30 @@ export class PortfolioController {
     );
   }
 
-  @Delete(':id')
+  @Delete('/:id')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Delete portfolio by ID' })
   @ApiResponse({ status: 200, description: 'Portfolio deleted successfully' })
   @ApiResponse({ status: 404, description: 'Portfolio not found' })
-  async deletePortfolio(@Param('id') id: string, @Res() response: Response) {
+  async deletePortfolio(
+    @Req() request: Request,
+    @Param('id') id: string,
+    @Res() response: Response
+  ) {
+    const { user } = request as any;
+    if (user.role!== 'admin') {
+      return ResponseHandler.handler(
+        response,
+        async () => {
+          return {
+            statusCode: 403,
+            message: 'You are not authorized to delete this portfolio',
+            data: null,
+          };
+        },
+        this.logger,
+      );
+    }
     return ResponseHandler.handler(
       response,
       async () => {

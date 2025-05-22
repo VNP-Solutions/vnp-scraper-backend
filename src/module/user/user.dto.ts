@@ -16,7 +16,7 @@ export class CreateUserDto {
 
   @ApiProperty({
     enum: RoleEnum,
-    example: RoleEnum.portfolio,
+    example: RoleEnum.admin,
     description: 'User role',
   })
   role: RoleEnum;
@@ -55,7 +55,7 @@ export class UpdateUserDto {
 
   @ApiPropertyOptional({
     enum: RoleEnum,
-    example: RoleEnum.portfolio,
+    example: RoleEnum.admin,
     description: 'User role',
   })
   role?: RoleEnum;
