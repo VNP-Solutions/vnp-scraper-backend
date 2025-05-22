@@ -61,6 +61,7 @@ model User {
   connected_entities            ConnectedEntity[]
   otps                          Otp[]
   jobs                          Job[]
+  userFeatureAccessPermissions  UserFeatureAccessPermission[]
 
   @@map("users")
 }
@@ -85,6 +86,7 @@ model Portfolio {
 
   sub_portfolios                SubPortfolio[]
   jobs                          Job[]
+  userFeatureAccessPermissions  UserFeatureAccessPermission[]
 }
 
 model SubPortfolio {
@@ -95,9 +97,10 @@ model SubPortfolio {
   createdAt                     DateTime @default(now())
   updatedAt                     DateTime @updatedAt
 
-  portfolio                     Portfolio? @relation(fields: [portfolio_id], references: [id])
+  portfolio                     Portfolio? @relation(fields: [portfolio_id], references: [id], onDelete: Cascade)
 
   jobs                          Job[]
+  userFeatureAccessPermissions  UserFeatureAccessPermission[]
 }
 
 model Job {
@@ -156,6 +159,7 @@ model Property {
 
   jobs                          Job[]
   files                         File[]
+  userFeatureAccessPermissions  UserFeatureAccessPermission[]
 
   @@map("properties")
 }
@@ -207,4 +211,17 @@ model File {
   property                     Property? @relation(fields: [property_id], references: [id], onDelete: Cascade)
 
   @@map("files")
+}
+
+model UserFeatureAccessPermission {
+  id                           String   @id @default(auto()) @map("_id") @db.ObjectId
+  user_id                      String   @db.ObjectId
+  portfolio_id                 String?  @db.ObjectId
+  sub_portfolio_id             String?  @db.ObjectId
+  property_id                  String?  @db.ObjectId
+
+  user                         User?         @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  portfolio                    Portfolio?    @relation(fields: [portfolio_id], references: [id], onDelete: Cascade)
+  subPortFolio                 SubPortfolio? @relation(fields: [sub_portfolio_id], references: [id], onDelete: Cascade)
+  property                     Property?     @relation(fields: [property_id], references: [id], onDelete: Cascade)
 }

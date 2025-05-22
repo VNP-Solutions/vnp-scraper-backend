@@ -10,6 +10,7 @@ import { AuthModule } from './module/auth/auth.module';
 import { SubPortfolioModule } from './module/sub-portfolio/sub-portfolio.module';
 import { JobModule } from './module/job/job.module'
 import { UploadModule } from './module/upload/upload.module';
+import { UserFeatureAccessPermissionModule } from './module/user-feature-access-permission/user-feature-access-permission.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { UploadModule } from './module/upload/upload.module';
     SubPortfolioModule,
     JobModule,
     UploadModule,
+    UserFeatureAccessPermissionModule,
   ],
   controllers: [AppController],
   providers: [AppService],
