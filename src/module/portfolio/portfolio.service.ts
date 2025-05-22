@@ -11,9 +11,9 @@ export class PortfolioService implements IPortfolioService {
     private readonly logger: Logger,
   ) {}
 
-  async createPortfolio(data: CreatePortfolioDto): Promise<Portfolio> {
+  async createPortfolio(data: CreatePortfolioDto, id: string): Promise<Portfolio> {
     try {
-      const portfolio = await this.repository.create(data);
+      const portfolio = await this.repository.create(data, id);
       return portfolio;
     } catch (error) {
       this.logger.error(
@@ -56,9 +56,10 @@ export class PortfolioService implements IPortfolioService {
   async updatePortfolio(
     id: string,
     data: UpdatePortfolioDto,
+    userId: string,
   ): Promise<Portfolio> {
     try {
-      const portfolio = await this.repository.update(id, data);
+      const portfolio = await this.repository.update(id, data, userId);
       return portfolio;
     } catch (error) {
       this.logger.error(
@@ -79,5 +80,21 @@ export class PortfolioService implements IPortfolioService {
       );
       throw error;
     }
+  }
+
+  async getFilteredPortfolio(userId: string): Promise<any> {
+    try {
+      return this.repository.findFilteredPortfolio(userId);
+    } catch (error) {
+      this.logger.error(
+        `Error searching portfolios: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async getPermission(id: string, userId: string): Promise<any> {
+    return this.repository.findPermission(id, userId);
   }
 }

@@ -17,9 +17,7 @@ datasource db {
 
 enum RoleEnum {
   admin
-  portfolio
-  sub_portfolio
-  property
+  partial
 }
 
 enum JobStatus {
