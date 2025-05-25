@@ -7,6 +7,8 @@ export interface IPropertyRepository {
   findById(id: string): Promise<Property>;
   update(id: string, data: UpdatePropertyDto): Promise<Property>;
   delete(id: string): Promise<Property>;
+  findPermission(id: string, userId: string): Promise<any>;
+  findFilteredProperty(userId: string): Promise<any>;
 }
 
 export interface IPropertyService {
@@ -15,4 +17,6 @@ export interface IPropertyService {
   getPropertyById(id: string): Promise<Property>;
   updateProperty(id: string, data: UpdatePropertyDto): Promise<Property>;
   deleteProperty(id: string): Promise<Property>;
+  getPermission(id: string, userId: string): Promise<any>;
+  getFilteredProperty(userId: string): Promise<any>;
 }

@@ -92,4 +92,33 @@ export class PropertyRepository implements IPropertyRepository {
       return null;
     }
   }
+
+  async findPermission(id: string, userId: string): Promise<any> {
+    return this.db.userFeatureAccessPermission.findFirst({
+      where: {
+        user_id: userId,
+        property_id: id,
+      },
+    });
+  }
+
+  async findFilteredProperty(userId: string): Promise<any> {
+    try {
+      return this.db.property.findMany({
+        where: {
+          userFeatureAccessPermissions: {
+            some: {
+              user_id: userId,
+            },
+          },
+        },
+        include: {
+          userFeatureAccessPermissions: true,
+        },
+      });
+    } catch (error) {
+      this.logger.error(error);
+      return null;
+    }
+  }
 }

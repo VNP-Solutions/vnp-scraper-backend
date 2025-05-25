@@ -8,7 +8,9 @@ import {
   Param,
   Post,
   Put,
+  Req,
   Res,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -19,6 +21,7 @@ import {
 import { Response } from 'express';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
 import { ResponseHandler } from 'src/common/utils/response-handler';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreatePropertyDto, UpdatePropertyDto } from './property.dto';
 import { IPropertyService } from './property.interface';
 import { createPropertySchema } from './property.validation';
@@ -41,10 +44,26 @@ export class PropertyController {
   })
   @ApiResponse({ status: 400, description: 'Bad request' })
   @ValidateBody(createPropertySchema)
+  @UseGuards(JwtAuthGuard)
   async createProperty(
+    @Req() request: Request,
     @Body() createPropertyDto: CreatePropertyDto,
     @Res() response: Response,
   ) {
+    const { user } = request as any;
+    if (user.role !== 'admin') {
+      return ResponseHandler.handler(
+        response,
+        async () => {
+          return {
+            statusCode: 403,
+            message: 'You are not authorized to create a property',
+            data: null,
+          };
+        },
+        this.logger,
+      );
+    }
     return ResponseHandler.handler(
       response,
       async () => {
@@ -66,11 +85,18 @@ export class PropertyController {
     status: 200,
     description: 'Returns list of properties',
   })
-  async getAllProperties(@Res() response: Response) {
+  @UseGuards(JwtAuthGuard)
+  async getAllProperties(@Req() request: Request, @Res() response: Response) {
+    const { user } = request as any;
+    let properties = [];
+    if (user.role !== 'admin') {
+      properties = await this.propertyService.getFilteredProperty(user.userId);
+    } else {
+      properties = await this.propertyService.getAllProperties();
+    }
     return ResponseHandler.handler(
       response,
       async () => {
-        const properties = await this.propertyService.getAllProperties();
         return {
           statusCode: 200,
           message: 'Properties retrieved successfully',
@@ -81,11 +107,39 @@ export class PropertyController {
     );
   }
 
-  @Get(':id')
+  @Get('/:id')
   @ApiOperation({ summary: 'Get property by ID' })
-  @ApiResponse({ status: 200, description: 'Returns property' })
-  @ApiResponse({ status: 404, description: 'Property not found' })
-  async getPropertyById(@Param('id') id: string, @Res() response: Response) {
+  @ApiResponse({
+    status: 200,
+    description: 'Returns property',
+  })
+  @UseGuards(JwtAuthGuard)
+  async getPropertyById(
+    @Req() request: Request,
+    @Param('id') id: string,
+    @Res() response: Response,
+  ) {
+    const { user } = request as any;
+    if (user.role !== 'admin') {
+      const permissionData = await this.propertyService.getPermission(
+        id,
+        user.userId,
+      );
+      if (!permissionData) {
+        return ResponseHandler.handler(
+          response,
+          async () => {
+            return {
+              statusCode: 403,
+              message: 'You are not authorized to get this property',
+              data: null,
+            };
+          },
+          this.logger,
+        );
+      }
+    }
+
     return ResponseHandler.handler(
       response,
       async () => {
@@ -100,18 +154,34 @@ export class PropertyController {
     );
   }
 
-  @Put(':id')
+  @Put('/:id')
   @ApiOperation({ summary: 'Update property by ID' })
   @ApiResponse({
     status: 200,
     description: 'Property updated successfully',
   })
   @ApiResponse({ status: 404, description: 'Property not found' })
+  @UseGuards(JwtAuthGuard)
   async updateProperty(
+    @Req() request: Request,
     @Param('id') id: string,
     @Body() updatePropertyDto: UpdatePropertyDto,
     @Res() response: Response,
   ) {
+    const { user } = request as any;
+    if (user.role !== 'admin') {
+      return ResponseHandler.handler(
+        response,
+        async () => {
+          return {
+            statusCode: 403,
+            message: 'You are not authorized to update a property',
+            data: null,
+          };
+        },
+        this.logger,
+      );
+    }
     return ResponseHandler.handler(
       response,
       async () => {
@@ -129,14 +199,33 @@ export class PropertyController {
     );
   }
 
-  @Delete(':id')
+  @Delete('/:id')
   @ApiOperation({ summary: 'Delete property by ID' })
   @ApiResponse({
     status: 200,
     description: 'Property deleted successfully',
   })
   @ApiResponse({ status: 404, description: 'Property not found' })
-  async deleteProperty(@Param('id') id: string, @Res() response: Response) {
+  @UseGuards(JwtAuthGuard)
+  async deleteProperty(
+    @Req() request: Request,
+    @Param('id') id: string,
+    @Res() response: Response,
+  ) {
+    const { user } = request as any;
+    if (user.role !== 'admin') {
+      return ResponseHandler.handler(
+        response,
+        async () => {
+          return {
+            statusCode: 403,
+            message: 'You are not authorized to delete a property',
+            data: null,
+          };
+        },
+        this.logger,
+      );
+    }
     return ResponseHandler.handler(
       response,
       async () => {

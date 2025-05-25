@@ -78,4 +78,12 @@ export class PropertyService implements IPropertyService {
       throw error;
     }
   }
+
+  async getPermission(id: string, userId: string): Promise<any> {
+    return this.repository.findPermission(id, userId);
+  }
+
+  async getFilteredProperty(userId: string): Promise<any> {
+    return this.repository.findFilteredProperty(userId);
+  }
 }

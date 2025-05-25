@@ -8,15 +8,6 @@ describe('PortfolioService', () => {
   let mockRepository: jest.Mocked<IPortfolioRepository>;
 
   beforeEach(async () => {
-    // Create mock repository
-    mockRepository = {
-      create: jest.fn(),
-      findAll: jest.fn(),
-      findById: jest.fn(),
-      update: jest.fn(),
-      delete: jest.fn(),
-    };
-
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PortfolioService,
