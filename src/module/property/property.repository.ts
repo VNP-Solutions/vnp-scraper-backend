@@ -121,4 +121,61 @@ export class PropertyRepository implements IPropertyRepository {
       return null;
     }
   }
+
+  async getPermissionByPortfolioId(
+    portfolioId: string,
+    userId: string,
+  ): Promise<any> {
+    return this.db.userFeatureAccessPermission.findFirst({
+      where: {
+        user_id: userId,
+        portfolio_id: portfolioId,
+      },
+    });
+  }
+
+  async getPermissionBySubPortfolioId(
+    subPortfolioId: string,
+    userId: string,
+  ): Promise<any> {
+    return this.db.userFeatureAccessPermission.findFirst({
+      where: {
+        user_id: userId,
+        sub_portfolio_id: subPortfolioId,
+      },
+    });
+  }
+
+  async findPropertyByPortfolioId(
+    portfolioId: string,
+  ): Promise<any> {
+    try {
+      return this.db.property.findMany({
+        where: {
+          OR: [
+            { portfolio_id: portfolioId },
+            {
+              subPortfolio: {
+                portfolio_id: portfolioId,
+              },
+            },
+          ],
+        },
+        include: {
+          subPortfolio: true,
+        },
+      });
+    } catch (error) {
+      this.logger.error(error);
+      return null;
+    }
+  }
+
+  async findPropertyBySubPortfolioId(subPortfolioId: string): Promise<any> {
+    return this.db.property.findMany({
+      where: {
+        sub_portfolio_id: subPortfolioId,
+      },
+    });
+  }
 }

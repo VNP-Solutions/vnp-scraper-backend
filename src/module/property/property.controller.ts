@@ -18,7 +18,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { Response } from 'express';
+import { request, Response } from 'express';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
 import { ResponseHandler } from 'src/common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -70,7 +70,7 @@ export class PropertyController {
         const res =
           await this.propertyService.createProperty(createPropertyDto);
         return {
-          statusCode: 200,
+          statusCode: 201,
           message: 'Property created successfully',
           data: res,
         };
@@ -234,6 +234,111 @@ export class PropertyController {
           statusCode: 200,
           message: 'Property deleted successfully',
           data: null,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Get('/portfolio/:portfolioId')
+  @ApiOperation({ summary: 'Get properties by portfolio ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns properties by portfolio ID',
+  })
+  @UseGuards(JwtAuthGuard)
+  async getPropertiesByPortfolioId(
+    @Req() request: Request,
+    @Param('portfolioId') portfolioId: string,
+    @Res() response: Response,
+  ) {
+    const { user } = request as any;
+    let properties = [];
+    if (user.role !== 'admin') {
+      const permissionData =
+        await this.propertyService.getPermissionByPortfolioId(
+          portfolioId,
+          user.userId,
+        );
+      if (!permissionData) {
+        return ResponseHandler.handler(
+          response,
+          async () => {
+            return {
+              statusCode: 403,
+              message:
+                'You are not authorized to get properties by portfolio ID',
+              data: null,
+            };
+          },
+          this.logger,
+        );
+      }
+    }
+    properties =
+      await this.propertyService.getPropertyByPortfolioId(portfolioId);
+
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        return {
+          statusCode: 200,
+          message: 'Properties retrieved successfully',
+          data: properties,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Get('/sub-portfolio/:subPortfolioId')
+  @ApiOperation({ summary: 'Get properties by sub-portfolio ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns properties by sub-portfolio ID',
+  })
+  @UseGuards(JwtAuthGuard)
+  async getPropertiesBySubPortfolioId(
+    @Req() request: Request,
+    @Param('subPortfolioId') subPortfolioId: string,
+    @Res() response: Response,
+  ) {
+    const { user } = request as any;
+    let properties = [];
+    if (user.role !== 'admin') {
+      const permissionData =
+        await this.propertyService.getPermissionBySubPortfolioId(
+          subPortfolioId,
+          user.userId,
+        );
+      if (!permissionData) {
+        return ResponseHandler.handler(
+          response,
+          async () => {
+            return {
+              statusCode: 403,
+              message:
+                'You are not authorized to get properties by sub-portfolio ID',
+              data: null,
+            };
+          },
+          this.logger,
+        );
+      }
+    }
+    properties =
+      await this.propertyService.getPropertyBySubPortfolioId(subPortfolioId);
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const properties =
+          await this.propertyService.getPropertyBySubPortfolioId(
+            subPortfolioId,
+          );
+        return {
+          statusCode: 200,
+          message: 'Properties retrieved successfully',
+          data: properties,
         };
       },
       this.logger,

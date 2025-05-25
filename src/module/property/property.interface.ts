@@ -9,6 +9,10 @@ export interface IPropertyRepository {
   delete(id: string): Promise<Property>;
   findPermission(id: string, userId: string): Promise<any>;
   findFilteredProperty(userId: string): Promise<any>;
+  getPermissionByPortfolioId(portfolioId: string, userId: string): Promise<any>;
+  getPermissionBySubPortfolioId(subPortfolioId: string, userId: string): Promise<any>;
+  findPropertyByPortfolioId(portfolioId: string): Promise<any>;
+  findPropertyBySubPortfolioId(subPortfolioId: string): Promise<any>;
 }
 
 export interface IPropertyService {
@@ -19,4 +23,8 @@ export interface IPropertyService {
   deleteProperty(id: string): Promise<Property>;
   getPermission(id: string, userId: string): Promise<any>;
   getFilteredProperty(userId: string): Promise<any>;
+  getPermissionByPortfolioId(portfolioId: string, userId: string): Promise<any>;
+  getPermissionBySubPortfolioId(subPortfolioId: string, userId: string): Promise<any>;
+  getPropertyByPortfolioId(portfolioId: string): Promise<any>;
+  getPropertyBySubPortfolioId(subPortfolioId: string): Promise<any>;
 }

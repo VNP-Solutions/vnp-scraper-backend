@@ -86,4 +86,20 @@ export class PropertyService implements IPropertyService {
   async getFilteredProperty(userId: string): Promise<any> {
     return this.repository.findFilteredProperty(userId);
   }
+
+  async getPermissionByPortfolioId(portfolioId: string, userId: string): Promise<any> {
+    return this.repository.getPermissionByPortfolioId(portfolioId, userId);
+  }
+
+  async getPermissionBySubPortfolioId(subPortfolioId: string, userId: string): Promise<any> {
+    return this.repository.getPermissionBySubPortfolioId(subPortfolioId, userId);
+  }
+
+  async getPropertyByPortfolioId(portfolioId: string): Promise<any> {
+    return this.repository.findPropertyByPortfolioId(portfolioId);
+  }
+
+  async getPropertyBySubPortfolioId(subPortfolioId: string): Promise<any> {
+    return this.repository.findPropertyBySubPortfolioId(subPortfolioId);
+  }
 }

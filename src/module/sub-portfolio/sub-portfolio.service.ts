@@ -76,4 +76,16 @@ export class SubPortfolioService implements ISubPortfolioService {
       throw error;
     }
   }
+
+  async getPermission(id: string, userId: string): Promise<any> {
+    return this.repository.getPermission(id, userId);
+  }
+
+  async getPermissionByPortfolioId(portfolioId: string, userId: string): Promise<any> {
+    return this.repository.getPermissionByPortfolioId(portfolioId, userId);
+  }
+
+  async getFilteredSubPortfolios(userId: string): Promise<any> {
+    return this.repository.findFilteredSubPortfolios(userId);
+  }
 }
