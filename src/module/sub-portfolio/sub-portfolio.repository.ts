@@ -72,7 +72,7 @@ export class SubPortfolioRepository implements ISubPortfolioRepository {
           portfolio_id: portfolioId
         },
         include: {
-          portfolio: true
+          portfolio: true   
         }
       });
       return subPortfolios;
@@ -105,5 +105,38 @@ export class SubPortfolioRepository implements ISubPortfolioRepository {
       this.logger.error(error);
       throw error;
     }
+  }
+
+  async getPermission(id: string, userId: string): Promise<any> {
+    return this.db.userFeatureAccessPermission.findFirst({
+      where: {
+        user_id: userId,
+        sub_portfolio_id: id,
+      },
+    });
+  }
+  
+  async getPermissionByPortfolioId(portfolioId: string, userId: string): Promise<any> {
+    return this.db.userFeatureAccessPermission.findFirst({
+      where: {
+        user_id: userId,
+        portfolio_id: portfolioId,
+      },
+    });
+  }
+
+  async findFilteredSubPortfolios(userId: string): Promise<any> {
+    return this.db.subPortfolio.findMany({
+      where: {
+        userFeatureAccessPermissions: {
+          some: {
+            user_id: userId,
+          },
+        },
+      },
+      include: {
+        userFeatureAccessPermissions: true,
+      },
+    });
   }
 }

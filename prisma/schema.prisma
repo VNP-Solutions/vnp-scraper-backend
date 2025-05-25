@@ -85,6 +85,9 @@ model Portfolio {
   sub_portfolios                SubPortfolio[]
   jobs                          Job[]
   userFeatureAccessPermissions  UserFeatureAccessPermission[]
+  property                      Property[]
+
+  @@map("portfolios")
 }
 
 model SubPortfolio {
@@ -99,6 +102,9 @@ model SubPortfolio {
 
   jobs                          Job[]
   userFeatureAccessPermissions  UserFeatureAccessPermission[]
+  property                      Property[]
+  
+  @@map("sub_portfolios")
 }
 
 model Job {
@@ -140,8 +146,8 @@ model Job {
 
 model Property {
   id                            String   @id @default(auto()) @map("_id") @db.ObjectId
-  portfolioId                   String?  @db.ObjectId
-  subPortfolioId                String?
+  portfolio_id                  String?  @db.ObjectId
+  sub_portfolio_id              String?  @db.ObjectId
   name                          String
   expediaId                     Int?
   expediaStatus                 String?
@@ -154,6 +160,8 @@ model Property {
   updatedAt                     DateTime @updatedAt
   
   credentials                   PropertyCredentials? @relation(fields: [credentialsId], references: [id])
+  portfolio                     Portfolio?  @relation(fields: [portfolio_id], references: [id])
+  subPortfolio                  SubPortfolio?  @relation(fields: [sub_portfolio_id], references: [id])
 
   jobs                          Job[]
   files                         File[]
@@ -193,6 +201,8 @@ model Otp {
 
   @@index([user_id])
   @@index([otp_code])
+
+  @@map("otps")
 }
 
 
@@ -222,4 +232,6 @@ model UserFeatureAccessPermission {
   portfolio                    Portfolio?    @relation(fields: [portfolio_id], references: [id], onDelete: Cascade)
   subPortFolio                 SubPortfolio? @relation(fields: [sub_portfolio_id], references: [id], onDelete: Cascade)
   property                     Property?     @relation(fields: [property_id], references: [id], onDelete: Cascade)
+
+  @@map("user_feature_access_permissions")
 }

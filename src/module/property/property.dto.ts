@@ -9,12 +9,12 @@ export class CreatePropertyDto {
   @ApiPropertyOptional({
     description: 'Portfolio ID',
   })
-  portfolioId?: string;
+  portfolio_id?: string;
 
   @ApiPropertyOptional({
     description: 'Sub Portfolio ID',
   })
-  subPortfolioId?: string;
+  sub_portfolio_id?: string;
 
   @ApiPropertyOptional({
     description: 'Expedia ID',

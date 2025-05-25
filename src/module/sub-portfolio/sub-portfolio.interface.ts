@@ -8,6 +8,9 @@ export interface ISubPortfolioRepository {
   update(id: string, data: UpdateSubPortfolioDto): Promise<SubPortfolio>;
   delete(id: string): Promise<SubPortfolio>;
   findByPortfolioId(portfolioId: string): Promise<SubPortfolio[]>;
+  getPermission(id: string, userId: string): Promise<any>;
+  findFilteredSubPortfolios(userId: string): Promise<any>;
+  getPermissionByPortfolioId(portfolioId: string, userId: string): Promise<any>;
 }
 
 export interface ISubPortfolioService {
@@ -17,4 +20,7 @@ export interface ISubPortfolioService {
   updateSubPortfolio(id: string, data: UpdateSubPortfolioDto): Promise<SubPortfolio>;
   deleteSubPortfolio(id: string): Promise<SubPortfolio>;
   findSubPortfoliosByPortfolioId(portfolioId: string): Promise<SubPortfolio[]>;
+  getPermission(id: string, userId: string): Promise<any>;
+  getFilteredSubPortfolios(userId: string): Promise<any>;
+  getPermissionByPortfolioId(portfolioId: string, userId: string): Promise<any>;
 }
