@@ -31,16 +31,41 @@ export class PortfolioRepository implements IPortfolioRepository {
     }
   }
 
-  async findAll(name?: string): Promise<Portfolio[]> {
+  async findAll(query?: Record<string, any>): Promise<Portfolio[]> {
     try {
-      const portfolios = await this.db.portfolio.findMany({
-        where: name
-          ? {
+      const { page, limit, sortBy, sortOrder, search, ...filters } = query || {};
+      const skip = page
+        ? (parseInt(page || '1') - 1) * parseInt(limit || '10')
+        : 0;
+      const take = limit ? parseInt(limit) : 10;
+
+      let orderBy = undefined;
+      if (sortBy) {
+        orderBy = {
+          [sortBy]: sortOrder?.toLowerCase() === 'desc' ? 'desc' : 'asc',
+        };
+      }
+
+      let allFilters = { ...filters };
+      if (search) {
+        allFilters = {
+          ...allFilters,
+          AND: [
+            {
               name: {
-                contains: name,
+                contains: search,
+                mode: 'insensitive',
               },
-            }
-          : undefined,
+            },
+          ],
+        };
+      }
+
+      const portfolios = await this.db.portfolio.findMany({
+        where: allFilters,
+        skip,
+        take,
+        orderBy,
       });
       return portfolios;
     } catch (error) {

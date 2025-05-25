@@ -3,7 +3,7 @@ import { CreatePortfolioDto, UpdatePortfolioDto } from './portfolio.dto';
 
 export interface IPortfolioRepository {
   create(data: CreatePortfolioDto, id: string): Promise<Portfolio>;
-  findAll(name?: string): Promise<Portfolio[]>;
+  findAll(query?: Record<string, any>): Promise<Portfolio[]>;
   findById(id: string): Promise<Portfolio>;
   update(id: string, data: UpdatePortfolioDto, userId: string): Promise<Portfolio>;
   delete(id: string): Promise<Portfolio>;
@@ -13,7 +13,7 @@ export interface IPortfolioRepository {
 
 export interface IPortfolioService {
   createPortfolio(data: CreatePortfolioDto, id: string): Promise<Portfolio>;
-  getAllPortfolios(name?: string): Promise<Portfolio[]>;
+  getAllPortfolios(query?: Record<string, any>): Promise<Portfolio[]>;
   getPortfolioById(id: string): Promise<Portfolio>;
   updatePortfolio(id: string, data: UpdatePortfolioDto, userId: string): Promise<Portfolio>;
   deletePortfolio(id: string): Promise<Portfolio>;
