@@ -29,6 +29,7 @@ import { ValidateBody } from 'src/common/decorators/validate.decorator';
 
 import { createPortfolioSchema } from './portfolio.validation';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 @ApiTags('Portfolios')
 @ApiBearerAuth('JWT-auth')
 @Controller('/portfolios')
@@ -81,16 +82,40 @@ export class PortfolioController {
 
   @Get()
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Get all portfolios with optional name filter' })
+  @ParseQuery()
+  @ApiOperation({ summary: 'Get all portfolios with filtering, sorting and pagination' })
   @ApiQuery({
-    name: 'name',
+    name: 'search',
     required: false,
-    description: 'Filter portfolios by name',
+    description: 'Search portfolios by name',
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: 'number',
+    description: 'Page number for pagination',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: 'number',
+    description: 'Number of items per page',
+  })
+  @ApiQuery({
+    name: 'sortBy',
+    required: false,
+    description: 'Field to sort by',
+  })
+  @ApiQuery({
+    name: 'sortOrder',
+    required: false,
+    enum: ['asc', 'desc'],
+    description: 'Sort order (asc or desc)',
   })
   @ApiResponse({ status: 200, description: 'Returns list of portfolios' })
   async getAllPortfolios(
     @Req() request: Request,
-    @Query('name') name: string = '',
+    @Query() query: Record<string, any>,
     @Res() response: Response,
   ) {
     const { user } = request as any;
@@ -99,7 +124,7 @@ export class PortfolioController {
     if (user?.role !== 'admin') {
       portfolios = await this.portfolioService.getFilteredPortfolio(user?.userId);
     } else {
-      portfolios = await this.portfolioService.getAllPortfolios(name);
+      portfolios = await this.portfolioService.getAllPortfolios(query);
     }
     return ResponseHandler.handler(
       response,

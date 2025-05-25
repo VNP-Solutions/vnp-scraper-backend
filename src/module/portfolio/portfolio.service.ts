@@ -24,9 +24,9 @@ export class PortfolioService implements IPortfolioService {
     }
   }
 
-  async getAllPortfolios(name?: string): Promise<Portfolio[]> {
+  async getAllPortfolios(query?: Record<string, any>): Promise<Portfolio[]> {
     try {
-      const portfolios = await this.repository.findAll(name);
+      const portfolios = await this.repository.findAll(query);
       return portfolios;
     } catch (error) {
       this.logger.error(

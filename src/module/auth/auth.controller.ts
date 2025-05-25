@@ -12,7 +12,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  @Get('me')
+  @Get('/me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Get current user information' })
@@ -26,7 +26,7 @@ export class AuthController {
     };
   }
 
-  @Post('login')
+  @Post('/login')
   @ValidateBody(LoginSchema)
   @ApiOperation({ summary: 'Request OTP for login' })
   @ApiResponse({ status: 200, description: 'OTP sent successfully' })
@@ -39,7 +39,7 @@ export class AuthController {
     };
   }
 
-  @Post('verify-otp')
+  @Post('/verify-otp')
   @ValidateBody(VerifyOtpSchema)
   @ApiOperation({ summary: 'Verify OTP and get JWT token' })
   @ApiResponse({ status: 202, description: 'OTP verified successfully' })
@@ -48,7 +48,7 @@ export class AuthController {
     return this.authService.verifyOTP(verifyOtpDto);
   }
 
-  @Post('register')
+  @Post('/register')
   @ValidateBody(RegisterSchema)
   @ApiOperation({ summary: 'Register new user' })
   @ApiResponse({ status: 201, description: 'User registered successfully' })
