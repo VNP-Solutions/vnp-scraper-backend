@@ -1,15 +1,30 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, Get, UseGuards, Request } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto, RegisterDto } from './auth.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
 import { LoginSchema, RegisterSchema, VerifyOtpSchema } from './auth.validation';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @ApiTags('Authentication')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Get current user information' })
+  @ApiResponse({ status: 200, description: 'Returns current user info' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getCurrentUser(@Request() req) {
+    return {
+      userId: req.user.userId,
+      email: req.user.email,
+      role: req.user.role
+    };
+  }
 
   @Post('login')
   @ValidateBody(LoginSchema)
