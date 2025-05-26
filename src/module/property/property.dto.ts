@@ -45,11 +45,6 @@ export class CreatePropertyDto {
     description: 'Agoda Status',
   })
   agodaStatus?: string;
-
-  @ApiPropertyOptional({
-    description: 'Property Credentials ID',
-  })
-  credentialsId?: string;
 }
 
 export class UpdatePropertyDto extends CreatePropertyDto {}

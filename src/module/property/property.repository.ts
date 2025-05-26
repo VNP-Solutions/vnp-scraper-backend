@@ -27,9 +27,42 @@ export class PropertyRepository implements IPropertyRepository {
     }
   }
 
-  async findAll(): Promise<Property[]> {
+  async findAll(query?: Record<string, any>): Promise<Property[]> {
     try {
+      const { page, limit, sortBy, sortOrder, search, ...filters } =
+        query || {};
+      const skip = page
+        ? (parseInt(page || '1') - 1) * parseInt(limit || '10')
+        : 0;
+      const take = limit ? parseInt(limit) : 10;
+
+      let orderBy = undefined;
+      if (sortBy) {
+        orderBy = {
+          [sortBy]: sortOrder?.toLowerCase() === 'desc' ? 'desc' : 'asc',
+        };
+      }
+
+      let allFilters = { ...filters };
+      if (search) {
+        allFilters = {
+          ...allFilters,
+          AND: [
+            {
+              name: {
+                contains: search,
+                mode: 'insensitive',
+              },
+            },
+          ],
+        };
+      }
+
       const properties = await this.db.property.findMany({
+        skip,
+        take,
+        orderBy,
+        where: allFilters,
         include: {
           credentials: true,
         },
@@ -102,18 +135,60 @@ export class PropertyRepository implements IPropertyRepository {
     });
   }
 
-  async findFilteredProperty(userId: string): Promise<any> {
+  async findFilteredProperty(
+    userId: string,
+    query?: Record<string, any>,
+  ): Promise<any> {
     try {
-      return this.db.property.findMany({
-        where: {
-          userFeatureAccessPermissions: {
-            some: {
-              user_id: userId,
-            },
+      const { page, limit, sortBy, sortOrder, search, ...filters } =
+        query || {};
+      const skip = page
+        ? (parseInt(page || '1') - 1) * parseInt(limit || '10')
+        : 0;
+      const take = limit ? parseInt(limit) : 10;
+
+      let orderBy = undefined;
+      if (sortBy) {
+        orderBy = {
+          [sortBy]: sortOrder?.toLowerCase() === 'desc' ? 'desc' : 'asc',
+        };
+      }
+
+      let whereCondition: any = {
+        userFeatureAccessPermissions: {
+          some: {
+            user_id: userId,
           },
         },
+      };
+
+      // Add search functionality
+      if (search) {
+        whereCondition = {
+          ...whereCondition,
+          name: {
+            contains: search,
+            mode: 'insensitive',
+          },
+        };
+      }
+
+      // Add additional filters
+      if (Object.keys(filters).length > 0) {
+        whereCondition = {
+          ...whereCondition,
+          ...filters,
+        };
+      }
+
+      return this.db.property.findMany({
+        skip,
+        take,
+        orderBy,
+        where: whereCondition,
         include: {
           userFeatureAccessPermissions: true,
+          credentials: true,
         },
       });
     } catch (error) {
@@ -146,9 +221,7 @@ export class PropertyRepository implements IPropertyRepository {
     });
   }
 
-  async findPropertyByPortfolioId(
-    portfolioId: string,
-  ): Promise<any> {
+  async findPropertyByPortfolioId(portfolioId: string): Promise<any> {
     try {
       return this.db.property.findMany({
         where: {
@@ -163,6 +236,7 @@ export class PropertyRepository implements IPropertyRepository {
         },
         include: {
           subPortfolio: true,
+          credentials: true,
         },
       });
     } catch (error) {
@@ -175,6 +249,9 @@ export class PropertyRepository implements IPropertyRepository {
     return this.db.property.findMany({
       where: {
         sub_portfolio_id: subPortfolioId,
+      },
+      include: {
+        credentials: true,
       },
     });
   }

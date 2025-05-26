@@ -11,7 +11,7 @@ export const createPropertyCredentialsSchema = z.object({
   propertyContactEmail: z.string().email().optional(),
   portfolioContactEmail: z.string().email().optional(),
   multiplePortfolioEmails: z.array(z.string().email()).optional(),
-  propertyId: z.string().optional(),
+  property_id: z.string().min(1, 'Property ID is required'),
 });
 
 export const updatePropertyCredentialsSchema = createPropertyCredentialsSchema;

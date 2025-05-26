@@ -24,8 +24,22 @@ export class PropertyCredentialsRepository
     data: CreatePropertyCredentialsDto,
   ): Promise<PropertyCredentials> {
     try {
+      const { property_id, ...credentialsData } = data;
+
+      if (!property_id) {
+        this.logger.error('property_id is required');
+        return null;
+      }
+
       const credentials = await this.db.propertyCredentials.create({
-        data,
+        data: {
+          ...credentialsData,
+          property: {
+            connect: {
+              id: property_id,
+            },
+          },
+        },
       });
       return credentials;
     } catch (error) {

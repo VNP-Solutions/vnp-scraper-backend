@@ -15,10 +15,12 @@ import {
 import {
   ApiBearerAuth,
   ApiOperation,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { request, Response } from 'express';
+import { Response } from 'express';
+import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
 import { ResponseHandler } from 'src/common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -86,13 +88,44 @@ export class PropertyController {
     description: 'Returns list of properties',
   })
   @UseGuards(JwtAuthGuard)
+  @ParseQuery()
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    description: 'Search properties by name',
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    description: 'Page number',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Limit number',
+  })
+  @ApiQuery({
+    name: 'sortBy',
+    required: false,
+    description: 'Sort by field',
+  })
+  @ApiQuery({
+    name: 'sortOrder',
+    required: false,
+    enum: ['asc', 'desc'],
+    description: 'Sort order (asc or desc)',
+  })
   async getAllProperties(@Req() request: Request, @Res() response: Response) {
     const { user } = request as any;
+    const query = (request as any).query as Record<string, any>;
     let properties = [];
     if (user.role !== 'admin') {
-      properties = await this.propertyService.getFilteredProperty(user.userId);
+      properties = await this.propertyService.getFilteredProperty(
+        user.userId,
+        query,
+      );
     } else {
-      properties = await this.propertyService.getAllProperties();
+      properties = await this.propertyService.getAllProperties(query);
     }
     return ResponseHandler.handler(
       response,

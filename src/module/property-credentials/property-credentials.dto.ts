@@ -1,4 +1,4 @@
-import { ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 
 export class CreatePropertyCredentialsDto {
   @ApiPropertyOptional({
@@ -52,10 +52,10 @@ export class CreatePropertyCredentialsDto {
   })
   multiplePortfolioEmails?: string[];
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     description: 'Property id',
   })
-  propertyId?: string;
+  property_id: string;
 }
 
 export class UpdatePropertyCredentialsDto extends PartialType(
