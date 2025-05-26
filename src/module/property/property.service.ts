@@ -24,9 +24,9 @@ export class PropertyService implements IPropertyService {
     }
   }
 
-  async getAllProperties(): Promise<Property[]> {
+  async getAllProperties(query?: Record<string, any>): Promise<Property[]> {
     try {
-      const properties = await this.repository.findAll();
+      const properties = await this.repository.findAll(query);
       return properties;
     } catch (error) {
       this.logger.error(
@@ -83,16 +83,28 @@ export class PropertyService implements IPropertyService {
     return this.repository.findPermission(id, userId);
   }
 
-  async getFilteredProperty(userId: string): Promise<any> {
-    return this.repository.findFilteredProperty(userId);
+  async getFilteredProperty(
+    userId: string,
+    query?: Record<string, any>,
+  ): Promise<any> {
+    return this.repository.findFilteredProperty(userId, query);
   }
 
-  async getPermissionByPortfolioId(portfolioId: string, userId: string): Promise<any> {
+  async getPermissionByPortfolioId(
+    portfolioId: string,
+    userId: string,
+  ): Promise<any> {
     return this.repository.getPermissionByPortfolioId(portfolioId, userId);
   }
 
-  async getPermissionBySubPortfolioId(subPortfolioId: string, userId: string): Promise<any> {
-    return this.repository.getPermissionBySubPortfolioId(subPortfolioId, userId);
+  async getPermissionBySubPortfolioId(
+    subPortfolioId: string,
+    userId: string,
+  ): Promise<any> {
+    return this.repository.getPermissionBySubPortfolioId(
+      subPortfolioId,
+      userId,
+    );
   }
 
   async getPropertyByPortfolioId(portfolioId: string): Promise<any> {

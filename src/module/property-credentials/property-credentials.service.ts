@@ -21,14 +21,7 @@ export class PropertyCredentialsService implements IPropertyCredentialsService {
     data: CreatePropertyCredentialsDto,
   ): Promise<PropertyCredentials> {
     try {
-      const { propertyId } = data;
-      delete data.propertyId;
       const credentials = await this.repository.create(data);
-      if (propertyId) {
-        await this.repository.updateProperty(propertyId, {
-          credentialsId: credentials.id,
-        });
-      }
       return credentials;
     } catch (error) {
       this.logger.error(

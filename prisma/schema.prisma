@@ -159,12 +159,12 @@ model Property {
   createdAt                     DateTime @default(now())
   updatedAt                     DateTime @updatedAt
   
-  credentials                   PropertyCredentials? @relation(fields: [credentialsId], references: [id])
   portfolio                     Portfolio?  @relation(fields: [portfolio_id], references: [id])
   subPortfolio                  SubPortfolio?  @relation(fields: [sub_portfolio_id], references: [id])
 
   jobs                          Job[]
   files                         File[]
+  credentials                   PropertyCredentials[]
   userFeatureAccessPermissions  UserFeatureAccessPermission[]
 
   @@map("properties")
@@ -172,6 +172,7 @@ model Property {
 
 model PropertyCredentials {
   id                           String   @id @default(auto()) @map("_id") @db.ObjectId
+  property_id                  String   @db.ObjectId
   expediaUsername              String?
   expediaPassword              String?
   agodaUsername                String?
@@ -183,7 +184,7 @@ model PropertyCredentials {
   portfolioContactEmail        String?
   multiplePortfolioEmails      String[]
 
-  properties                   Property[]
+  property                     Property  @relation(fields: [property_id], references: [id], onDelete: Cascade)
 
   @@map("property_credentials")
 }
