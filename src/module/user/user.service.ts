@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { CreateUserDto, UpdateUserDto } from './user.dto';
 import { User } from '@prisma/client';
+import { CreateUserDto, UpdateUserDto } from './user.dto';
 import { IUserRepository, IUserService } from './user.interface';
 
 @Injectable()
@@ -21,10 +21,12 @@ export class UserService implements IUserService {
     }
   }
 
-  async getAllUsers(query: string): Promise<User[]> {
+  async getAllUsers(
+    query: Record<string, any>,
+  ): Promise<{ data: User[]; metadata: any }> {
     try {
-      const users = await this.repository.findAllByQuery(query);
-      return users;
+      const result = await this.repository.findAllByQuery(query);
+      return result;
     } catch (error) {
       this.logger.error(`Error searching users: ${error.message}`, error.stack);
       throw error;

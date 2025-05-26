@@ -33,7 +33,7 @@ export class PortfolioRepository implements IPortfolioRepository {
 
   async findAll(query?: Record<string, any>): Promise<Portfolio[]> {
     try {
-      const { page, limit, sortBy, sortOrder, search, ...filters } = query || {};
+      const { page, limit, sortBy, sortOrder, search, start_date, end_date, ...filters } = query || {};
       const skip = page
         ? (parseInt(page || '1') - 1) * parseInt(limit || '10')
         : 0;
@@ -43,6 +43,13 @@ export class PortfolioRepository implements IPortfolioRepository {
       if (sortBy) {
         orderBy = {
           [sortBy]: sortOrder?.toLowerCase() === 'desc' ? 'desc' : 'asc',
+        };
+      }
+
+      if (start_date && end_date) {
+        filters.createdAt = {
+          gte: new Date(start_date),
+          lte: new Date(end_date),
         };
       }
 

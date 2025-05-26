@@ -3,7 +3,9 @@ import { CreatePropertyDto, UpdatePropertyDto } from './property.dto';
 
 export interface IPropertyRepository {
   create(data: CreatePropertyDto): Promise<Property>;
-  findAll(query?: Record<string, any>): Promise<Property[]>;
+  findAll(
+    query?: Record<string, any>,
+  ): Promise<{ properties: Property[]; metadata: any }>;
   findById(id: string): Promise<Property>;
   update(id: string, data: UpdatePropertyDto): Promise<Property>;
   delete(id: string): Promise<Property>;
@@ -11,7 +13,7 @@ export interface IPropertyRepository {
   findFilteredProperty(
     userId: string,
     query?: Record<string, any>,
-  ): Promise<any>;
+  ): Promise<{ properties: Property[]; metadata: any }>;
   getPermissionByPortfolioId(portfolioId: string, userId: string): Promise<any>;
   getPermissionBySubPortfolioId(
     subPortfolioId: string,
@@ -23,7 +25,9 @@ export interface IPropertyRepository {
 
 export interface IPropertyService {
   createProperty(data: CreatePropertyDto): Promise<Property>;
-  getAllProperties(query?: Record<string, any>): Promise<Property[]>;
+  getAllProperties(
+    query?: Record<string, any>,
+  ): Promise<{ properties: Property[]; metadata: any }>;
   getPropertyById(id: string): Promise<Property>;
   updateProperty(id: string, data: UpdatePropertyDto): Promise<Property>;
   deleteProperty(id: string): Promise<Property>;
@@ -31,7 +35,7 @@ export interface IPropertyService {
   getFilteredProperty(
     userId: string,
     query?: Record<string, any>,
-  ): Promise<any>;
+  ): Promise<{ properties: Property[]; metadata: any }>;
   getPermissionByPortfolioId(portfolioId: string, userId: string): Promise<any>;
   getPermissionBySubPortfolioId(
     subPortfolioId: string,

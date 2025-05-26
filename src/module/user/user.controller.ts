@@ -1,29 +1,30 @@
 import {
-  Controller,
-  Get,
-  Post,
-  Patch,
-  Delete,
   Body,
-  Param,
-  Query,
+  Controller,
+  Delete,
+  Get,
   Inject,
-  Res,
   Logger,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
-import { Response } from 'express';
 import {
   ApiBearerAuth,
-  ApiTags,
   ApiOperation,
-  ApiResponse,
   ApiQuery,
+  ApiResponse,
+  ApiTags,
 } from '@nestjs/swagger';
-import { CreateUserDto, UpdateUserDto } from './user.dto';
-import { IUserService } from './user.interface';
+import { Response } from 'express';
+import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { ResponseHandler } from 'src/common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CreateUserDto, UpdateUserDto } from './user.dto';
+import { IUserService } from './user.interface';
 
 @ApiTags('Users')
 @ApiBearerAuth('JWT-auth')
@@ -61,23 +62,58 @@ export class UserController {
   @Get()
   @ApiOperation({ summary: 'Get all users with optional search query' })
   @ApiQuery({
-    name: 'query',
+    name: 'search',
     required: false,
-    description: 'Search query for filtering users',
+    description: 'Search users by name or email',
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: 'number',
+    description: 'Page number for pagination',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: 'number',
+    description: 'Number of items per page',
+  })
+  @ApiQuery({
+    name: 'sortBy',
+    required: false,
+    description: 'Field to sort by',
+  })
+  @ApiQuery({
+    name: 'sortOrder',
+    required: false,
+    enum: ['asc', 'desc'],
+    description: 'Sort order (asc or desc)',
+  })
+  @ApiQuery({
+    name: 'start_date',
+    required: false,
+    description: 'Start date for filtering',
+  })
+  @ApiQuery({
+    name: 'end_date',
+    required: false,
+    description: 'End date for filtering',
   })
   @ApiResponse({ status: 200, description: 'Returns list of users' })
+  @ParseQuery()
   async getAllUsers(
-    @Query('query') query: string = '',
+    @Query() query: Record<string, any>,
     @Res() response: Response,
   ) {
     return ResponseHandler.handler(
       response,
       async () => {
-        const users = await this.userService.getAllUsers(query);
+        const result = await this.userService.getAllUsers(query);
         return {
           statusCode: 200,
           message: 'Users retrieved successfully',
-          data: users,
+          data: result.data,
+          metadata: result.metadata,
         };
       },
       this.logger,

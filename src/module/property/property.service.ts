@@ -24,10 +24,13 @@ export class PropertyService implements IPropertyService {
     }
   }
 
-  async getAllProperties(query?: Record<string, any>): Promise<Property[]> {
+  async getAllProperties(query?: Record<string, any>): Promise<any> {
     try {
-      const properties = await this.repository.findAll(query);
-      return properties;
+      const data = await this.repository.findAll(query);
+      for (let property of data.properties) {
+        property = this.processProperty(property);
+      }
+      return data;
     } catch (error) {
       this.logger.error(
         `Error getting properties: ${error.message}`,
@@ -43,7 +46,7 @@ export class PropertyService implements IPropertyService {
       if (!property) {
         throw new Error(`Property with ID ${id} not found`);
       }
-      return property;
+      return this.processProperty(property);
     } catch (error) {
       this.logger.error(
         `Error finding property: ${error.message}`,
@@ -56,7 +59,7 @@ export class PropertyService implements IPropertyService {
   async updateProperty(id: string, data: UpdatePropertyDto): Promise<Property> {
     try {
       const property = await this.repository.update(id, data);
-      return property;
+      return this.processProperty(property);
     } catch (error) {
       this.logger.error(
         `Error updating property: ${error.message}`,
@@ -87,7 +90,11 @@ export class PropertyService implements IPropertyService {
     userId: string,
     query?: Record<string, any>,
   ): Promise<any> {
-    return this.repository.findFilteredProperty(userId, query);
+    const data = await this.repository.findFilteredProperty(userId, query);
+    for (let property of data.properties) {
+      property = this.processProperty(property);
+    }
+    return data;
   }
 
   async getPermissionByPortfolioId(
@@ -113,5 +120,11 @@ export class PropertyService implements IPropertyService {
 
   async getPropertyBySubPortfolioId(subPortfolioId: string): Promise<any> {
     return this.repository.findPropertyBySubPortfolioId(subPortfolioId);
+  }
+
+  private processProperty(property: any) {
+    const credential = { ... property.credentials[0] };
+    property.credentials = credential;
+    return property;
   }
 }

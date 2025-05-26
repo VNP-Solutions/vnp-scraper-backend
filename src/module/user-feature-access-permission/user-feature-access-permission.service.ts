@@ -1,9 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { UserFeatureAccessPermission } from '@prisma/client';
-import {
-  CreateUserFeatureAccessPermissionDto,
-  UpdateUserFeatureAccessPermissionDto,
-} from './user-feature-access-permission.dto';
+import { UserFeatureAccessPermissionDto } from './user-feature-access-permission.dto';
 import {
   IUserFeatureAccessPermissionRepository,
   IUserFeatureAccessPermissionService,
@@ -18,10 +15,18 @@ export class UserFeatureAccessPermissionService
     private readonly userFeatureAccessPermissionRepository: IUserFeatureAccessPermissionRepository,
   ) {}
 
-  async createUserFeatureAccessPermission(
-    data: CreateUserFeatureAccessPermissionDto,
-  ): Promise<UserFeatureAccessPermission> {
-    return this.userFeatureAccessPermissionRepository.create(data);
+  async createOrUpdateUserFeatureAccessPermission(
+    data: UserFeatureAccessPermissionDto[],
+  ): Promise<UserFeatureAccessPermission[]> {
+    const results = [];
+    for (const permissionData of data) {
+      const permission =
+        await this.userFeatureAccessPermissionRepository.createOrUpdate(
+          permissionData,
+        );
+      results.push(permission);
+    }
+    return results;
   }
 
   async getAllUserFeatureAccessPermissions(): Promise<
@@ -44,13 +49,6 @@ export class UserFeatureAccessPermissionService
       userId,
       featureId,
     );
-  }
-
-  async updateUserFeatureAccessPermission(
-    id: string,
-    data: UpdateUserFeatureAccessPermissionDto,
-  ): Promise<UserFeatureAccessPermission> {
-    return this.userFeatureAccessPermissionRepository.update(id, data);
   }
 
   async deleteUserFeatureAccessPermission(

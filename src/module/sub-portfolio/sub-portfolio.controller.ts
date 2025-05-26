@@ -1,32 +1,39 @@
 import {
-  Controller,
-  Get,
-  Post,
-  Patch,
-  Delete,
   Body,
-  Param,
-  Res,
+  Controller,
+  Delete,
+  Get,
   Inject,
   Logger,
+  Param,
+  Patch,
+  Post,
   Query,
-  UseGuards,
   Req,
+  Res,
+  UseGuards,
 } from '@nestjs/common';
-import { Response } from 'express';
 import {
   ApiBearerAuth,
-  ApiTags,
   ApiOperation,
-  ApiResponse,
   ApiQuery,
+  ApiResponse,
+  ApiTags,
 } from '@nestjs/swagger';
-import { CreateSubPortfolioDto, UpdateSubPortfolioDto } from './sub-portfolio.dto';
-import { ISubPortfolioService } from './sub-portfolio.interface';
-import { ResponseHandler } from 'src/common/utils/response-handler';
+import { Response } from 'express';
+import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
-import { createSubPortfolioSchema, updateSubPortfolioSchema } from './sub-portfolio.validation';
+import { ResponseHandler } from 'src/common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import {
+  CreateSubPortfolioDto,
+  UpdateSubPortfolioDto,
+} from './sub-portfolio.dto';
+import { ISubPortfolioService } from './sub-portfolio.interface';
+import {
+  createSubPortfolioSchema,
+  updateSubPortfolioSchema,
+} from './sub-portfolio.validation';
 
 @ApiTags('Sub-Portfolios')
 @ApiBearerAuth('JWT-auth')
@@ -40,7 +47,10 @@ export class SubPortfolioController {
 
   @Post()
   @ApiOperation({ summary: 'Create a new sub-portfolio' })
-  @ApiResponse({ status: 201, description: 'Sub-portfolio created successfully' })
+  @ApiResponse({
+    status: 201,
+    description: 'Sub-portfolio created successfully',
+  })
   @ApiResponse({ status: 400, description: 'Bad request' })
   @ValidateBody(createSubPortfolioSchema)
   @UseGuards(JwtAuthGuard)
@@ -66,7 +76,9 @@ export class SubPortfolioController {
     return ResponseHandler.handler(
       response,
       async () => {
-        const res = await this.subPortfolioService.createSubPortfolio(createSubPortfolioDto);
+        const res = await this.subPortfolioService.createSubPortfolio(
+          createSubPortfolioDto,
+        );
         return {
           statusCode: 201,
           message: 'Sub-portfolio created successfully',
@@ -81,20 +93,56 @@ export class SubPortfolioController {
   @ApiOperation({ summary: 'Get all sub-portfolios with optional query' })
   @ApiResponse({ status: 200, description: 'Returns list of sub-portfolios' })
   @ApiQuery({
-    name: 'query',
+    name: 'search',
     required: false,
-    description: 'Search query for filtering sub-portfolios',
+    description: 'Search sub-portfolios by name or description',
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: 'number',
+    description: 'Page number for pagination',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: 'number',
+    description: 'Number of items per page',
+  })
+  @ApiQuery({
+    name: 'sortBy',
+    required: false,
+    description: 'Field to sort by',
+  })
+  @ApiQuery({
+    name: 'sortOrder',
+    required: false,
+    enum: ['asc', 'desc'],
+    description: 'Sort order (asc or desc)',
+  })
+  @ApiQuery({
+    name: 'start_date',
+    required: false,
+    description: 'Start date for filtering',
+  })
+  @ApiQuery({
+    name: 'end_date',
+    required: false,
+    description: 'End date for filtering',
   })
   @UseGuards(JwtAuthGuard)
+  @ParseQuery()
   async getAllSubPortfolios(
     @Req() request: Request,
-    @Query('query') query: string = '',
+    @Query() query: Record<string, any>,
     @Res() response: Response,
   ) {
     const { user } = request as any;
     let subPortfolios = [];
     if (user.role !== 'admin') {
-      subPortfolios = await this.subPortfolioService.getFilteredSubPortfolios(user.userId);
+      subPortfolios = await this.subPortfolioService.getFilteredSubPortfolios(
+        user.userId,
+      );
     } else {
       subPortfolios = await this.subPortfolioService.getAllSubPortfolios(query);
     }
@@ -124,8 +172,8 @@ export class SubPortfolioController {
     const { user } = request as any;
     if (user.role !== 'admin') {
       const permissionData = await this.subPortfolioService.getPermission(
-        id, 
-        user.userId
+        id,
+        user.userId,
       );
       if (!permissionData) {
         return ResponseHandler.handler(
@@ -144,7 +192,8 @@ export class SubPortfolioController {
     return ResponseHandler.handler(
       response,
       async () => {
-        const subPortfolio = await this.subPortfolioService.getSubPortfolioById(id);
+        const subPortfolio =
+          await this.subPortfolioService.getSubPortfolioById(id);
         return {
           statusCode: 200,
           message: 'Sub-portfolio retrieved successfully',
@@ -157,7 +206,10 @@ export class SubPortfolioController {
 
   @Get('/portfolio/:portfolioId')
   @ApiOperation({ summary: 'Get sub-portfolios by portfolio ID' })
-  @ApiResponse({ status: 200, description: 'Returns list of sub-portfolios for a portfolio' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns list of sub-portfolios for a portfolio',
+  })
   @ApiResponse({ status: 404, description: 'Portfolio not found' })
   @UseGuards(JwtAuthGuard)
   async getSubPortfoliosByPortfolioId(
@@ -167,10 +219,11 @@ export class SubPortfolioController {
   ) {
     const { user } = request as any;
     if (user.role !== 'admin') {
-      const permissionData = await this.subPortfolioService.getPermissionByPortfolioId(
-        portfolioId,
-        user.userId
-      );
+      const permissionData =
+        await this.subPortfolioService.getPermissionByPortfolioId(
+          portfolioId,
+          user.userId,
+        );
       if (!permissionData) {
         return ResponseHandler.handler(
           response,
@@ -188,7 +241,10 @@ export class SubPortfolioController {
     return ResponseHandler.handler(
       response,
       async () => {
-        const subPortfolios = await this.subPortfolioService.findSubPortfoliosByPortfolioId(portfolioId);
+        const subPortfolios =
+          await this.subPortfolioService.findSubPortfoliosByPortfolioId(
+            portfolioId,
+          );
         return {
           statusCode: 200,
           message: 'Sub-portfolios retrieved successfully',
@@ -201,7 +257,10 @@ export class SubPortfolioController {
 
   @Patch('/:id')
   @ApiOperation({ summary: 'Update sub-portfolio by ID' })
-  @ApiResponse({ status: 200, description: 'Sub-portfolio updated successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Sub-portfolio updated successfully',
+  })
   @ApiResponse({ status: 404, description: 'Sub-portfolio not found' })
   @ValidateBody(updateSubPortfolioSchema)
   @UseGuards(JwtAuthGuard)
@@ -228,7 +287,10 @@ export class SubPortfolioController {
     return ResponseHandler.handler(
       response,
       async () => {
-        const subPortfolio = await this.subPortfolioService.updateSubPortfolio(id, updateSubPortfolioDto);
+        const subPortfolio = await this.subPortfolioService.updateSubPortfolio(
+          id,
+          updateSubPortfolioDto,
+        );
         return {
           statusCode: 200,
           message: 'Sub-portfolio updated successfully',
@@ -241,7 +303,10 @@ export class SubPortfolioController {
 
   @Delete('/:id')
   @ApiOperation({ summary: 'Delete sub-portfolio by ID' })
-  @ApiResponse({ status: 200, description: 'Sub-portfolio deleted successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Sub-portfolio deleted successfully',
+  })
   @ApiResponse({ status: 404, description: 'Sub-portfolio not found' })
   @UseGuards(JwtAuthGuard)
   async deleteSubPortfolio(
@@ -266,7 +331,8 @@ export class SubPortfolioController {
     return ResponseHandler.handler(
       response,
       async () => {
-        const subPortfolio = await this.subPortfolioService.deleteSubPortfolio(id);
+        const subPortfolio =
+          await this.subPortfolioService.deleteSubPortfolio(id);
         return {
           statusCode: 200,
           message: 'Sub-portfolio deleted successfully',
