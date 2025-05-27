@@ -127,6 +127,46 @@ export class PropertyController {
     required: false,
     description: 'End date for filtering',
   })
+  @ApiQuery({
+    name: 'portfolio_id',
+    required: false,
+    description: 'Filter by portfolio ID',
+  })
+  @ApiQuery({
+    name: 'sub_portfolio_id',
+    required: false,
+    description: 'Filter by sub-portfolio ID',
+  })
+  @ApiQuery({
+    name: 'expedia_id',
+    required: false,
+    description: 'Filter by Expedia ID',
+  })
+  @ApiQuery({
+    name: 'expedia_status',
+    required: false,
+    description: 'Filter by Expedia status',
+  })
+  @ApiQuery({
+    name: 'booking_id',
+    required: false,
+    description: 'Filter by Booking ID',
+  })
+  @ApiQuery({
+    name: 'booking_status',
+    required: false,
+    description: 'Filter by Booking status',
+  })
+  @ApiQuery({
+    name: 'agoda_id',
+    required: false,
+    description: 'Filter by Agoda ID',
+  })
+  @ApiQuery({
+    name: 'agoda_status',
+    required: false,
+    description: 'Filter by Agoda status',
+  })
   async getAllProperties(@Req() request: Request, @Res() response: Response) {
     const { user } = request as any;
     const query = (request as any).query as Record<string, any>;

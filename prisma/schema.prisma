@@ -98,6 +98,7 @@ model SubPortfolio {
   createdAt                     DateTime @default(now())
   updatedAt                     DateTime @updatedAt
 
+
   portfolio                     Portfolio? @relation(fields: [portfolio_id], references: [id], onDelete: Cascade)
 
   jobs                          Job[]
@@ -149,13 +150,12 @@ model Property {
   portfolio_id                  String?  @db.ObjectId
   sub_portfolio_id              String?  @db.ObjectId
   name                          String
-  expediaId                     Int?
-  expediaStatus                 String?
-  bookingId                     Int?
-  bookingStatus                 String?
-  agodaId                       Int?
-  agodaStatus                   String?
-  credentialsId                 String?  @db.ObjectId
+  expedia_id                    Int?
+  expedia_status                String?
+  booking_id                    Int?
+  booking_status                String?
+  agoda_id                      Int?
+  agoda_status                  String?
   createdAt                     DateTime @default(now())
   updatedAt                     DateTime @updatedAt
   
