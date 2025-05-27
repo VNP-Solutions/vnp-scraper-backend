@@ -112,6 +112,16 @@ export class PortfolioController {
     enum: ['asc', 'desc'],
     description: 'Sort order (asc or desc)',
   })
+  @ApiQuery({
+    name:'start_date',
+    required: false,
+    description: 'Start date for filtering',
+  })
+  @ApiQuery({
+    name:'end_date',
+    required: false,
+    description: 'End date for filtering',
+  })
   @ApiResponse({ status: 200, description: 'Returns list of portfolios' })
   async getAllPortfolios(
     @Req() request: Request,

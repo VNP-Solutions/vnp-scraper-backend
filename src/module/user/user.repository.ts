@@ -1,5 +1,5 @@
-import { User } from '@prisma/client';
 import { Injectable, Logger } from '@nestjs/common';
+import { User } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { CreateUserDto, UpdateUserDto } from './user.dto';
 import { IUserRepository } from './user.interface';
@@ -27,28 +27,77 @@ export class UserRepository implements IUserRepository {
     }
   }
 
-  async findAllByQuery(query: string): Promise<User[]> {
+  async findAllByQuery(
+    query: Record<string, any>,
+  ): Promise<{ data: User[]; metadata: any }> {
     try {
-      const users = await this.db.user.findMany({
-        where: {
+      const { page, limit, sortBy, sortOrder, search, start_date, end_date } =
+        query || {};
+      const skip = page
+        ? (parseInt(page || '1') - 1) * parseInt(limit || '10')
+        : 0;
+      const take = limit ? parseInt(limit) : 10;
+
+      let orderBy = undefined;
+      if (sortBy) {
+        orderBy = {
+          [sortBy]: sortOrder?.toLowerCase() === 'desc' ? 'desc' : 'asc',
+        };
+      }
+
+      let whereCondition: any = {};
+      if (search) {
+        whereCondition = {
           OR: [
             {
               name: {
-                contains: query,
+                contains: search,
+                mode: 'insensitive',
               },
             },
             {
               email: {
-                contains: query,
+                contains: search,
+                mode: 'insensitive',
               },
             },
           ],
-        },
-      });
-      return users;
+        };
+      }
+
+      if (start_date && end_date) {
+        whereCondition = {
+          ...whereCondition,
+          createdAt: {
+            gte: new Date(start_date),
+            lte: new Date(end_date),
+          },
+        };
+      }
+
+      const [users, totalDocuments] = await Promise.all([
+        this.db.user.findMany({
+          skip,
+          take,
+          orderBy,
+          where: whereCondition,
+        }),
+        this.db.user.count({
+          where: whereCondition,
+        }),
+      ]);
+
+      const metadata = {
+        totalDocuments,
+        currentPage: page ? parseInt(page) : 1,
+        totalPage: Math.ceil(totalDocuments / take),
+        limit: take,
+      };
+
+      return { data: users, metadata };
     } catch (error) {
       this.logger.error(error);
-      return null;
+      return { data: [], metadata: null };
     }
   }
 

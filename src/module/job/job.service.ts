@@ -21,7 +21,7 @@ export class JobService implements IJobService {
     }
   }
 
-  async getAllJobs(query?: string): Promise<Job[]> {
+  async getAllJobs(query: Record<string, any>): Promise<any> {
     try {
       const jobs = await this.repository.findAll(query);
       return jobs;

@@ -19,6 +19,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { Response } from 'express';
+import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
 import { ResponseHandler } from 'src/common/utils/response-handler';
 import { CreateJobDto, UpdateJobDto } from './job.dto';
@@ -62,13 +63,46 @@ export class JobController {
   @ApiOperation({ summary: 'Get all jobs' })
   @ApiResponse({ status: 200, description: 'Returns list of jobs' })
   @ApiQuery({
-    name: 'query',
+    name: 'search',
     required: false,
-    description: 'Search query to filter jobs',
-    type: String
+    description: 'Search jobs by portfolio, sub-portfolio, or property name',
   })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: 'number',
+    description: 'Page number for pagination',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: 'number',
+    description: 'Number of items per page',
+  })
+  @ApiQuery({
+    name: 'sortBy',
+    required: false,
+    description: 'Field to sort by',
+  })
+  @ApiQuery({
+    name: 'sortOrder',
+    required: false,
+    enum: ['asc', 'desc'],
+    description: 'Sort order (asc or desc)',
+  })
+  @ApiQuery({
+    name: 'start_date',
+    required: false,
+    description: 'Start date for filtering',
+  })
+  @ApiQuery({
+    name: 'end_date',
+    required: false,
+    description: 'End date for filtering',
+  })
+  @ParseQuery()
   async getAllJobs(
-    @Query('query') query: string,
+    @Query() query: Record<string, any>,
     @Res() response: Response,
   ) {
     return ResponseHandler.handler(

@@ -1,7 +1,13 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { SubPortfolio } from '@prisma/client';
-import { CreateSubPortfolioDto, UpdateSubPortfolioDto } from './sub-portfolio.dto';
-import { ISubPortfolioRepository, ISubPortfolioService } from './sub-portfolio.interface';
+import {
+  CreateSubPortfolioDto,
+  UpdateSubPortfolioDto,
+} from './sub-portfolio.dto';
+import {
+  ISubPortfolioRepository,
+  ISubPortfolioService,
+} from './sub-portfolio.interface';
 
 @Injectable()
 export class SubPortfolioService implements ISubPortfolioService {
@@ -16,7 +22,10 @@ export class SubPortfolioService implements ISubPortfolioService {
       const subPortfolio = await this.repository.create(data);
       return subPortfolio;
     } catch (error) {
-      this.logger.error(`Error creating sub-portfolio: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error creating sub-portfolio: ${error.message}`,
+        error.stack,
+      );
       throw error;
     }
   }
@@ -29,27 +38,41 @@ export class SubPortfolioService implements ISubPortfolioService {
       }
       return subPortfolio;
     } catch (error) {
-      this.logger.error(`Error finding sub-portfolio: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error finding sub-portfolio: ${error.message}`,
+        error.stack,
+      );
       throw error;
     }
   }
 
-  async getAllSubPortfolios(query: string): Promise<SubPortfolio[]> {
+  async getAllSubPortfolios(
+    query: Record<string, any>,
+  ): Promise<any> {
     try {
       const subPortfolios = await this.repository.findAll(query);
       return subPortfolios;
     } catch (error) {
-      this.logger.error(`Error getting all sub-portfolios: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error getting all sub-portfolios: ${error.message}`,
+        error.stack,
+      );
       throw error;
     }
   }
 
-  async updateSubPortfolio(id: string, data: UpdateSubPortfolioDto): Promise<SubPortfolio> {
+  async updateSubPortfolio(
+    id: string,
+    data: UpdateSubPortfolioDto,
+  ): Promise<SubPortfolio> {
     try {
       const subPortfolio = await this.repository.update(id, data);
       return subPortfolio;
     } catch (error) {
-      this.logger.error(`Error updating sub-portfolio: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error updating sub-portfolio: ${error.message}`,
+        error.stack,
+      );
       throw error;
     }
   }
@@ -59,20 +82,31 @@ export class SubPortfolioService implements ISubPortfolioService {
       const subPortfolio = await this.repository.delete(id);
       return subPortfolio;
     } catch (error) {
-      this.logger.error(`Error deleting sub-portfolio: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error deleting sub-portfolio: ${error.message}`,
+        error.stack,
+      );
       throw error;
     }
   }
 
-  async findSubPortfoliosByPortfolioId(portfolioId: string): Promise<SubPortfolio[]> {
+  async findSubPortfoliosByPortfolioId(
+    portfolioId: string,
+  ): Promise<SubPortfolio[]> {
     try {
-      const subPortfolios = await this.repository.findByPortfolioId(portfolioId);
+      const subPortfolios =
+        await this.repository.findByPortfolioId(portfolioId);
       if (!subPortfolios.length) {
-        this.logger.warn(`No sub-portfolios found for portfolio ID ${portfolioId}`);
+        this.logger.warn(
+          `No sub-portfolios found for portfolio ID ${portfolioId}`,
+        );
       }
       return subPortfolios;
     } catch (error) {
-      this.logger.error(`Error finding sub-portfolios by portfolio ID: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error finding sub-portfolios by portfolio ID: ${error.message}`,
+        error.stack,
+      );
       throw error;
     }
   }
@@ -81,7 +115,10 @@ export class SubPortfolioService implements ISubPortfolioService {
     return this.repository.getPermission(id, userId);
   }
 
-  async getPermissionByPortfolioId(portfolioId: string, userId: string): Promise<any> {
+  async getPermissionByPortfolioId(
+    portfolioId: string,
+    userId: string,
+  ): Promise<any> {
     return this.repository.getPermissionByPortfolioId(portfolioId, userId);
   }
 

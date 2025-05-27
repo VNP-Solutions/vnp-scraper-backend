@@ -27,10 +27,20 @@ export class PropertyRepository implements IPropertyRepository {
     }
   }
 
-  async findAll(query?: Record<string, any>): Promise<Property[]> {
+  async findAll(
+    query?: Record<string, any>,
+  ): Promise<{ properties: Property[]; metadata: any }> {
     try {
-      const { page, limit, sortBy, sortOrder, search, ...filters } =
-        query || {};
+      const {
+        page,
+        limit,
+        sortBy,
+        sortOrder,
+        search,
+        start_date,
+        end_date,
+        ...filters
+      } = query || {};
       const skip = page
         ? (parseInt(page || '1') - 1) * parseInt(limit || '10')
         : 0;
@@ -58,19 +68,42 @@ export class PropertyRepository implements IPropertyRepository {
         };
       }
 
-      const properties = await this.db.property.findMany({
-        skip,
-        take,
-        orderBy,
-        where: allFilters,
-        include: {
-          credentials: true,
-        },
-      });
-      return properties;
+      if (start_date && end_date) {
+        allFilters = {
+          ...allFilters,
+          createdAt: {
+            gte: new Date(start_date),
+            lte: new Date(end_date),
+          },
+        };
+      }
+
+      const [properties, totalDocuments] = await Promise.all([
+        this.db.property.findMany({
+          skip,
+          take,
+          orderBy,
+          where: allFilters,
+          include: {
+            credentials: true,
+          },
+        }),
+        this.db.property.count({
+          where: allFilters,
+        }),
+      ]);
+
+      const metadata = {
+        totalDocuments,
+        currentPage: page ? parseInt(page) : 1,
+        totalPage: Math.ceil(totalDocuments / take),
+        limit: take,
+      };
+
+      return { properties, metadata };
     } catch (error) {
       this.logger.error(error);
-      return null;
+      return { properties: [], metadata: null };
     }
   }
 
@@ -138,10 +171,18 @@ export class PropertyRepository implements IPropertyRepository {
   async findFilteredProperty(
     userId: string,
     query?: Record<string, any>,
-  ): Promise<any> {
+  ): Promise<{ properties: Property[]; metadata: any }> {
     try {
-      const { page, limit, sortBy, sortOrder, search, ...filters } =
-        query || {};
+      const {
+        page,
+        limit,
+        sortBy,
+        sortOrder,
+        search,
+        start_date,
+        end_date,
+        ...filters
+      } = query || {};
       const skip = page
         ? (parseInt(page || '1') - 1) * parseInt(limit || '10')
         : 0;
@@ -173,6 +214,17 @@ export class PropertyRepository implements IPropertyRepository {
         };
       }
 
+      // Add date range filtering
+      if (start_date && end_date) {
+        whereCondition = {
+          ...whereCondition,
+          createdAt: {
+            gte: new Date(start_date),
+            lte: new Date(end_date),
+          },
+        };
+      }
+
       // Add additional filters
       if (Object.keys(filters).length > 0) {
         whereCondition = {
@@ -181,19 +233,32 @@ export class PropertyRepository implements IPropertyRepository {
         };
       }
 
-      return this.db.property.findMany({
-        skip,
-        take,
-        orderBy,
-        where: whereCondition,
-        include: {
-          userFeatureAccessPermissions: true,
-          credentials: true,
-        },
-      });
+      const [properties, totalDocuments] = await Promise.all([
+        this.db.property.findMany({
+          skip,
+          take,
+          orderBy,
+          where: whereCondition,
+          include: {
+            credentials: true,
+          },
+        }),
+        this.db.property.count({
+          where: whereCondition,
+        }),
+      ]);
+
+      const metadata = {
+        totalDocuments,
+        currentPage: page ? parseInt(page) : 1,
+        totalPage: Math.ceil(totalDocuments / take),
+        limit: take,
+      };
+
+      return { properties, metadata };
     } catch (error) {
       this.logger.error(error);
-      return null;
+      return { properties: [], metadata: null };
     }
   }
 

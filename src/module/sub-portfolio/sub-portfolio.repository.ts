@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { DatabaseService } from '../database/database.service';
 import { SubPortfolio } from '@prisma/client';
-import { CreateSubPortfolioDto, UpdateSubPortfolioDto } from './sub-portfolio.dto';
+import { DatabaseService } from '../database/database.service';
+import {
+  CreateSubPortfolioDto,
+  UpdateSubPortfolioDto,
+} from './sub-portfolio.dto';
 import { ISubPortfolioRepository } from './sub-portfolio.interface';
 
 @Injectable()
@@ -35,30 +38,48 @@ export class SubPortfolioRepository implements ISubPortfolioRepository {
     }
   }
 
-  async findAll(query: string): Promise<SubPortfolio[]> {
+  async findAll(
+    query: Record<string, any>,
+  ): Promise<{ data: SubPortfolio[]; metadata: any }> {
     try {
-      const subPortfolios = await this.db.subPortfolio.findMany({
-        where: {
-          OR: [
-            {
-              name: {
-                contains: query,
-                mode: 'insensitive',
-              },
-            },
-            {
-              description: {
-                contains: query,
-                mode: 'insensitive',
-              },
-            },
-          ],
-        },
-        include: {
-          portfolio: true,
-        },
+      const {
+        search,
+        start_date,
+        end_date,
+        page = 1,
+        limit = 10,
+        ...filters
+      } = query || {};
+      let allFilters: any = { ...filters };
+      if (search) {
+        allFilters.OR = [
+          { name: { contains: search, mode: 'insensitive' } },
+          { description: { contains: search, mode: 'insensitive' } },
+        ];
+      }
+      if (start_date && end_date) {
+        allFilters.createdAt = {
+          gte: new Date(start_date),
+          lte: new Date(end_date),
+        };
+      }
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+      const totalDocuments = await this.db.subPortfolio.count({
+        where: allFilters,
       });
-      return subPortfolios;
+      const subPortfolios = await this.db.subPortfolio.findMany({
+        where: allFilters,
+        include: { portfolio: true },
+        skip,
+        take: parseInt(limit),
+      });
+      const metadata = {
+        totalDocuments,
+        currentPage: parseInt(page),
+        totalPage: Math.ceil(totalDocuments / parseInt(limit)),
+        limit: parseInt(limit),
+      };
+      return { data: subPortfolios, metadata };
     } catch (error) {
       this.logger.error(error);
       throw error;
@@ -69,11 +90,11 @@ export class SubPortfolioRepository implements ISubPortfolioRepository {
     try {
       const subPortfolios = await this.db.subPortfolio.findMany({
         where: {
-          portfolio_id: portfolioId
+          portfolio_id: portfolioId,
         },
         include: {
-          portfolio: true   
-        }
+          portfolio: true,
+        },
       });
       return subPortfolios;
     } catch (error) {
@@ -115,8 +136,11 @@ export class SubPortfolioRepository implements ISubPortfolioRepository {
       },
     });
   }
-  
-  async getPermissionByPortfolioId(portfolioId: string, userId: string): Promise<any> {
+
+  async getPermissionByPortfolioId(
+    portfolioId: string,
+    userId: string,
+  ): Promise<any> {
     return this.db.userFeatureAccessPermission.findFirst({
       where: {
         user_id: userId,

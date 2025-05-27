@@ -97,17 +97,19 @@ export class PropertyController {
   @ApiQuery({
     name: 'page',
     required: false,
-    description: 'Page number',
+    type: 'number',
+    description: 'Page number for pagination',
   })
   @ApiQuery({
     name: 'limit',
     required: false,
-    description: 'Limit number',
+    type: 'number',
+    description: 'Number of items per page',
   })
   @ApiQuery({
     name: 'sortBy',
     required: false,
-    description: 'Sort by field',
+    description: 'Field to sort by',
   })
   @ApiQuery({
     name: 'sortOrder',
@@ -115,10 +117,20 @@ export class PropertyController {
     enum: ['asc', 'desc'],
     description: 'Sort order (asc or desc)',
   })
+  @ApiQuery({
+    name: 'start_date',
+    required: false,
+    description: 'Start date for filtering',
+  })
+  @ApiQuery({
+    name: 'end_date',
+    required: false,
+    description: 'End date for filtering',
+  })
   async getAllProperties(@Req() request: Request, @Res() response: Response) {
     const { user } = request as any;
     const query = (request as any).query as Record<string, any>;
-    let properties = [];
+    let properties = null;
     if (user.role !== 'admin') {
       properties = await this.propertyService.getFilteredProperty(
         user.userId,
