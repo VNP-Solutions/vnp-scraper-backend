@@ -85,9 +85,38 @@ export class PortfolioRepository implements IPortfolioRepository {
           skip,
           take,
           orderBy,
+          include: {
+            _count: {
+              select: {
+                property: true,
+                sub_portfolios: true,
+              },
+            },
+          },
         }),
         this.db.portfolio.count({
           where: allFilters,
+        }),
+      ]);
+
+      // Get total properties count including those in sub-portfolios
+      const portfolioIds = portfolios.map((p) => p.id);
+      const [directProperties, subPortfolioProperties] = await Promise.all([
+        this.db.property.count({
+          where: {
+            portfolio_id: {
+              in: portfolioIds,
+            },
+          },
+        }),
+        this.db.property.count({
+          where: {
+            subPortfolio: {
+              portfolio_id: {
+                in: portfolioIds,
+              },
+            },
+          },
         }),
       ]);
 
@@ -96,9 +125,21 @@ export class PortfolioRepository implements IPortfolioRepository {
         page: page ? parseInt(page) : 1,
         limit: take,
         totalPages: Math.ceil(total / take),
+        totalProperties: directProperties + subPortfolioProperties,
+        totalSubPortfolios: portfolios.reduce(
+          (acc, p) => acc + p._count.sub_portfolios,
+          0,
+        ),
       };
 
-      return { data: portfolios, metadata };
+      return {
+        data: portfolios.map((p) => ({
+          ...p,
+          propertyCount: p._count.property,
+          subPortfolioCount: p._count.sub_portfolios,
+        })),
+        metadata,
+      };
     } catch (error) {
       this.logger.error(error);
       return { data: [], metadata: null };
@@ -164,6 +205,14 @@ export class PortfolioRepository implements IPortfolioRepository {
               },
             },
           },
+          include: {
+            _count: {
+              select: {
+                property: true,
+                sub_portfolios: true,
+              },
+            },
+          },
         }),
         this.db.portfolio.count({
           where: {
@@ -176,14 +225,47 @@ export class PortfolioRepository implements IPortfolioRepository {
         }),
       ]);
 
+      // Get total properties count including those in sub-portfolios
+      const portfolioIds = portfolios.map((p) => p.id);
+      const [directProperties, subPortfolioProperties] = await Promise.all([
+        this.db.property.count({
+          where: {
+            portfolio_id: {
+              in: portfolioIds,
+            },
+          },
+        }),
+        this.db.property.count({
+          where: {
+            subPortfolio: {
+              portfolio_id: {
+                in: portfolioIds,
+              },
+            },
+          },
+        }),
+      ]);
+
       const metadata = {
         total,
         page: 1,
         limit: total,
         totalPages: 1,
+        totalProperties: directProperties + subPortfolioProperties,
+        totalSubPortfolios: portfolios.reduce(
+          (acc, p) => acc + p._count.sub_portfolios,
+          0,
+        ),
       };
 
-      return { data: portfolios, metadata };
+      return {
+        data: portfolios.map((p) => ({
+          ...p,
+          propertyCount: p._count.property,
+          subPortfolioCount: p._count.sub_portfolios,
+        })),
+        metadata,
+      };
     } catch (error) {
       this.logger.error(error);
       return { data: [], metadata: null };

@@ -69,17 +69,43 @@ export class SubPortfolioRepository implements ISubPortfolioRepository {
       });
       const subPortfolios = await this.db.subPortfolio.findMany({
         where: allFilters,
-        include: { portfolio: true },
+        include: {
+          portfolio: true,
+          _count: {
+            select: {
+              property: true,
+            },
+          },
+        },
         skip,
         take: parseInt(limit),
       });
+
+      // Get total properties count
+      const subPortfolioIds = subPortfolios.map((sp) => sp.id);
+      const totalProperties = await this.db.property.count({
+        where: {
+          sub_portfolio_id: {
+            in: subPortfolioIds,
+          },
+        },
+      });
+
       const metadata = {
         totalDocuments,
         currentPage: parseInt(page),
         totalPage: Math.ceil(totalDocuments / parseInt(limit)),
         limit: parseInt(limit),
+        totalProperties,
       };
-      return { data: subPortfolios, metadata };
+
+      return {
+        data: subPortfolios.map((sp) => ({
+          ...sp,
+          propertyCount: sp._count.property,
+        })),
+        metadata,
+      };
     } catch (error) {
       this.logger.error(error);
       throw error;
@@ -149,18 +175,67 @@ export class SubPortfolioRepository implements ISubPortfolioRepository {
     });
   }
 
-  async findFilteredSubPortfolios(userId: string): Promise<any> {
-    return this.db.subPortfolio.findMany({
-      where: {
-        userFeatureAccessPermissions: {
-          some: {
-            user_id: userId,
+  async findFilteredSubPortfolios(
+    userId: string,
+  ): Promise<{ data: SubPortfolio[]; metadata: any }> {
+    try {
+      const [subPortfolios, total] = await Promise.all([
+        this.db.subPortfolio.findMany({
+          where: {
+            userFeatureAccessPermissions: {
+              some: {
+                user_id: userId,
+              },
+            },
+          },
+          include: {
+            portfolio: true,
+            _count: {
+              select: {
+                property: true,
+              },
+            },
+          },
+        }),
+        this.db.subPortfolio.count({
+          where: {
+            userFeatureAccessPermissions: {
+              some: {
+                user_id: userId,
+              },
+            },
+          },
+        }),
+      ]);
+
+      // Get total properties count
+      const subPortfolioIds = subPortfolios.map((sp) => sp.id);
+      const totalProperties = await this.db.property.count({
+        where: {
+          sub_portfolio_id: {
+            in: subPortfolioIds,
           },
         },
-      },
-      include: {
-        userFeatureAccessPermissions: true,
-      },
-    });
+      });
+
+      const metadata = {
+        total,
+        page: 1,
+        limit: total,
+        totalPages: 1,
+        totalProperties,
+      };
+
+      return {
+        data: subPortfolios.map((sp) => ({
+          ...sp,
+          propertyCount: sp._count.property,
+        })),
+        metadata,
+      };
+    } catch (error) {
+      this.logger.error(error);
+      return { data: [], metadata: null };
+    }
   }
 }
