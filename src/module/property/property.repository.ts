@@ -86,6 +86,12 @@ export class PropertyRepository implements IPropertyRepository {
           where: allFilters,
           include: {
             credentials: true,
+            portfolio: true,
+            subPortfolio: {
+              include: {
+                portfolio: true,
+              },
+            },
           },
         }),
         this.db.property.count({
@@ -195,58 +201,168 @@ export class PropertyRepository implements IPropertyRepository {
         };
       }
 
-      let whereCondition: any = {
-        userFeatureAccessPermissions: {
-          some: {
-            user_id: userId,
-          },
+      // Get all accessible property IDs using separate queries
+      const accessiblePropertyIds = new Set<string>();
+
+      // 1. Direct property access
+      const directAccess = await this.db.userFeatureAccessPermission.findMany({
+        where: {
+          user_id: userId,
+          property_id: { not: null },
         },
+        select: { property_id: true },
+      });
+      directAccess.forEach((perm) => {
+        if (perm.property_id) accessiblePropertyIds.add(perm.property_id);
+      });
+
+      // 2. Portfolio access
+      const portfolioAccess =
+        await this.db.userFeatureAccessPermission.findMany({
+          where: {
+            user_id: userId,
+            portfolio_id: { not: null },
+          },
+          select: { portfolio_id: true },
+        });
+
+      if (portfolioAccess.length > 0) {
+        const portfolioIds = portfolioAccess
+          .map((p) => p.portfolio_id)
+          .filter(Boolean);
+        const portfolioProperties = await this.db.property.findMany({
+          where: {
+            OR: [
+              { portfolio_id: { in: portfolioIds } },
+              { subPortfolio: { portfolio_id: { in: portfolioIds } } },
+            ],
+          },
+          select: { id: true },
+        });
+        portfolioProperties.forEach((prop) =>
+          accessiblePropertyIds.add(prop.id),
+        );
+      }
+
+      // 3. Sub-portfolio access
+      const subPortfolioAccess =
+        await this.db.userFeatureAccessPermission.findMany({
+          where: {
+            user_id: userId,
+            sub_portfolio_id: { not: null },
+          },
+          select: { sub_portfolio_id: true },
+        });
+
+      if (subPortfolioAccess.length > 0) {
+        const subPortfolioIds = subPortfolioAccess
+          .map((p) => p.sub_portfolio_id)
+          .filter(Boolean);
+        const subPortfolioProperties = await this.db.property.findMany({
+          where: {
+            sub_portfolio_id: { in: subPortfolioIds },
+          },
+          select: { id: true },
+        });
+        subPortfolioProperties.forEach((prop) =>
+          accessiblePropertyIds.add(prop.id),
+        );
+      }
+
+      // Convert Set to Array for Prisma query
+      const accessiblePropertyIdsArray = Array.from(accessiblePropertyIds);
+
+      let whereCondition: any = {
+        id: { in: accessiblePropertyIdsArray },
       };
+
+      // Build additional conditions array
+      const additionalConditions = [];
 
       // Add search functionality
       if (search) {
-        whereCondition = {
-          ...whereCondition,
+        additionalConditions.push({
           name: {
             contains: search,
             mode: 'insensitive',
           },
-        };
+        });
       }
 
       // Add date range filtering
       if (start_date && end_date) {
-        whereCondition = {
-          ...whereCondition,
+        additionalConditions.push({
           createdAt: {
             gte: new Date(start_date),
             lte: new Date(end_date),
           },
-        };
+        });
       }
 
       // Add additional filters
       if (Object.keys(filters).length > 0) {
+        Object.entries(filters).forEach(([key, value]) => {
+          additionalConditions.push({
+            [key]: value,
+          });
+        });
+      }
+
+      // Combine base condition with additional conditions
+      if (additionalConditions.length > 0) {
         whereCondition = {
-          ...whereCondition,
-          ...filters,
+          AND: [whereCondition, ...additionalConditions],
         };
       }
 
-      const [properties, totalDocuments] = await Promise.all([
-        this.db.property.findMany({
-          skip,
-          take,
-          orderBy,
-          where: whereCondition,
-          include: {
-            credentials: true,
+      // If no accessible properties, return empty result
+      if (accessiblePropertyIdsArray.length === 0) {
+        return {
+          properties: [],
+          metadata: {
+            totalDocuments: 0,
+            currentPage: page ? parseInt(page) : 1,
+            totalPage: 0,
+            limit: take,
           },
-        }),
-        this.db.property.count({
-          where: whereCondition,
-        }),
-      ]);
+        };
+      }
+
+      // Count total documents after applying search and filters
+      let countWhereCondition = { ...whereCondition };
+      if (additionalConditions.length > 0) {
+        countWhereCondition = {
+          AND: [countWhereCondition, ...additionalConditions],
+        };
+      }
+
+      const totalDocuments = await this.db.property.count({
+        where: countWhereCondition,
+      });
+
+      // Apply search and filters to the final query
+      if (additionalConditions.length > 0) {
+        whereCondition = {
+          AND: [whereCondition, ...additionalConditions],
+        };
+      }
+
+      // Then get the paginated results
+      const properties = await this.db.property.findMany({
+        skip,
+        take,
+        orderBy,
+        where: whereCondition,
+        include: {
+          credentials: true,
+          portfolio: true,
+          subPortfolio: {
+            include: {
+              portfolio: true,
+            },
+          },
+        },
+      });
 
       const metadata = {
         totalDocuments,

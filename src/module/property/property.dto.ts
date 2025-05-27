@@ -19,32 +19,32 @@ export class CreatePropertyDto {
   @ApiPropertyOptional({
     description: 'Expedia ID',
   })
-  expediaId?: number;
+  expedia_id?: number;
 
   @ApiPropertyOptional({
     description: 'Expedia Status',
   })
-  expediaStatus?: string;
+  expedia_status?: string;
 
   @ApiPropertyOptional({
     description: 'Booking.com ID',
   })
-  bookingId?: number;
+  booking_id?: number;
 
   @ApiPropertyOptional({
     description: 'Booking.com Status',
   })
-  bookingStatus?: string;
+  booking_status?: string;
 
   @ApiPropertyOptional({
     description: 'Agoda ID',
   })
-  agodaId?: number;
+  agoda_id?: number;
 
   @ApiPropertyOptional({
     description: 'Agoda Status',
   })
-  agodaStatus?: string;
+  agoda_status?: string;
 }
 
 export class UpdatePropertyDto extends CreatePropertyDto {}
