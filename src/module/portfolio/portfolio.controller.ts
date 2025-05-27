@@ -1,6 +1,5 @@
 import {
   Body,
-  ConsoleLogger,
   Controller,
   Delete,
   Get,
@@ -22,14 +21,14 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { Response } from 'express';
+import { ValidateBody } from 'src/common/decorators/validate.decorator';
 import { ResponseHandler } from 'src/common/utils/response-handler';
 import { CreatePortfolioDto, UpdatePortfolioDto } from './portfolio.dto';
 import { IPortfolioService } from './portfolio.interface';
-import { ValidateBody } from 'src/common/decorators/validate.decorator';
 
-import { createPortfolioSchema } from './portfolio.validation';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { createPortfolioSchema } from './portfolio.validation';
 @ApiTags('Portfolios')
 @ApiBearerAuth('JWT-auth')
 @Controller('/portfolios')
@@ -68,8 +67,10 @@ export class PortfolioController {
     return ResponseHandler.handler(
       response,
       async () => {
-        const res =
-          await this.portfolioService.createPortfolio(createPortfolioDto, user.userId);
+        const res = await this.portfolioService.createPortfolio(
+          createPortfolioDto,
+          user.userId,
+        );
         return {
           statusCode: 200,
           message: 'Portfolio created successfully',
@@ -83,7 +84,9 @@ export class PortfolioController {
   @Get()
   @UseGuards(JwtAuthGuard)
   @ParseQuery()
-  @ApiOperation({ summary: 'Get all portfolios with filtering, sorting and pagination' })
+  @ApiOperation({
+    summary: 'Get all portfolios with filtering, sorting and pagination',
+  })
   @ApiQuery({
     name: 'search',
     required: false,
@@ -113,28 +116,30 @@ export class PortfolioController {
     description: 'Sort order (asc or desc)',
   })
   @ApiQuery({
-    name:'start_date',
+    name: 'start_date',
     required: false,
     description: 'Start date for filtering',
   })
   @ApiQuery({
-    name:'end_date',
+    name: 'end_date',
     required: false,
     description: 'End date for filtering',
   })
-  @ApiResponse({ status: 200, description: 'Returns list of portfolios' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns list of portfolios with metadata',
+  })
   async getAllPortfolios(
     @Req() request: Request,
     @Query() query: Record<string, any>,
     @Res() response: Response,
   ) {
     const { user } = request as any;
-    console.log(user);
-    let portfolios: any = [];
+    let result: any;
     if (user?.role !== 'admin') {
-      portfolios = await this.portfolioService.getFilteredPortfolio(user?.userId);
+      result = await this.portfolioService.getFilteredPortfolio(user?.userId);
     } else {
-      portfolios = await this.portfolioService.getAllPortfolios(query);
+      result = await this.portfolioService.getAllPortfolios(query);
     }
     return ResponseHandler.handler(
       response,
@@ -142,7 +147,8 @@ export class PortfolioController {
         return {
           statusCode: 200,
           message: 'Portfolios retrieved successfully',
-          data: portfolios,
+          data: result.data,
+          metadata: result.metadata,
         };
       },
       this.logger,
@@ -157,11 +163,14 @@ export class PortfolioController {
   async getPortfolioById(
     @Req() request: Request,
     @Param('id') id: string,
-    @Res() response: Response
+    @Res() response: Response,
   ) {
     const { user } = request as any;
     if (user.role !== 'admin') {
-      const permissionData = await this.portfolioService.getPermission(id, user.userId);
+      const permissionData = await this.portfolioService.getPermission(
+        id,
+        user.userId,
+      );
       if (!permissionData) {
         return ResponseHandler.handler(
           response,
@@ -202,7 +211,7 @@ export class PortfolioController {
     @Res() response: Response,
   ) {
     const { user } = request as any;
-    if (user.role!== 'admin') {
+    if (user.role !== 'admin') {
       return ResponseHandler.handler(
         response,
         async () => {
@@ -221,7 +230,7 @@ export class PortfolioController {
         const portfolio = await this.portfolioService.updatePortfolio(
           id,
           updatePortfolioDto,
-          user.userId
+          user.userId,
         );
         return {
           statusCode: 200,
@@ -241,10 +250,10 @@ export class PortfolioController {
   async deletePortfolio(
     @Req() request: Request,
     @Param('id') id: string,
-    @Res() response: Response
+    @Res() response: Response,
   ) {
     const { user } = request as any;
-    if (user.role!== 'admin') {
+    if (user.role !== 'admin') {
       return ResponseHandler.handler(
         response,
         async () => {
