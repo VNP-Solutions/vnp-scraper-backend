@@ -11,7 +11,10 @@ export class PortfolioService implements IPortfolioService {
     private readonly logger: Logger,
   ) {}
 
-  async createPortfolio(data: CreatePortfolioDto, id: string): Promise<Portfolio> {
+  async createPortfolio(
+    data: CreatePortfolioDto,
+    id: string,
+  ): Promise<Portfolio> {
     try {
       const portfolio = await this.repository.create(data, id);
       return portfolio;
@@ -24,13 +27,15 @@ export class PortfolioService implements IPortfolioService {
     }
   }
 
-  async getAllPortfolios(query?: Record<string, any>): Promise<Portfolio[]> {
+  async getAllPortfolios(
+    query?: Record<string, any>,
+  ): Promise<{ data: Portfolio[]; metadata: any }> {
     try {
-      const portfolios = await this.repository.findAll(query);
-      return portfolios;
+      const result = await this.repository.findAll(query);
+      return result;
     } catch (error) {
       this.logger.error(
-        `Error searching portfolios: ${error.message}`,
+        `Error getting portfolios: ${error.message}`,
         error.stack,
       );
       throw error;
@@ -82,9 +87,12 @@ export class PortfolioService implements IPortfolioService {
     }
   }
 
-  async getFilteredPortfolio(userId: string): Promise<any> {
+  async getFilteredPortfolio(
+    userId: string,
+  ): Promise<{ data: Portfolio[]; metadata: any }> {
     try {
-      return this.repository.findFilteredPortfolio(userId);
+      const result = await this.repository.findFilteredPortfolio(userId);
+      return result;
     } catch (error) {
       this.logger.error(
         `Error searching portfolios: ${error.message}`,

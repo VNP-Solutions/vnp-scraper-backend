@@ -31,9 +31,20 @@ export class PortfolioRepository implements IPortfolioRepository {
     }
   }
 
-  async findAll(query?: Record<string, any>): Promise<Portfolio[]> {
+  async findAll(
+    query?: Record<string, any>,
+  ): Promise<{ data: Portfolio[]; metadata: any }> {
     try {
-      const { page, limit, sortBy, sortOrder, search, start_date, end_date, ...filters } = query || {};
+      const {
+        page,
+        limit,
+        sortBy,
+        sortOrder,
+        search,
+        start_date,
+        end_date,
+        ...filters
+      } = query || {};
       const skip = page
         ? (parseInt(page || '1') - 1) * parseInt(limit || '10')
         : 0;
@@ -68,25 +79,36 @@ export class PortfolioRepository implements IPortfolioRepository {
         };
       }
 
-      const portfolios = await this.db.portfolio.findMany({
-        where: allFilters,
-        skip,
-        take,
-        orderBy,
-      });
-      return portfolios;
+      const [portfolios, total] = await Promise.all([
+        this.db.portfolio.findMany({
+          where: allFilters,
+          skip,
+          take,
+          orderBy,
+        }),
+        this.db.portfolio.count({
+          where: allFilters,
+        }),
+      ]);
+
+      const metadata = {
+        total,
+        page: page ? parseInt(page) : 1,
+        limit: take,
+        totalPages: Math.ceil(total / take),
+      };
+
+      return { data: portfolios, metadata };
     } catch (error) {
       this.logger.error(error);
-      return null;
+      return { data: [], metadata: null };
     }
   }
 
   async findById(id: string): Promise<Portfolio> {
     try {
       const portfolio = await this.db.portfolio.findUnique({
-        where: {
-          id,
-        },
+        where: { id },
       });
       return portfolio;
     } catch (error) {
@@ -95,7 +117,11 @@ export class PortfolioRepository implements IPortfolioRepository {
     }
   }
 
-  async update(id: string, data: UpdatePortfolioDto, userId: string): Promise<Portfolio> {
+  async update(
+    id: string,
+    data: UpdatePortfolioDto,
+    userId: string,
+  ): Promise<Portfolio> {
     try {
       const portfolio = await this.db.portfolio.update({
         where: {
@@ -116,9 +142,7 @@ export class PortfolioRepository implements IPortfolioRepository {
   async delete(id: string): Promise<Portfolio> {
     try {
       const portfolio = await this.db.portfolio.delete({
-        where: {
-          id,
-        },
+        where: { id },
       });
       return portfolio;
     } catch (error) {
@@ -127,20 +151,42 @@ export class PortfolioRepository implements IPortfolioRepository {
     }
   }
 
-  async findFilteredPortfolio(userId: string): Promise<any> {
+  async findFilteredPortfolio(
+    userId: string,
+  ): Promise<{ data: Portfolio[]; metadata: any }> {
     try {
-      return this.db.portfolio.findMany({
-        where: {
-          userFeatureAccessPermissions: {
-            some: {
-              user_id: userId,
+      const [portfolios, total] = await Promise.all([
+        this.db.portfolio.findMany({
+          where: {
+            userFeatureAccessPermissions: {
+              some: {
+                user_id: userId,
+              },
             },
-          }
-        },
-      });
+          },
+        }),
+        this.db.portfolio.count({
+          where: {
+            userFeatureAccessPermissions: {
+              some: {
+                user_id: userId,
+              },
+            },
+          },
+        }),
+      ]);
+
+      const metadata = {
+        total,
+        page: 1,
+        limit: total,
+        totalPages: 1,
+      };
+
+      return { data: portfolios, metadata };
     } catch (error) {
       this.logger.error(error);
-      return null;
+      return { data: [], metadata: null };
     }
   }
 
@@ -148,13 +194,13 @@ export class PortfolioRepository implements IPortfolioRepository {
     try {
       return this.db.userFeatureAccessPermission.findFirst({
         where: {
-          user_id: userId,
           portfolio_id: id,
+          user_id: userId,
         },
       });
     } catch (error) {
       this.logger.error(error);
-      throw error;
+      return null;
     }
   }
 }
