@@ -192,6 +192,32 @@ export class PropertyController {
     );
   }
 
+  @Get('/dropdown')
+  @ApiOperation({ summary: 'Get portfolio and sub-portfolio for dropdown' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns portfolio and sub-portfolio for dropdown',
+  })
+  @UseGuards(JwtAuthGuard)
+  async getPortfolioAndSubPortfolioForDropdown(
+    @Req() request: Request,
+    @Res() response: Response,
+  ) {
+    const { user } = request as any;
+    const data = await this.propertyService.findPortfolioAndSubPortfolioForDropdown(user);
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        return {
+          statusCode: 200,
+          message: 'Portfolio and sub-portfolio retrieved successfully',
+          data: data,
+        };
+      },
+      this.logger,
+    );
+  }
+
   @Get('/:id')
   @ApiOperation({ summary: 'Get property by ID' })
   @ApiResponse({

@@ -9,7 +9,6 @@ export interface IPropertyRepository {
   findById(id: string): Promise<Property>;
   update(id: string, data: UpdatePropertyDto): Promise<Property>;
   delete(id: string): Promise<Property>;
-  findPermission(id: string, userId: string): Promise<any>;
   findFilteredProperty(
     userId: string,
     query?: Record<string, any>,
@@ -21,6 +20,8 @@ export interface IPropertyRepository {
   ): Promise<any>;
   findPropertyByPortfolioId(portfolioId: string): Promise<any>;
   findPropertyBySubPortfolioId(subPortfolioId: string): Promise<any>;
+  getPermission(id: string, userId: string): Promise<any>;
+  findPortfolioAndSubPortfolioForDropdown(user: any): Promise<any>;
 }
 
 export interface IPropertyService {
@@ -43,4 +44,6 @@ export interface IPropertyService {
   ): Promise<any>;
   getPropertyByPortfolioId(portfolioId: string): Promise<any>;
   getPropertyBySubPortfolioId(subPortfolioId: string): Promise<any>;
+  getPermission(id: string, userId: string): Promise<any>;
+  findPortfolioAndSubPortfolioForDropdown(user: any): Promise<any>;
 }

@@ -155,12 +155,28 @@ export class SubPortfolioRepository implements ISubPortfolioRepository {
   }
 
   async getPermission(id: string, userId: string): Promise<any> {
-    return this.db.userFeatureAccessPermission.findFirst({
+    const direct = await this.db.userFeatureAccessPermission.findFirst({
       where: {
         user_id: userId,
         sub_portfolio_id: id,
       },
     });
+    if (direct) return direct;
+  
+    const subPortfolio = await this.db.subPortfolio.findUnique({
+      where: { id },
+      select: { portfolio_id: true },
+    });
+    if (!subPortfolio) return null;
+  
+    const portfolioAccess = await this.db.userFeatureAccessPermission.findFirst({
+      where: {
+        user_id: userId,
+        portfolio_id: subPortfolio.portfolio_id,
+      },
+    });
+  
+    return portfolioAccess;
   }
 
   async getPermissionByPortfolioId(
