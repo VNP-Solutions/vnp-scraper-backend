@@ -7,14 +7,14 @@ const objectIdSchema = z.string().regex(/^[0-9a-fA-F]{24}$/, {
 
 export const createPropertySchema = z.object({
   name: z.string().min(1, 'Name is required'),
-  portfolio_id: objectIdSchema.optional(),
-  sub_portfolio_id: objectIdSchema.optional(),
-  expedia_id: z.number().optional(),
-  expedia_status: z.string().optional(),
-  booking_id: z.number().optional(),
-  booking_status: z.string().optional(),
-  agoda_id: z.number().optional(),
-  agoda_status: z.string().optional(),
+  portfolio_id: objectIdSchema.optional().nullable(),
+  sub_portfolio_id: objectIdSchema.optional().nullable(),
+  expedia_id: z.number().optional().nullable(),
+  expedia_status: z.string().optional().nullable(),
+  booking_id: z.number().optional().nullable(),
+  booking_status: z.string().optional().nullable(),
+  agoda_id: z.number().optional().nullable(),
+  agoda_status: z.string().optional().nullable(),
 });
 
 export const updatePropertySchema = createPropertySchema;
