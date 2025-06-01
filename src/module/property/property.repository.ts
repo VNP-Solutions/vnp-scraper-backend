@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Property } from '@prisma/client';
+import { Property, RoleEnum } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { CreatePropertyDto, UpdatePropertyDto } from './property.dto';
 import { IPropertyRepository } from './property.interface';
@@ -163,15 +163,6 @@ export class PropertyRepository implements IPropertyRepository {
       this.logger.error(error);
       return null;
     }
-  }
-
-  async findPermission(id: string, userId: string): Promise<any> {
-    return this.db.userFeatureAccessPermission.findFirst({
-      where: {
-        user_id: userId,
-        property_id: id,
-      },
-    });
   }
 
   async findFilteredProperty(
@@ -433,6 +424,134 @@ export class PropertyRepository implements IPropertyRepository {
       },
       include: {
         credentials: true,
+      },
+    });
+  }
+
+  async findPortfolioAndSubPortfolioForDropdown(user: any): Promise<any> {
+    try {
+      const isAdmin = user.role === RoleEnum.admin;
+
+      if (isAdmin) {
+        const portfolios = await this.db.portfolio.findMany({
+          select: {
+            id: true,
+            name: true,
+          },
+        });
+
+        const subPortfolios = await this.db.subPortfolio.findMany({
+          select: {
+            id: true,
+            name: true,
+          },
+        });
+
+        return {
+          portfolios,
+          subPortfolios,
+        };
+      } else {
+        // For regular users, get only accessible portfolios and sub-portfolios
+        const userPermissions =
+          await this.db.userFeatureAccessPermission.findMany({
+            where: {
+              user_id: user.id,
+            },
+          });
+
+        // Get portfolio IDs and sub-portfolio IDs from permissions
+        const portfolioIds = userPermissions
+          .map((perm) => perm.portfolio_id)
+          .filter(Boolean);
+        const subPortfolioIds = userPermissions
+          .map((perm) => perm.sub_portfolio_id)
+          .filter(Boolean);
+
+        const portfolios = await this.db.portfolio.findMany({
+          where: {
+            id: {
+              in: portfolioIds,
+            },
+          },
+          select: {
+            id: true,
+            name: true,
+          },
+        });
+
+        const subPortfolios = await this.db.subPortfolio.findMany({
+          where: {
+            OR: [
+              {
+                id: {
+                  in: subPortfolioIds,
+                },
+              },
+              {
+                portfolio_id: {
+                  in: portfolioIds,
+                },
+              },
+            ],
+          },
+          select: {
+            id: true,
+            name: true,
+          },
+        });
+
+        return {
+          portfolios,
+          subPortfolios,
+        };
+      }
+    } catch (error) {
+      this.logger.error(error);
+      return {
+        portfolios: [],
+        subPortfolios: [],
+      };
+    }
+  }
+
+  async getPermission(id: string, userId: string): Promise<any> {
+    const property = await this.db.property.findUnique({
+      where: { id },
+      include: {
+        subPortfolio: {
+          include: {
+            portfolio: true,
+          },
+        },
+        portfolio: true,
+      },
+    });
+
+    if (!property) {
+      return null;
+    }
+
+    const orConditions: any[] = [
+      { property_id: id },
+    ];
+
+    if (property.sub_portfolio_id) {
+      orConditions.push({ sub_portfolio_id: property.sub_portfolio_id });
+    }
+
+    if (property.subPortfolio?.portfolio_id) {
+      orConditions.push({ portfolio_id: property.subPortfolio.portfolio_id });
+    }
+
+    if (property.portfolio_id) {
+      orConditions.push({ portfolio_id: property.portfolio_id });
+    }
+
+    return this.db.userFeatureAccessPermission.findFirst({
+      where: {
+        user_id: userId,
+        OR: orConditions,
       },
     });
   }

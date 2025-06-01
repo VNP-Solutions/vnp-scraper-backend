@@ -83,7 +83,7 @@ export class PropertyService implements IPropertyService {
   }
 
   async getPermission(id: string, userId: string): Promise<any> {
-    return this.repository.findPermission(id, userId);
+    return this.repository.getPermission(id, userId);
   }
 
   async getFilteredProperty(
@@ -126,5 +126,9 @@ export class PropertyService implements IPropertyService {
     const credential = { ... property.credentials[0] };
     property.credentials = credential;
     return property;
+  }
+
+  async findPortfolioAndSubPortfolioForDropdown(user: any): Promise<any> {
+    return this.repository.findPortfolioAndSubPortfolioForDropdown(user);
   }
 }
