@@ -1,10 +1,34 @@
-import { Controller, Post, Body, Get, UseGuards, Request } from '@nestjs/common';
-import { AuthService } from './auth.service';
-import { LoginDto, RegisterDto } from './auth.dto';
-import { VerifyOtpDto } from './dto/verify-otp.dto';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
-import { LoginSchema, RegisterSchema, VerifyOtpSchema } from './auth.validation';
+import { LoginDto, RegisterDto } from './auth.dto';
+import { AuthService } from './auth.service';
+import {
+  ForgotPasswordSchema,
+  LoginSchema,
+  RegisterSchema,
+  ResetPasswordSchema,
+  ValidateResetOtpSchema,
+  VerifyOtpSchema,
+} from './auth.validation';
+import {
+  ForgotPasswordDto,
+  ResetPasswordDto,
+  ValidateResetOtpDto,
+} from './dto/forgot-password.dto';
+import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @ApiTags('Authentication')
@@ -22,7 +46,7 @@ export class AuthController {
     return {
       userId: req.user.userId,
       email: req.user.email,
-      role: req.user.role
+      role: req.user.role,
     };
   }
 
@@ -54,5 +78,40 @@ export class AuthController {
   @ApiResponse({ status: 201, description: 'User registered successfully' })
   async register(@Body() registerDto: RegisterDto) {
     return this.authService.register(registerDto);
+  }
+
+  @Post('/forgot-password')
+  @ValidateBody(ForgotPasswordSchema)
+  @ApiOperation({ summary: 'Request password reset OTP' })
+  @ApiResponse({
+    status: 200,
+    description: 'Password reset OTP sent successfully',
+  })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(forgotPasswordDto);
+  }
+
+  @Post('/validate-reset-otp')
+  @ValidateBody(ValidateResetOtpSchema)
+  @ApiOperation({ summary: 'Validate OTP for password reset' })
+  @ApiResponse({
+    status: 200,
+    description: 'OTP validated successfully, reset token provided',
+  })
+  @ApiResponse({ status: 401, description: 'Invalid OTP or user not found' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  async validateResetOtp(@Body() validateResetOtpDto: ValidateResetOtpDto) {
+    return this.authService.validateResetOtp(validateResetOtpDto);
+  }
+
+  @Post('/reset-password')
+  @ValidateBody(ResetPasswordSchema)
+  @ApiOperation({ summary: 'Reset password using reset token' })
+  @ApiResponse({ status: 200, description: 'Password reset successfully' })
+  @ApiResponse({ status: 401, description: 'Invalid or expired reset token' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  async resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
+    return this.authService.resetPassword(resetPasswordDto);
   }
 }

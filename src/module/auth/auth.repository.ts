@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { DatabaseService } from '../database/database.service';
 import { RoleEnum, User } from '@prisma/client';
+import { DatabaseService } from '../database/database.service';
 
 @Injectable()
 export class AuthRepository {
@@ -25,8 +25,8 @@ export class AuthRepository {
           user_id: userId,
           otp_code: otpCode,
           expires_at: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes expiry
-          is_used: false
-        }
+          is_used: false,
+        },
       });
     } catch (error) {
       this.logger.error(error);
@@ -42,12 +42,12 @@ export class AuthRepository {
           otp_code: otpCode,
           is_used: false,
           expires_at: {
-            gt: new Date()
-          }
+            gt: new Date(),
+          },
         },
         orderBy: {
-          created_at: 'desc'
-        }
+          created_at: 'desc',
+        },
       });
     } catch (error) {
       this.logger.error(error);
@@ -58,7 +58,7 @@ export class AuthRepository {
   async deleteOTP(otpId: string): Promise<void> {
     try {
       await this.db.otp.delete({
-        where: { id: otpId }
+        where: { id: otpId },
       });
     } catch (error) {
       this.logger.error(error);
@@ -66,7 +66,12 @@ export class AuthRepository {
     }
   }
 
-  async createUser(name: string, email: string, role: RoleEnum, hashedPassword: string): Promise<User> {
+  async createUser(
+    name: string,
+    email: string,
+    role: RoleEnum,
+    hashedPassword: string,
+  ): Promise<User> {
     try {
       return await this.db.user.create({
         data: {
@@ -75,6 +80,33 @@ export class AuthRepository {
           role,
           password: hashedPassword,
         },
+      });
+    } catch (error) {
+      this.logger.error(error);
+      throw error;
+    }
+  }
+
+  async updateUserPassword(
+    userId: string,
+    hashedPassword: string,
+  ): Promise<User> {
+    try {
+      return await this.db.user.update({
+        where: { id: userId },
+        data: { password: hashedPassword },
+      });
+    } catch (error) {
+      this.logger.error(error);
+      throw error;
+    }
+  }
+
+  async markOTPAsUsed(otpId: string): Promise<void> {
+    try {
+      await this.db.otp.update({
+        where: { id: otpId },
+        data: { is_used: true },
       });
     } catch (error) {
       this.logger.error(error);
