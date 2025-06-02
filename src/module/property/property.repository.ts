@@ -39,6 +39,8 @@ export class PropertyRepository implements IPropertyRepository {
         search,
         start_date,
         end_date,
+        portfolio_id,
+        sub_portfolio_id,
         ...filters
       } = query || {};
       const skip = page
@@ -54,27 +56,50 @@ export class PropertyRepository implements IPropertyRepository {
       }
 
       let allFilters = { ...filters };
+
+      // Build additional conditions array
+      const additionalConditions = [];
+
       if (search) {
-        allFilters = {
-          ...allFilters,
-          AND: [
-            {
-              name: {
-                contains: search,
-                mode: 'insensitive',
-              },
-            },
-          ],
-        };
+        additionalConditions.push({
+          name: {
+            contains: search,
+            mode: 'insensitive',
+          },
+        });
       }
 
       if (start_date && end_date) {
-        allFilters = {
-          ...allFilters,
+        additionalConditions.push({
           createdAt: {
             gte: new Date(start_date),
             lte: new Date(end_date),
           },
+        });
+      }
+
+      // Add portfolio_id filtering
+      if (portfolio_id) {
+        additionalConditions.push({
+          OR: [
+            { portfolio_id: portfolio_id },
+            { subPortfolio: { portfolio_id: portfolio_id } },
+          ],
+        });
+      }
+
+      // Add sub_portfolio_id filtering
+      if (sub_portfolio_id) {
+        additionalConditions.push({
+          sub_portfolio_id: sub_portfolio_id,
+        });
+      }
+
+      // Combine base filters with additional conditions
+      if (additionalConditions.length > 0) {
+        allFilters = {
+          ...allFilters,
+          AND: additionalConditions,
         };
       }
 
@@ -178,6 +203,8 @@ export class PropertyRepository implements IPropertyRepository {
         search,
         start_date,
         end_date,
+        portfolio_id,
+        sub_portfolio_id,
         ...filters
       } = query || {};
       const skip = page
@@ -296,6 +323,23 @@ export class PropertyRepository implements IPropertyRepository {
           additionalConditions.push({
             [key]: value,
           });
+        });
+      }
+
+      // Add portfolio_id filtering
+      if (portfolio_id) {
+        additionalConditions.push({
+          OR: [
+            { portfolio_id: portfolio_id },
+            { subPortfolio: { portfolio_id: portfolio_id } },
+          ],
+        });
+      }
+
+      // Add sub_portfolio_id filtering
+      if (sub_portfolio_id) {
+        additionalConditions.push({
+          sub_portfolio_id: sub_portfolio_id,
         });
       }
 
@@ -532,9 +576,7 @@ export class PropertyRepository implements IPropertyRepository {
       return null;
     }
 
-    const orConditions: any[] = [
-      { property_id: id },
-    ];
+    const orConditions: any[] = [{ property_id: id }];
 
     if (property.sub_portfolio_id) {
       orConditions.push({ sub_portfolio_id: property.sub_portfolio_id });
