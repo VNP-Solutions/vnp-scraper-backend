@@ -130,6 +130,11 @@ export class SubPortfolioController {
     required: false,
     description: 'End date for filtering',
   })
+  @ApiQuery({
+    name: 'portfolio_id',
+    required: false,
+    description: 'Portfolio ID for filtering',
+  })
   @UseGuards(JwtAuthGuard)
   @ParseQuery()
   async getAllSubPortfolios(

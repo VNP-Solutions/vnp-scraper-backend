@@ -50,6 +50,7 @@ export class SubPortfolioRepository implements ISubPortfolioRepository {
         limit = 10,
         sortBy,
         sortOrder,
+        portfolio_id,
         ...filters
       } = query || {};
       const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -66,6 +67,9 @@ export class SubPortfolioRepository implements ISubPortfolioRepository {
           gte: new Date(start_date),
           lte: new Date(end_date),
         };
+      }
+      if (portfolio_id) {
+        allFilters.portfolio_id = portfolio_id;
       }
       let orderBy = undefined;
       if (sortBy) {
@@ -197,8 +201,16 @@ export class SubPortfolioRepository implements ISubPortfolioRepository {
     query?: Record<string, any>,
   ): Promise<{ data: SubPortfolio[]; metadata: any }> {
     try {
-      const { page, limit, sortBy, sortOrder, search, start_date, end_date } =
-        query || {};
+      const {
+        page,
+        limit,
+        sortBy,
+        sortOrder,
+        search,
+        start_date,
+        end_date,
+        portfolio_id,
+      } = query || {};
       const skip = page ? (parseInt(page) - 1) * parseInt(limit) : 0;
       const take = limit ? parseInt(limit) : 10;
       let orderBy = undefined;
@@ -289,6 +301,13 @@ export class SubPortfolioRepository implements ISubPortfolioRepository {
             gte: new Date(start_date),
             lte: new Date(end_date),
           },
+        });
+      }
+
+      // Add portfolio_id filtering
+      if (portfolio_id) {
+        additionalConditions.push({
+          portfolio_id: portfolio_id,
         });
       }
 
