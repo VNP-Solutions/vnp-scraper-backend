@@ -79,7 +79,7 @@ export class PortfolioRepository implements IPortfolioRepository {
         };
       }
 
-      const [portfolios, total] = await Promise.all([
+      const [portfolios, totalDocuments] = await Promise.all([
         this.db.portfolio.findMany({
           where: allFilters,
           skip,
@@ -121,15 +121,10 @@ export class PortfolioRepository implements IPortfolioRepository {
       ]);
 
       const metadata = {
-        total,
-        page: page ? parseInt(page) : 1,
+        totalDocuments,
+        currentPage: page ? parseInt(page) : 1,
         limit: take,
-        totalPages: Math.ceil(total / take),
-        totalProperties: directProperties + subPortfolioProperties,
-        totalSubPortfolios: portfolios.reduce(
-          (acc, p) => acc + p._count.sub_portfolios,
-          0,
-        ),
+        totalPage: Math.ceil(totalDocuments / take)
       };
 
       return {
@@ -194,10 +189,25 @@ export class PortfolioRepository implements IPortfolioRepository {
 
   async findFilteredPortfolio(
     userId: string,
+    query?: Record<string, any>,
   ): Promise<{ data: Portfolio[]; metadata: any }> {
     try {
-      const [portfolios, total] = await Promise.all([
+      const { page, limit, sortBy, sortOrder, search, start_date, end_date } =
+        query || {};
+      const skip = page ? (parseInt(page) - 1) * parseInt(limit) : 0;
+      const take = limit ? parseInt(limit) : 10;
+
+      let orderBy = undefined;
+      if (sortBy) {
+        orderBy = {
+          [sortBy]: sortOrder?.toLowerCase() === 'desc' ? 'desc' : 'asc',
+        };
+      }
+      const [portfolios, totalDocuments] = await Promise.all([
         this.db.portfolio.findMany({
+          skip,
+          take,
+          orderBy,
           where: {
             userFeatureAccessPermissions: {
               some: {
@@ -247,15 +257,10 @@ export class PortfolioRepository implements IPortfolioRepository {
       ]);
 
       const metadata = {
-        total,
-        page: 1,
-        limit: total,
-        totalPages: 1,
-        totalProperties: directProperties + subPortfolioProperties,
-        totalSubPortfolios: portfolios.reduce(
-          (acc, p) => acc + p._count.sub_portfolios,
-          0,
-        ),
+        totalDocuments,
+        currentPage: page ? parseInt(page) : 1,
+        limit: take,
+        totalPage: Math.ceil(totalDocuments / take)
       };
 
       return {
