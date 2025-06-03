@@ -138,13 +138,19 @@ export class SubPortfolioController {
     @Res() response: Response,
   ) {
     const { user } = request as any;
-    let subPortfolios = [];
+    let subPortfolios: any[] = [];
+    let metadata: any = {};
     if (user.role !== 'admin') {
-      subPortfolios = await this.subPortfolioService.getFilteredSubPortfolios(
+      const result = await this.subPortfolioService.getFilteredSubPortfolios(
         user.userId,
+        query,
       );
+      subPortfolios = result.data;
+      metadata = result.metadata;
     } else {
-      subPortfolios = await this.subPortfolioService.getAllSubPortfolios(query);
+      const result = await this.subPortfolioService.getAllSubPortfolios(query);
+      subPortfolios = result.data;
+      metadata = result.metadata;
     }
     return ResponseHandler.handler(
       response,
@@ -153,6 +159,7 @@ export class SubPortfolioController {
           statusCode: 200,
           message: 'Sub-portfolios retrieved successfully',
           data: subPortfolios,
+          metadata,
         };
       },
       this.logger,

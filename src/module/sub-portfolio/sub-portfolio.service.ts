@@ -50,8 +50,7 @@ export class SubPortfolioService implements ISubPortfolioService {
     query: Record<string, any>,
   ): Promise<any> {
     try {
-      const subPortfolios = await this.repository.findAll(query);
-      return subPortfolios;
+      return this.repository.findAll(query);
     } catch (error) {
       this.logger.error(
         `Error getting all sub-portfolios: ${error.message}`,
@@ -122,7 +121,10 @@ export class SubPortfolioService implements ISubPortfolioService {
     return this.repository.getPermissionByPortfolioId(portfolioId, userId);
   }
 
-  async getFilteredSubPortfolios(userId: string): Promise<any> {
-    return this.repository.findFilteredSubPortfolios(userId);
+  async getFilteredSubPortfolios(
+    userId: string,
+    query?: Record<string, any>,
+  ): Promise<any> {
+    return this.repository.findFilteredSubPortfolios(userId, query);
   }
 }
