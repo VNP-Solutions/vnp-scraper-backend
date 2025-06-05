@@ -115,6 +115,20 @@ export class UserRepository implements IUserRepository {
     }
   }
 
+  async findByEmail(email: string): Promise<User | null> {
+    try {
+      const user = await this.db.user.findUnique({
+        where: {
+          email: email.toLowerCase(),
+        },
+      });
+      return user;
+    } catch (error) {
+      this.logger.error(error);
+      return null;
+    }
+  }
+
   async update(id: string, data: UpdateUserDto): Promise<User> {
     try {
       const user = await this.db.user.update({

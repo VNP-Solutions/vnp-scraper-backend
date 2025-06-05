@@ -204,6 +204,9 @@ export class AuthService {
 
     await this.authRepository.deleteOTP(otpRecord.id);
 
+    // Update last_login when user successfully logs in
+    await this.authRepository.updateLastLogin(user.id);
+
     const payload = {
       email: user.email.toLowerCase(),
       userId: user.id,
