@@ -113,4 +113,16 @@ export class AuthRepository {
       throw error;
     }
   }
+
+  async updateLastLogin(userId: string): Promise<User> {
+    try {
+      return await this.db.user.update({
+        where: { id: userId },
+        data: { last_login: new Date() },
+      });
+    } catch (error) {
+      this.logger.error(error);
+      throw error;
+    }
+  }
 }

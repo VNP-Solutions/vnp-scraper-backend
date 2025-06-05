@@ -7,6 +7,7 @@ export interface IUserRepository {
     query: Record<string, any>,
   ): Promise<{ data: User[]; metadata: any }>;
   findById(id: string): Promise<User>;
+  findByEmail(email: string): Promise<User | null>;
   update(id: string, data: UpdateUserDto): Promise<User>;
   delete(id: string): Promise<User>;
 }

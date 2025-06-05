@@ -39,6 +39,13 @@ enum OTAProvider {
   Agoda
 }
 
+enum InvitationStatus {
+  Pending
+  Accepted
+  Expired
+  Cancelled
+}
+
 model User {
   id                            String   @id @default(auto()) @map("_id") @db.ObjectId
   email                         String   @unique
@@ -48,8 +55,12 @@ model User {
   image                         String?
   phone_number                  String?
   invited_user_id               String?  @db.ObjectId
+  mfa_enabled                   Boolean  @default(false)
+  mfa_secret                    String?
   is_verified                   Boolean  @default(false)
+  is_active                     Boolean  @default(false)
   download_report               Boolean  @default(false)
+  last_login                    DateTime?
   createdAt                     DateTime @default(now())
   updatedAt                     DateTime @updatedAt
 
@@ -60,6 +71,8 @@ model User {
   otps                          Otp[]
   jobs                          Job[]
   userFeatureAccessPermissions  UserFeatureAccessPermission[]
+  sentInvitations               UserInvitation[] @relation("InvitedBy")
+  receivedInvitation            UserInvitation? @relation("InvitedUser")
 
   @@map("users")
 }
@@ -235,4 +248,30 @@ model UserFeatureAccessPermission {
   property                     Property?     @relation(fields: [property_id], references: [id], onDelete: Cascade)
 
   @@map("user_feature_access_permissions")
+}
+
+model UserInvitation {
+  id                           String           @id @default(auto()) @map("_id") @db.ObjectId
+  email                        String
+  invited_by_id                String           @db.ObjectId
+  invited_user_id              String?          @unique @db.ObjectId
+  invitation_token             String           @unique
+  role                         RoleEnum         @default(partial)
+  status                       InvitationStatus @default(Pending)
+  expires_at                   DateTime
+  accepted_at                  DateTime?
+  message                      String?
+  portfolio_ids                String[]         @default([]) @db.ObjectId
+  sub_portfolio_ids            String[]         @default([]) @db.ObjectId
+  property_ids                 String[]         @default([]) @db.ObjectId
+  createdAt                    DateTime         @default(now())
+  updatedAt                    DateTime         @updatedAt
+
+  invitedBy                    User             @relation("InvitedBy", fields: [invited_by_id], references: [id], onDelete: Cascade)
+  invitedUser                  User?            @relation("InvitedUser", fields: [invited_user_id], references: [id], onDelete: SetNull)
+
+  @@index([email])
+  @@index([status])
+
+  @@map("user_invitations")
 }
