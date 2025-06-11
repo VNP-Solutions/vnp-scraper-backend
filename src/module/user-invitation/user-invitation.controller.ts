@@ -192,7 +192,8 @@ export class UserInvitationController {
         return {
           statusCode: 200,
           message: 'Invitations retrieved successfully',
-          data: result,
+          data: result.data,
+          metadata: result.metadata,
         };
       },
       this.logger,
