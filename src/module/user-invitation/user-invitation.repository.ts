@@ -92,7 +92,7 @@ export class UserInvitationRepository implements IUserInvitationRepository {
 
   async findAll(
     query: Record<string, any>,
-  ): Promise<{ invitations: UserInvitation[]; metadata: any }> {
+  ): Promise<{ data: UserInvitation[]; metadata: any }> {
     const { page = 1, limit = 10, status, role, search } = query;
     const skip = (page - 1) * limit;
 
@@ -143,7 +143,7 @@ export class UserInvitationRepository implements IUserInvitationRepository {
     ]);
 
     return {
-      invitations: data,
+      data,
       metadata: {
         total,
         page,
