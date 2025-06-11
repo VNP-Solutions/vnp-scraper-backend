@@ -39,6 +39,7 @@ import {
   resendInvitationSchema,
   updateInvitationSchema,
 } from './user-invitation.validation';
+import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 
 @ApiTags('User Invitations')
 @Controller('/invitations')
@@ -169,6 +170,7 @@ export class UserInvitationController {
     description: 'Search by email or inviter name',
   })
   @UseGuards(JwtAuthGuard)
+  @ParseQuery()
   async getAllInvitations(
     @Req() request: Request,
     @Query() query: Record<string, any>,
@@ -190,8 +192,7 @@ export class UserInvitationController {
         return {
           statusCode: 200,
           message: 'Invitations retrieved successfully',
-          data: result.data,
-          metadata: result.metadata,
+          data: result,
         };
       },
       this.logger,

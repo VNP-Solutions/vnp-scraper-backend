@@ -196,7 +196,7 @@ export class UserInvitationService implements IUserInvitationService {
 
   async getAllInvitations(
     query: Record<string, any>,
-  ): Promise<{ data: UserInvitation[]; metadata: any }> {
+  ): Promise<{ invitations: UserInvitation[]; metadata: any }> {
     return this.invitationRepository.findAll(query);
   }
 

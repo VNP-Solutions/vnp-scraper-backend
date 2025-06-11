@@ -21,7 +21,7 @@ export interface IUserInvitationRepository {
   findByEmail(email: string): Promise<UserInvitation[]>;
   findAll(
     query: Record<string, any>,
-  ): Promise<{ data: UserInvitation[]; metadata: any }>;
+  ): Promise<{ invitations: UserInvitation[]; metadata: any }>;
   update(id: string, data: UpdateInvitationDto): Promise<UserInvitation>;
   delete(id: string): Promise<UserInvitation>;
   findPendingByEmail(email: string): Promise<UserInvitation | null>;
@@ -35,7 +35,7 @@ export interface IUserInvitationService {
   ): Promise<UserInvitation>;
   getAllInvitations(
     query: Record<string, any>,
-  ): Promise<{ data: UserInvitation[]; metadata: any }>;
+  ): Promise<{ invitations: UserInvitation[]; metadata: any }>;
   getInvitationById(id: string): Promise<UserInvitation>;
   getInvitationByToken(token: string): Promise<UserInvitation>;
   updateInvitation(
