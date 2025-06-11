@@ -145,10 +145,10 @@ export class UserInvitationRepository implements IUserInvitationRepository {
     return {
       data,
       metadata: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
+        totalDocuments: total,
+        currentPage: page,
+        totalPage: Math.ceil(total / limit),
+        limit: limit
       },
     };
   }
