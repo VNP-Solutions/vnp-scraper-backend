@@ -10,6 +10,7 @@ import {
   Put,
   Query,
   Res,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -22,6 +23,7 @@ import { Response } from 'express';
 import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
 import { ResponseHandler } from 'src/common/utils/response-handler';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateJobDto, UpdateJobDto } from './job.dto';
 import { IJobService } from './job.interface';
 import { createJobSchema } from './job.validation';
@@ -41,6 +43,7 @@ export class JobController {
   @ApiResponse({ status: 201, description: 'Job created successfully' })
   @ApiResponse({ status: 400, description: 'Bad request' })
   @ValidateBody(createJobSchema)
+  @UseGuards(JwtAuthGuard)
   async createJob(
     @Body() createJobDto: CreateJobDto,
     @Res() response: Response,
@@ -100,6 +103,7 @@ export class JobController {
     required: false,
     description: 'End date for filtering',
   })
+  @UseGuards(JwtAuthGuard)
   @ParseQuery()
   async getAllJobs(
     @Query() query: Record<string, any>,
@@ -119,10 +123,11 @@ export class JobController {
     );
   }
 
-  @Get(':id')
+  @Get('/:id')
   @ApiOperation({ summary: 'Get job by ID' })
   @ApiResponse({ status: 200, description: 'Returns job' })
   @ApiResponse({ status: 404, description: 'Job not found' })
+  @UseGuards(JwtAuthGuard)
   async getJobById(@Param('id') id: string, @Res() response: Response) {
     return ResponseHandler.handler(
       response,
@@ -138,10 +143,11 @@ export class JobController {
     );
   }
 
-  @Put(':id')
+  @Put('/:id')
   @ApiOperation({ summary: 'Update job by ID' })
   @ApiResponse({ status: 200, description: 'Job updated successfully' })
   @ApiResponse({ status: 404, description: 'Job not found' })
+  @UseGuards(JwtAuthGuard)
   async updateJob(
     @Param('id') id: string,
     @Body() updateJobDto: UpdateJobDto,
@@ -161,10 +167,11 @@ export class JobController {
     );
   }
 
-  @Delete(':id')
+  @Delete('/:id')
   @ApiOperation({ summary: 'Delete job by ID' })
   @ApiResponse({ status: 200, description: 'Job deleted successfully' })
   @ApiResponse({ status: 404, description: 'Job not found' })
+  @UseGuards(JwtAuthGuard)
   async deleteJob(@Param('id') id: string, @Res() response: Response) {
     return ResponseHandler.handler(
       response,
@@ -179,4 +186,31 @@ export class JobController {
       this.logger,
     );
   }
+}
+
+const data = {
+  guestName: 'DEREK FLEENER',
+  reservationId: '2210809156',
+  confirmationCode: '9658SF187948',
+  checkInDate: 'May 31, 2025',
+  checkOutDate: 'Jun 01, 2025',
+  roomType: 'Room, 2 Queen Beds, City View',
+  bookingAmount: '189.33',
+  bookedDate: 'May 31, 2025',
+  cardNumber: '3700 2168 4147 026',
+  expiryDate: '05/2030',
+  cvv: '1634',
+  status: 'Charged in full',
+  additionalText: "You've charged USD 189.33. | This was an Expedia Collect booking that was paid out through Expedia Virtual Card. | Amount to chargeUSD0.00 | USD0.00",
+  totalGuestPayment: '236.66',
+  cancellationFee: '',
+  expediaCompensation: '47.33',
+  totalPayout: '189.33',
+  propertyId: '39161277',
+  hasCardInfo: true,
+  hasPaymentInfo: true,
+  remainingAmountToCharge: 'N/A',
+  amountToRefund: 'N/A',
+  amountToChargeOrRefund: "You've charged USD 189.33. | This was an Expedia Collect booking that was paid out through Expedia Virtual Card. | Amount to chargeUSD0.00 | USD0.00",
+  amount: '0.00'
 }

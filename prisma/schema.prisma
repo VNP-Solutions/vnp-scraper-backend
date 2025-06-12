@@ -46,6 +46,20 @@ enum InvitationStatus {
   Cancelled
 }
 
+type CardInfo {
+  card_number    String    // Store encrypted or masked
+  expiry_date    String
+  cvv            String?   // Optional or encrypted
+  reason_for_charge                 String?
+}
+
+type PaymentInfo {
+  total_guest_payment               Float
+  cancellation_fee                  Float
+  total_payout                      Float
+  amount_to_charge_or_refund        Float
+}
+
 model User {
   id                            String   @id @default(auto()) @map("_id") @db.ObjectId
   email                         String   @unique
@@ -154,6 +168,7 @@ model Job {
   subPortfolio                  SubPortfolio? @relation(fields: [sub_portfolio_id], references: [id])
   property                      Property?   @relation(fields: [property_id], references: [id])
   user                          User?       @relation(fields: [user_id], references: [id])
+  jobItem                       JobItem[]
 
   @@map("jobs")
 }
@@ -179,6 +194,7 @@ model Property {
   files                         File[]
   credentials                   PropertyCredentials[]
   userFeatureAccessPermissions  UserFeatureAccessPermission[]
+  jobItem                       JobItem[]
 
   @@map("properties")
 }
@@ -274,4 +290,40 @@ model UserInvitation {
   @@index([status])
 
   @@map("user_invitations")
+}
+
+model JobItem {
+  id                           String      @id @default(auto()) @map("_id") @db.ObjectId
+  job_id                       String      @db.ObjectId
+  property_id                  String      @db.ObjectId
+  guest_name                   String
+  
+  reservation_id               String
+  confirmation_number          String
+  
+  check_in_date                DateTime
+  check_out_date               DateTime
+  
+  room_type                    String
+  
+  booking_amount               Float       // Original amount booked
+  
+  booked_date                  DateTime
+  has_card_info                Boolean     @default(false)
+  
+  card_info                    CardInfo?   // Embedded document
+  
+  has_payment_info             Boolean     @default(false)
+  payment_info                 PaymentInfo? // Embedded document
+  
+  reservation_status           String      // e.g., 'Active', 'Cancelled'
+  
+  createdAt                    DateTime    @default(now())
+  updatedAt                    DateTime    @updatedAt
+
+  // Relations
+  job                          Job         @relation(fields: [job_id], references: [id], onDelete: Cascade)
+  property                     Property    @relation(fields: [property_id], references: [id], onDelete: Cascade)
+
+  @@map("job_items")
 }
