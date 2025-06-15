@@ -40,11 +40,13 @@ export class JobRepository implements IJobRepository {
   ): Promise<{ data: Job[]; metadata: any }> {
     try {
       const {
+        page,
+        limit,
+        sortBy,
+        sortOrder,
         search,
         start_date,
         end_date,
-        page = 1,
-        limit = 10,
         ...filters
       } = query || {};
       let allFilters: any = { ...filters };
@@ -61,12 +63,22 @@ export class JobRepository implements IJobRepository {
           lte: new Date(end_date),
         };
       }
-      const skip = (parseInt(page) - 1) * parseInt(limit);
+      const skip = page
+        ? (parseInt(page || '1') - 1) * parseInt(limit || '10')
+        : 0;
+      const take = limit ? parseInt(limit) : 10;
+      let orderBy = undefined;
+      if (sortBy) {
+        orderBy = {
+          [sortBy]: sortOrder?.toLowerCase() === 'desc' ? 'desc' : 'asc',
+        };
+      }
       const totalDocuments = await this.db.job.count({ where: allFilters });
       const jobs = await this.db.job.findMany({
         where: allFilters,
         skip,
-        take: parseInt(limit),
+        take,
+        orderBy,
       });
       const metadata = {
         totalDocuments,

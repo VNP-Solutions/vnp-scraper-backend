@@ -42,8 +42,8 @@ export class QueryParserPipe implements PipeTransform {
         delete query[item];
       }
 
-      if (item === 'category' && query.category === 'All') {
-        delete query.category;
+      if (query[item] === 'All') {
+        delete query[item];
       }
 
       if (!Number.isNaN(Number(query[item])) && item !== 'phone_number') {
