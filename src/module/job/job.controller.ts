@@ -9,7 +9,9 @@ import {
   Post,
   Put,
   Query,
+  Req,
   Res,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -45,13 +47,17 @@ export class JobController {
   @ValidateBody(createJobSchema)
   @UseGuards(JwtAuthGuard)
   async createJob(
+    @Req() request: Request,
     @Body() createJobDto: CreateJobDto,
     @Res() response: Response,
   ) {
     return ResponseHandler.handler(
       response,
       async () => {
-        const job = await this.jobService.createJob(createJobDto);
+        if (!(request as any).user) {
+          throw new UnauthorizedException('User not found');
+        }
+        const job = await this.jobService.createJob({ ...createJobDto, user_id: (request as any).user.userId });
         return {
           statusCode: 201,
           message: 'Job created successfully',

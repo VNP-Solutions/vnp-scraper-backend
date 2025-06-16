@@ -11,7 +11,6 @@ export const createJobSchema = z.object({
   portfolio_id: objectIdSchema.optional(),
   sub_portfolio_id: objectIdSchema.optional(),
   property_id: objectIdSchema.optional(),
-  user_id: objectIdSchema,
   posting_type: z.nativeEnum(PostingType),
   portfolio_name: z.string().min(1, 'Portfolio name is required').optional().nullable(),
   sub_portfolio_name: z.string().min(1, 'Sub portfolio name is required').optional().nullable(),
