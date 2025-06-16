@@ -26,7 +26,8 @@ export const createJobSchema = z.object({
   max_retries: z.number().int().min(1).default(3),
   retry_delay_ms: z.number().int().optional(),
   priority: z.number().int().min(0).default(0),
-  job_backoff_length: z.number().int().min(0),
+  job_backoff_length_loading: z.number().int().min(0),
+  job_backoff_length_selector: z.number().int().min(0),
   queue_name: z.string().optional(),
   worker_assigned: z.string().optional(),
   batch_execution_id: z.string().optional()
