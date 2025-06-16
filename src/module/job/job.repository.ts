@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Job } from '@prisma/client';
+import { Job, Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { CreateJobDto, UpdateJobDto } from './job.dto';
 import { IJobRepository } from './job.interface';
@@ -13,8 +13,24 @@ export class JobRepository implements IJobRepository {
 
   async create(data: CreateJobDto): Promise<Job> {
     try {
+      const { portfolio_id, sub_portfolio_id, property_id, user_id, ...rest } =
+        data;
+      const jobData: Prisma.JobCreateInput = {
+        ...rest,
+        next_due_date: data.next_due_date || null,
+        portfolio_name: data.portfolio_name || '',
+        sub_portfolio_name: data.sub_portfolio_name || '',
+        property_name: data.property_name,
+        billing_type: data.billing_type || '',
+        user: { connect: { id: user_id } },
+        portfolio: portfolio_id ? { connect: { id: portfolio_id } } : undefined,
+        subPortfolio: sub_portfolio_id
+          ? { connect: { id: sub_portfolio_id } }
+          : undefined,
+        property: property_id ? { connect: { id: property_id } } : undefined,
+      };
       const job = await this.db.job.create({
-        data,
+        data: jobData,
       });
       return job;
     } catch (error) {

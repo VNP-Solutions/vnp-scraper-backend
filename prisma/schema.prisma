@@ -143,11 +143,11 @@ model Job {
   property_id                   String?     @db.ObjectId
   user_id                       String      @db.ObjectId
   posting_type                  PostingType
-  portfolio_name                String
-  sub_portfolio_name            String
+  portfolio_name                String?
+  sub_portfolio_name            String?
   property_name                 String
-  billing_type                  String
-  next_due_date                 DateTime
+  billing_type                  String?
+  next_due_date                 DateTime?
   ota_provider                  OTAProvider @map("OTA")
   remaining_direct_billed       Float
   total_collectable             Float
