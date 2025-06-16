@@ -157,7 +157,8 @@ model Job {
   max_retries                   Int         @default(3)
   retry_delay_ms                Int?
   priority                      Int         @default(0)
-  job_backoff_length            Int         
+  job_backoff_length_loading     Int
+  job_backoff_length_selector   Int   
   queue_name                    String?
   worker_assigned               String?
   batch_execution_id            String?

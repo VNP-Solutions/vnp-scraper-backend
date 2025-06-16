@@ -63,7 +63,10 @@ export class CreateJobDto {
   priority?: number;
 
   @ApiProperty()
-  job_backoff_length: number;
+  job_backoff_length_loading: number;
+
+  @ApiProperty()
+  job_backoff_length_selector: number;
 
   @ApiProperty({ required: false })
   queue_name?: string;
