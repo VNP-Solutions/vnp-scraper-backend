@@ -21,19 +21,19 @@ export class CreateJobDto {
   posting_type: PostingType;
 
   @ApiProperty()
-  portfolio_name: string;
+  portfolio_name?: string;
 
   @ApiProperty()
-  sub_portfolio_name: string;
+  sub_portfolio_name?: string;
 
   @ApiProperty()
   property_name: string;
 
   @ApiProperty()
-  billing_type: string;
+  billing_type?: string;
 
   @ApiProperty()
-  next_due_date: Date;
+  next_due_date?: Date;
 
   @ApiProperty({ enum: OTAProvider })
   ota_provider: OTAProvider;
