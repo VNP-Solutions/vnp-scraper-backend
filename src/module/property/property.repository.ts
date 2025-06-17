@@ -597,4 +597,115 @@ export class PropertyRepository implements IPropertyRepository {
       },
     });
   }
+
+  async findAllByUserPermission(
+    userId: string,
+    isAdmin: boolean,
+  ): Promise<Property[]> {
+    try {
+      if (isAdmin) {
+        return await this.db.property.findMany({
+          include: {
+            credentials: true,
+            portfolio: true,
+            subPortfolio: {
+              include: {
+                portfolio: true,
+              },
+            },
+          },
+        });
+      }
+
+      const accessiblePropertyIds = new Set<string>();
+
+      const directAccess = await this.db.userFeatureAccessPermission.findMany({
+        where: {
+          user_id: userId,
+          property_id: { not: null },
+        },
+        select: { property_id: true },
+      });
+      directAccess.forEach((perm) => {
+        if (perm.property_id) accessiblePropertyIds.add(perm.property_id);
+      });
+
+      const portfolioAccess =
+        await this.db.userFeatureAccessPermission.findMany({
+          where: {
+            user_id: userId,
+            portfolio_id: { not: null },
+          },
+          select: { portfolio_id: true },
+        });
+
+      if (portfolioAccess.length > 0) {
+        const portfolioIds = portfolioAccess
+          .map((p) => p.portfolio_id)
+          .filter(Boolean);
+        const portfolioProperties = await this.db.property.findMany({
+          where: {
+            OR: [
+              { portfolio_id: { in: portfolioIds } },
+              { subPortfolio: { portfolio_id: { in: portfolioIds } } },
+            ],
+          },
+          select: { id: true },
+        });
+        portfolioProperties.forEach((prop) =>
+          accessiblePropertyIds.add(prop.id),
+        );
+      }
+
+      const subPortfolioAccess =
+        await this.db.userFeatureAccessPermission.findMany({
+          where: {
+            user_id: userId,
+            sub_portfolio_id: { not: null },
+          },
+          select: { sub_portfolio_id: true },
+        });
+
+      if (subPortfolioAccess.length > 0) {
+        const subPortfolioIds = subPortfolioAccess
+          .map((p) => p.sub_portfolio_id)
+          .filter(Boolean);
+        const subPortfolioProperties = await this.db.property.findMany({
+          where: {
+            sub_portfolio_id: { in: subPortfolioIds },
+          },
+          select: { id: true },
+        });
+        subPortfolioProperties.forEach((prop) =>
+          accessiblePropertyIds.add(prop.id),
+        );
+      }
+
+      const accessiblePropertyIdsArray = Array.from(accessiblePropertyIds);
+
+      if (accessiblePropertyIdsArray.length === 0) {
+        return [];
+      }
+
+      const properties = await this.db.property.findMany({
+        where: {
+          id: { in: accessiblePropertyIdsArray },
+        },
+        include: {
+          credentials: true,
+          portfolio: true,
+          subPortfolio: {
+            include: {
+              portfolio: true,
+            },
+          },
+        }
+      });
+
+      return properties;
+    } catch (error) {
+      this.logger.error(error);
+      return [];
+    }
+  }
 }
