@@ -328,3 +328,18 @@ model JobItem {
 
   @@map("job_items")
 }
+
+model ActivityLog {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  username      String
+  role          String
+  endpoint      String
+  success       Boolean
+  statusCode    Int
+  ipAddress     String
+  resource      String
+  responseTime  Int
+  timestamp     DateTime @default(now())
+
+  @@map("activity_logs")
+}
