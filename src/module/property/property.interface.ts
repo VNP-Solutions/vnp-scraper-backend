@@ -22,6 +22,10 @@ export interface IPropertyRepository {
   findPropertyBySubPortfolioId(subPortfolioId: string): Promise<any>;
   getPermission(id: string, userId: string): Promise<any>;
   findPortfolioAndSubPortfolioForDropdown(user: any): Promise<any>;
+  findAllByUserPermission(
+    userId: string,
+    isAdmin: boolean,
+  ): Promise<Property[]>;
 }
 
 export interface IPropertyService {
@@ -46,4 +50,8 @@ export interface IPropertyService {
   getPropertyBySubPortfolioId(subPortfolioId: string): Promise<any>;
   getPermission(id: string, userId: string): Promise<any>;
   findPortfolioAndSubPortfolioForDropdown(user: any): Promise<any>;
+  getAllPropertiesByUserPermission(
+    userId: string,
+    isAdmin: boolean,
+  ): Promise<Property[]>;
 }

@@ -204,7 +204,8 @@ export class PropertyController {
     @Res() response: Response,
   ) {
     const { user } = request as any;
-    const data = await this.propertyService.findPortfolioAndSubPortfolioForDropdown(user);
+    const data =
+      await this.propertyService.findPortfolioAndSubPortfolioForDropdown(user);
     return ResponseHandler.handler(
       response,
       async () => {
@@ -446,6 +447,37 @@ export class PropertyController {
           await this.propertyService.getPropertyBySubPortfolioId(
             subPortfolioId,
           );
+        return {
+          statusCode: 200,
+          message: 'Properties retrieved successfully',
+          data: properties,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Get('/dropdown/properties')
+  @ApiOperation({ summary: 'Get all properties based on user permissions' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns all properties based on user permissions',
+  })
+  @UseGuards(JwtAuthGuard)
+  async getAllPropertiesByPermission(
+    @Req() request: Request,
+    @Res() response: Response,
+  ) {
+    const { user } = request as any;
+    const isAdmin = user.role === 'admin';
+    const properties =
+      await this.propertyService.getAllPropertiesByUserPermission(
+        user.userId,
+        isAdmin,
+      );
+    return ResponseHandler.handler(
+      response,
+      async () => {
         return {
           statusCode: 200,
           message: 'Properties retrieved successfully',

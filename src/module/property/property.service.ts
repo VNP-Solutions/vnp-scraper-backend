@@ -123,12 +123,31 @@ export class PropertyService implements IPropertyService {
   }
 
   private processProperty(property: any) {
-    const credential = { ... property.credentials[0] };
+    const credential = { ...property.credentials[0] };
     property.credentials = credential;
     return property;
   }
 
   async findPortfolioAndSubPortfolioForDropdown(user: any): Promise<any> {
     return this.repository.findPortfolioAndSubPortfolioForDropdown(user);
+  }
+
+  async getAllPropertiesByUserPermission(
+    userId: string,
+    isAdmin: boolean,
+  ): Promise<Property[]> {
+    try {
+      const properties = await this.repository.findAllByUserPermission(
+        userId,
+        isAdmin,
+      );
+      return properties.map((property) => this.processProperty(property));
+    } catch (error) {
+      this.logger.error(
+        `Error getting properties by user permission: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
   }
 }
