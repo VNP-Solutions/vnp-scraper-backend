@@ -1,8 +1,11 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { ActivityLoggerMiddleware } from './common/middleware/activity-logger.middleware';
+import { ActivityLogModule } from './module/activity-log/activity-log.module';
 import { AuthModule } from './module/auth/auth.module';
+import { DatabaseModule } from './module/database/database.module';
 import { JobModule } from './module/job/job.module';
 import { PortfolioModule } from './module/portfolio/portfolio.module';
 import { PropertyCredentialsModule } from './module/property-credentials/property-credentials.module';
@@ -18,6 +21,7 @@ import { UserModule } from './module/user/user.module';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    DatabaseModule,
     AuthModule,
     UserModule,
     PortfolioModule,
@@ -28,8 +32,13 @@ import { UserModule } from './module/user/user.module';
     UploadModule,
     UserFeatureAccessPermissionModule,
     UserInvitationModule,
+    ActivityLogModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(ActivityLoggerMiddleware).forRoutes('*');
+  }
+}
