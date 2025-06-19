@@ -3,6 +3,7 @@ import {
   Delete,
   ForbiddenException,
   Get,
+  Inject,
   Param,
   Query,
   Request,
@@ -17,14 +18,17 @@ import {
 } from '@nestjs/swagger';
 import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { ActivityLogService } from './activity-log.service';
+import { IActivityLogService } from './activity-log.interface';
 
 @ApiTags('Activity Logs')
 @ApiBearerAuth('JWT-auth')
 @Controller('activity-logs')
 @UseGuards(JwtAuthGuard)
 export class ActivityLogController {
-  constructor(private readonly activityLogService: ActivityLogService) {}
+  constructor(
+    @Inject('IActivityLogService')
+    private readonly activityLogService: IActivityLogService,
+  ) {}
 
   private checkAdminRole(req: any) {
     const user = req.user;
@@ -67,6 +71,16 @@ export class ActivityLogController {
     description: 'Sort order (asc or desc)',
   })
   @ApiQuery({
+    name: 'start_date',
+    required: false,
+    description: 'Start date for filtering',
+  })
+  @ApiQuery({
+    name: 'end_date',
+    required: false,
+    description: 'End date for filtering',
+  })
+  @ApiQuery({
     name: 'success',
     required: false,
     type: 'boolean',
@@ -85,7 +99,8 @@ export class ActivityLogController {
   @ParseQuery()
   async getAllLogs(@Request() req, @Query() query: Record<string, any>) {
     this.checkAdminRole(req);
-    return this.activityLogService.getAllLogs(query.page, query.limit);
+    const { page = 1, limit = 10, ...otherQuery } = query;
+    return this.activityLogService.getAllLogs(page, limit, otherQuery);
   }
 
   @Delete('/:id')
