@@ -1,15 +1,18 @@
-import { Injectable } from '@nestjs/common';
-import { DatabaseService } from '../database/database.service';
+import { Inject, Injectable } from '@nestjs/common';
+import {
+  IActivityLogRepository,
+  IActivityLogService,
+} from './activity-log.interface';
 
 @Injectable()
-export class ActivityLogService {
-  constructor(private db: DatabaseService) {}
+export class ActivityLogService implements IActivityLogService {
+  constructor(
+    @Inject('IActivityLogRepository')
+    private readonly activityLogRepository: IActivityLogRepository,
+  ) {}
 
   async getUserDetails(userId: string) {
-    return this.db.user.findUnique({
-      where: { id: userId },
-      select: { name: true, role: true },
-    });
+    return this.activityLogRepository.getUserDetails(userId);
   }
 
   async logActivity(data: {
@@ -23,58 +26,26 @@ export class ActivityLogService {
     responseTime: number;
   }) {
     try {
-      await this.db.activityLog.create({
-        data: {
-          username: data.username,
-          role: data.role,
-          endpoint: data.endpoint,
-          success: data.success,
-          statusCode: data.statusCode,
-          ipAddress: data.ipAddress,
-          resource: data.resource,
-          responseTime: data.responseTime,
-        },
-      });
+      await this.activityLogRepository.create(data);
     } catch (error) {
       console.error('Failed to log activity:', error);
     }
   }
 
-  async getAllLogs(page = 1, limit = 10) {
-    const skip = (page - 1) * limit;
-    const take = limit;
-
-    const [logs, totalDocuments] = await Promise.all([
-      this.db.activityLog.findMany({
-        skip,
-        take,
-        orderBy: {
-          timestamp: 'desc',
-        },
-      }),
-      this.db.activityLog.count(),
-    ]);
-
-    const metadata = {
-      totalDocuments,
-      currentPage: page ? parseInt(page.toString()) : 1,
-      limit: take,
-      totalPage: Math.ceil(totalDocuments / take),
+  async getAllLogs(page = 1, limit = 10, query?: Record<string, any>) {
+    const queryParams = {
+      page,
+      limit,
+      ...query,
     };
-
-    return {
-      data: logs,
-      metadata,
-    };
+    return this.activityLogRepository.findAll(queryParams);
   }
 
   async deleteLog(id: string) {
-    return this.db.activityLog.delete({
-      where: { id },
-    });
+    return this.activityLogRepository.delete(id);
   }
 
   async deleteAllLogs() {
-    return this.db.activityLog.deleteMany({});
+    return this.activityLogRepository.deleteMany();
   }
 }
