@@ -21,10 +21,12 @@ export class JobService implements IJobService {
     }
   }
 
-  async getAllJobs(query: Record<string, any>): Promise<any> {
+  async getAllJobs(
+    query: Record<string, any>,
+  ): Promise<{ data: Job[]; metadata: any }> {
     try {
-      const jobs = await this.repository.findAll(query);
-      return jobs;
+      const result = await this.repository.findAll(query);
+      return result;
     } catch (error) {
       this.logger.error(`Error getting jobs: ${error.message}`, error.stack);
       throw error;

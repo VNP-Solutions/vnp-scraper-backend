@@ -11,7 +11,9 @@ export interface IJobRepository {
 
 export interface IJobService {
   createJob(data: CreateJobDto): Promise<Job>;
-  getAllJobs(query: Record<string, any>): Promise<Job[]>;
+  getAllJobs(
+    query: Record<string, any>,
+  ): Promise<{ data: Job[]; metadata: any }>;
   getJobById(id: string): Promise<Job>;
   updateJob(id: string, data: UpdateJobDto): Promise<Job>;
   deleteJob(id: string): Promise<Job>;
