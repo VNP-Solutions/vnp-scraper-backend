@@ -42,11 +42,12 @@ export class ActivityLogService {
 
   async getAllLogs(page = 1, limit = 10) {
     const skip = (page - 1) * limit;
+    const take = limit;
 
-    const [logs, total] = await Promise.all([
+    const [logs, totalDocuments] = await Promise.all([
       this.db.activityLog.findMany({
         skip,
-        take: limit,
+        take,
         orderBy: {
           timestamp: 'desc',
         },
@@ -54,14 +55,16 @@ export class ActivityLogService {
       this.db.activityLog.count(),
     ]);
 
+    const metadata = {
+      totalDocuments,
+      currentPage: page ? parseInt(page.toString()) : 1,
+      limit: take,
+      totalPage: Math.ceil(totalDocuments / take),
+    };
+
     return {
-      logs,
-      pagination: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
+      data: logs,
+      metadata,
     };
   }
 

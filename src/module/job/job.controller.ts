@@ -11,7 +11,6 @@ import {
   Query,
   Req,
   Res,
-  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -41,23 +40,24 @@ export class JobController {
   ) {}
 
   @Post()
+  @UseGuards(JwtAuthGuard)
+  @ValidateBody(createJobSchema)
   @ApiOperation({ summary: 'Create new job' })
   @ApiResponse({ status: 201, description: 'Job created successfully' })
   @ApiResponse({ status: 400, description: 'Bad request' })
-  @ValidateBody(createJobSchema)
-  @UseGuards(JwtAuthGuard)
   async createJob(
-    @Req() request: Request,
+    @Req() request: any,
     @Body() createJobDto: CreateJobDto,
     @Res() response: Response,
   ) {
     return ResponseHandler.handler(
       response,
       async () => {
-        if (!(request as any).user) {
-          throw new UnauthorizedException('User not found');
-        }
-        const job = await this.jobService.createJob({ ...createJobDto, user_id: (request as any).user.userId });
+        const userId = request.user?.id;
+        const job = await this.jobService.createJob({
+          ...createJobDto,
+          user_id: userId,
+        });
         return {
           statusCode: 201,
           message: 'Job created successfully',
@@ -68,6 +68,7 @@ export class JobController {
     );
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get()
   @ApiOperation({ summary: 'Get all jobs' })
   @ApiResponse({ status: 200, description: 'Returns list of jobs' })
@@ -109,7 +110,6 @@ export class JobController {
     required: false,
     description: 'End date for filtering',
   })
-  @UseGuards(JwtAuthGuard)
   @ParseQuery()
   async getAllJobs(
     @Query() query: Record<string, any>,
@@ -118,11 +118,12 @@ export class JobController {
     return ResponseHandler.handler(
       response,
       async () => {
-        const jobs = await this.jobService.getAllJobs(query);
+        const result = await this.jobService.getAllJobs(query);
         return {
           statusCode: 200,
           message: 'Jobs retrieved successfully',
-          data: jobs,
+          data: result.data,
+          metadata: result.metadata,
         };
       },
       this.logger,
@@ -130,10 +131,10 @@ export class JobController {
   }
 
   @Get('/:id')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get job by ID' })
   @ApiResponse({ status: 200, description: 'Returns job' })
   @ApiResponse({ status: 404, description: 'Job not found' })
-  @UseGuards(JwtAuthGuard)
   async getJobById(@Param('id') id: string, @Res() response: Response) {
     return ResponseHandler.handler(
       response,
@@ -150,10 +151,10 @@ export class JobController {
   }
 
   @Put('/:id')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Update job by ID' })
   @ApiResponse({ status: 200, description: 'Job updated successfully' })
   @ApiResponse({ status: 404, description: 'Job not found' })
-  @UseGuards(JwtAuthGuard)
   async updateJob(
     @Param('id') id: string,
     @Body() updateJobDto: UpdateJobDto,
@@ -174,10 +175,10 @@ export class JobController {
   }
 
   @Delete('/:id')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Delete job by ID' })
   @ApiResponse({ status: 200, description: 'Job deleted successfully' })
   @ApiResponse({ status: 404, description: 'Job not found' })
-  @UseGuards(JwtAuthGuard)
   async deleteJob(@Param('id') id: string, @Res() response: Response) {
     return ResponseHandler.handler(
       response,
@@ -192,31 +193,4 @@ export class JobController {
       this.logger,
     );
   }
-}
-
-const data = {
-  guestName: 'DEREK FLEENER',
-  reservationId: '2210809156',
-  confirmationCode: '9658SF187948',
-  checkInDate: 'May 31, 2025',
-  checkOutDate: 'Jun 01, 2025',
-  roomType: 'Room, 2 Queen Beds, City View',
-  bookingAmount: '189.33',
-  bookedDate: 'May 31, 2025',
-  cardNumber: '3700 2168 4147 026',
-  expiryDate: '05/2030',
-  cvv: '1634',
-  status: 'Charged in full',
-  additionalText: "You've charged USD 189.33. | This was an Expedia Collect booking that was paid out through Expedia Virtual Card. | Amount to chargeUSD0.00 | USD0.00",
-  totalGuestPayment: '236.66',
-  cancellationFee: '',
-  expediaCompensation: '47.33',
-  totalPayout: '189.33',
-  propertyId: '39161277',
-  hasCardInfo: true,
-  hasPaymentInfo: true,
-  remainingAmountToCharge: 'N/A',
-  amountToRefund: 'N/A',
-  amountToChargeOrRefund: "You've charged USD 189.33. | This was an Expedia Collect booking that was paid out through Expedia Virtual Card. | Amount to chargeUSD0.00 | USD0.00",
-  amount: '0.00'
 }
