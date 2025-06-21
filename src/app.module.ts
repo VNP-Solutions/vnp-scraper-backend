@@ -10,6 +10,7 @@ import { JobModule } from './module/job/job.module';
 import { PortfolioModule } from './module/portfolio/portfolio.module';
 import { PropertyCredentialsModule } from './module/property-credentials/property-credentials.module';
 import { PropertyModule } from './module/property/property.module';
+import { ScraperModule } from './module/scraper/scraper.module';
 import { SubPortfolioModule } from './module/sub-portfolio/sub-portfolio.module';
 import { UploadModule } from './module/upload/upload.module';
 import { UserFeatureAccessPermissionModule } from './module/user-feature-access-permission/user-feature-access-permission.module';
@@ -33,6 +34,7 @@ import { UserModule } from './module/user/user.module';
     UserFeatureAccessPermissionModule,
     UserInvitationModule,
     ActivityLogModule,
+    ScraperModule,
   ],
   controllers: [AppController],
   providers: [AppService],
