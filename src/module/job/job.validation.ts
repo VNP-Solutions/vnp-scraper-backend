@@ -30,7 +30,9 @@ export const createJobSchema = z.object({
   job_backoff_length_selector: z.number().int().min(0),
   queue_name: z.string().optional(),
   worker_assigned: z.string().optional(),
-  batch_execution_id: z.string().optional()
+  batch_execution_id: z.string().optional(),
+  start_date: z.string().optional().nullable(),
+  end_date: z.string().optional().nullable(),
 });
 
 export const updateJobSchema = createJobSchema.partial();

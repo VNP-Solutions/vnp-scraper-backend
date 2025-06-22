@@ -30,7 +30,6 @@ import {
   ReservationRunJobResponseDto,
   ScrapingStatusResponseDto,
 } from './scraper.dto';
-
 @ApiTags('Expedia Scraper')
 @Controller('/expedia')
 export class ScraperController {
@@ -40,9 +39,14 @@ export class ScraperController {
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
   ) {
+    const baseUrl =
+      this.configService.get<string>('SCRAPER_BASE_URL') || '127.0.0.1:3000';
+
+    // Add http:// protocol if missing
     this.scraperBaseUrl =
-      this.configService.get<string>('SCRAPER_BASE_URL') ||
-      'http://localhost:3000';
+      baseUrl.startsWith('http://') || baseUrl.startsWith('https://')
+        ? baseUrl
+        : `http://${baseUrl}`;
   }
 
   @Get('/')
@@ -216,7 +220,14 @@ export class ScraperController {
         this.httpService.post(
           `${this.scraperBaseUrl}/api/scraping/pause`,
           body,
-          { headers: req.headers },
+          {
+            headers: {
+              ...req.headers,
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            timeout: 300000, // 5 minute timeout for long-running scraping jobs
+          },
         ),
       );
       return res.status(response.status).json(response.data);
@@ -260,7 +271,14 @@ export class ScraperController {
         this.httpService.post(
           `${this.scraperBaseUrl}/api/scraping/resume`,
           body,
-          { headers: req.headers },
+          {
+            headers: {
+              ...req.headers,
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            timeout: 300000, // 5 minute timeout for long-running scraping jobs
+          },
         ),
       );
       return res.status(response.status).json(response.data);
@@ -299,7 +317,12 @@ export class ScraperController {
           `${this.scraperBaseUrl}/api/scraping/stop`,
           body,
           {
-            headers: req.headers,
+            headers: {
+              ...req.headers,
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            timeout: 300000, // 5 minute timeout for long-running scraping jobs
           },
         ),
       );
@@ -350,7 +373,14 @@ export class ScraperController {
         this.httpService.post(
           `${this.scraperBaseUrl}/api/expedia/property-run-job`,
           body,
-          { headers: req.headers },
+          {
+            ...req.headers,
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            timeout: 300000, // 5 minute timeout for long-running scraping jobs
+          },
         ),
       );
       return res.status(response.status).json(response.data);
@@ -400,7 +430,14 @@ export class ScraperController {
         this.httpService.post(
           `${this.scraperBaseUrl}/api/expedia/reservation-run-job`,
           body,
-          { headers: req.headers },
+          {
+            headers: {
+              ...req.headers,
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            timeout: 300000, // 5 minute timeout for long-running scraping jobs
+          },
         ),
       );
       return res.status(response.status).json(response.data);

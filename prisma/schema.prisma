@@ -162,6 +162,8 @@ model Job {
   queue_name                    String?
   worker_assigned               String?
   batch_execution_id            String?
+  start_date                    String?
+  end_date                      String?
   createdAt                     DateTime    @default(now())
   updatedAt                     DateTime    @updatedAt
 
