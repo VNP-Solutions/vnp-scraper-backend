@@ -53,7 +53,7 @@ export class JobController {
     return ResponseHandler.handler(
       response,
       async () => {
-        const userId = request.user?.id;
+        const userId = request.user?.userId;
         const job = await this.jobService.createJob({
           ...createJobDto,
           user_id: userId,
