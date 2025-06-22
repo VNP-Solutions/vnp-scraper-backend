@@ -76,6 +76,12 @@ export class CreateJobDto {
 
   @ApiProperty({ required: false })
   batch_execution_id?: string;
+
+  @ApiProperty({ required: false })
+  start_date?: string;
+
+  @ApiProperty({ required: false })
+  end_date?: string;
 }
 
 export class UpdateJobDto implements Partial<CreateJobDto> {
@@ -114,4 +120,10 @@ export class UpdateJobDto implements Partial<CreateJobDto> {
 
   @ApiProperty({ required: false })
   job_backoff_length?: number;
+
+  @ApiProperty({ required: false })
+  start_date?: string;
+
+  @ApiProperty({ required: false })
+  end_date?: string;
 }
