@@ -32,7 +32,7 @@ import {
 } from './scraper.dto';
 
 @ApiTags('Expedia Scraper')
-@Controller()
+@Controller('/expedia')
 export class ScraperController {
   private readonly scraperBaseUrl: string;
 
