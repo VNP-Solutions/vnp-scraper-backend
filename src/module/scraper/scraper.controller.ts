@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   HttpStatus,
+  Inject,
   Param,
   Post,
   Req,
@@ -20,7 +21,9 @@ import {
 } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { firstValueFrom } from 'rxjs';
+import { IScraperJobItemService } from './scraper-job-item.interface';
 import {
+  AllJobItemsResponseDto,
   ErrorResponseDto,
   HealthResponseDto,
   PauseResumeStopResponseDto,
@@ -30,6 +33,7 @@ import {
   ReservationRunJobResponseDto,
   ScrapingStatusResponseDto,
 } from './scraper.dto';
+
 @ApiTags('Expedia Scraper')
 @Controller('/expedia')
 export class ScraperController {
@@ -38,6 +42,8 @@ export class ScraperController {
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
+    @Inject('IScraperJobItemService')
+    private readonly jobItemService: IScraperJobItemService,
   ) {
     const baseUrl =
       this.configService.get<string>('SCRAPER_BASE_URL') || '127.0.0.1:3000';
@@ -567,6 +573,63 @@ export class ScraperController {
         message: 'Expedia Job server is down',
       };
       return res.status(status).json(data);
+    }
+  }
+
+  @Get('/api/jobs/:jobId/all-items')
+  @ApiOperation({
+    summary: 'Get all job items',
+    description:
+      'Get all scraped reservation data for a specific job (no pagination or filtering)',
+  })
+  @ApiParam({
+    name: 'jobId',
+    required: true,
+    description: 'The job ID to get all items for',
+    example: '507f1f77bcf86cd799439011',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'All job items retrieved successfully',
+    type: AllJobItemsResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Job not found',
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Server error',
+  })
+  async getAllJobItems(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Param('jobId') jobId: string,
+  ) {
+    try {
+      const jobItems = await this.jobItemService.getAllJobItemsByJobId(jobId);
+      return res.status(HttpStatus.OK).json({
+        success: true,
+        message: 'All job items retrieved successfully',
+        data: jobItems,
+        metadata: {
+          total: jobItems.length,
+          jobId: jobId,
+        },
+      });
+    } catch (error: any) {
+      const status = error.message?.includes('not found')
+        ? HttpStatus.NOT_FOUND
+        : HttpStatus.INTERNAL_SERVER_ERROR;
+      return res.status(status).json({
+        success: false,
+        message: error.message || 'Error retrieving job items',
+        data: null,
+        metadata: {
+          total: 0,
+          jobId: jobId,
+        },
+      });
     }
   }
 }

@@ -46,6 +46,13 @@ enum InvitationStatus {
   Cancelled
 }
 
+enum OtpPurpose {
+  LOGIN
+  PASSWORD_RESET
+  ACCOUNT_VERIFICATION
+  MFA_SETUP
+}
+
 type CardInfo {
   card_number    String    // Store encrypted or masked
   expiry_date    String
@@ -222,18 +229,22 @@ model PropertyCredentials {
 }
 
 model Otp {
-  id                            String   @id @default(auto()) @map("_id") @db.ObjectId
-  user_id                       String   @db.ObjectId
+  id                            String     @id @default(auto()) @map("_id") @db.ObjectId
+  user_id                       String     @db.ObjectId
   otp_code                      String
+  purpose                       OtpPurpose @default(LOGIN)
+  ip_address                    String?
   expires_at                    DateTime
-  is_used                      Boolean  @default(false)
-  created_at                    DateTime @default(now())
-  updated_at                    DateTime @updatedAt
+  is_used                       Boolean    @default(false)
+  created_at                    DateTime   @default(now())
+  updated_at                    DateTime   @updatedAt
 
-  user                          User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user                          User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id])
   @@index([otp_code])
+  @@index([purpose])
+  @@index([ip_address])
 
   @@map("otps")
 }

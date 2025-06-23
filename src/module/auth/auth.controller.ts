@@ -55,8 +55,18 @@ export class AuthController {
   @ApiOperation({ summary: 'Request OTP for login' })
   @ApiResponse({ status: 200, description: 'OTP sent successfully' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
-  async login(@Body() loginDto: LoginDto) {
-    await this.authService.validateUser(loginDto.email, loginDto.password);
+  async login(@Body() loginDto: LoginDto, @Request() req: any) {
+    const ipAddress =
+      req.ip ||
+      req.connection?.remoteAddress ||
+      req.socket?.remoteAddress ||
+      req.headers['x-forwarded-for'] ||
+      'unknown';
+    await this.authService.validateUser(
+      loginDto.email,
+      loginDto.password,
+      ipAddress,
+    );
     return {
       message: 'OTP has been sent to your email',
       email: loginDto.email,
@@ -88,8 +98,17 @@ export class AuthController {
     description: 'Password reset OTP sent successfully',
   })
   @ApiResponse({ status: 400, description: 'Bad request' })
-  async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
-    return this.authService.forgotPassword(forgotPasswordDto);
+  async forgotPassword(
+    @Body() forgotPasswordDto: ForgotPasswordDto,
+    @Request() req: any,
+  ) {
+    const ipAddress =
+      req.ip ||
+      req.connection?.remoteAddress ||
+      req.socket?.remoteAddress ||
+      req.headers['x-forwarded-for'] ||
+      'unknown';
+    return this.authService.forgotPassword(forgotPasswordDto, ipAddress);
   }
 
   @Post('/validate-reset-otp')

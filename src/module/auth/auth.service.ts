@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { RoleEnum } from '@prisma/client';
+import { OtpPurpose, RoleEnum } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import * as nodemailer from 'nodemailer';
 import { LoginDto, RegisterDto } from './auth.dto';
@@ -171,12 +171,21 @@ export class AuthService {
     await this.transporter.sendMail(mailOptions);
   }
 
-  async validateUser(email: string, password: string): Promise<any> {
+  async validateUser(
+    email: string,
+    password: string,
+    ipAddress?: string,
+  ): Promise<any> {
     const user = await this.authRepository.findUserByEmail(email.toLowerCase());
     if (user && (await bcrypt.compare(password, user.password))) {
       const otp = this.generateOTP();
 
-      await this.authRepository.createOTP(user.id, otp);
+      await this.authRepository.createOTP(
+        user.id,
+        otp,
+        OtpPurpose.LOGIN,
+        ipAddress,
+      );
       await this.sendOTPEmail(email, otp);
 
       return { email: user.email };
@@ -202,7 +211,8 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired OTP');
     }
 
-    await this.authRepository.deleteOTP(otpRecord.id);
+    // Mark OTP as used instead of deleting it
+    await this.authRepository.markOTPAsUsed(otpRecord.id);
 
     // Update last_login when user successfully logs in
     await this.authRepository.updateLastLogin(user.id);
@@ -223,8 +233,12 @@ export class AuthService {
     };
   }
 
-  async login(loginDto: LoginDto) {
-    const user = await this.validateUser(loginDto.email, loginDto.password);
+  async login(loginDto: LoginDto, ipAddress: string) {
+    const user = await this.validateUser(
+      loginDto.email,
+      loginDto.password,
+      ipAddress,
+    );
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
     }
@@ -253,7 +267,10 @@ export class AuthService {
     return result;
   }
 
-  async forgotPassword(forgotPasswordDto: ForgotPasswordDto) {
+  async forgotPassword(
+    forgotPasswordDto: ForgotPasswordDto,
+    ipAddress?: string,
+  ) {
     const user = await this.authRepository.findUserByEmail(
       forgotPasswordDto.email.toLowerCase(),
     );
@@ -267,7 +284,12 @@ export class AuthService {
     }
 
     const otp = this.generateOTP();
-    await this.authRepository.createOTP(user.id, otp);
+    await this.authRepository.createOTP(
+      user.id,
+      otp,
+      OtpPurpose.PASSWORD_RESET,
+      ipAddress,
+    );
     await this.sendPasswordResetEmail(user.email, otp);
 
     return {
