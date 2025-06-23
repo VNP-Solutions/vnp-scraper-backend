@@ -7,6 +7,7 @@ import { ActivityLogModule } from './module/activity-log/activity-log.module';
 import { AuthModule } from './module/auth/auth.module';
 import { DatabaseModule } from './module/database/database.module';
 import { JobModule } from './module/job/job.module';
+import { OtpLogModule } from './module/otp-log/otp-log.module';
 import { PortfolioModule } from './module/portfolio/portfolio.module';
 import { PropertyCredentialsModule } from './module/property-credentials/property-credentials.module';
 import { PropertyModule } from './module/property/property.module';
@@ -34,6 +35,7 @@ import { UserModule } from './module/user/user.module';
     UserFeatureAccessPermissionModule,
     UserInvitationModule,
     ActivityLogModule,
+    OtpLogModule,
     ScraperModule,
   ],
   controllers: [AppController],

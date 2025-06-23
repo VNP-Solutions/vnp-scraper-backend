@@ -106,3 +106,23 @@ export class ReservationRunJobResponseDto {
   @ApiProperty({ example: 'reservation_job_1703123456789' })
   jobId: string;
 }
+
+export class AllJobItemsResponseDto {
+  @ApiProperty({ description: 'Success status' })
+  success: boolean;
+
+  @ApiProperty({ description: 'Response message' })
+  message: string;
+
+  @ApiProperty({ description: 'Array of job items', type: 'array' })
+  data: any[];
+
+  @ApiProperty({
+    description: 'Response metadata',
+    example: { total: 25, jobId: '507f1f77bcf86cd799439011' },
+  })
+  metadata: {
+    total: number;
+    jobId: string;
+  };
+}

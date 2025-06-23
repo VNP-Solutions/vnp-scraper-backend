@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { RoleEnum, User } from '@prisma/client';
+import { OtpPurpose, RoleEnum, User } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 
 @Injectable()
@@ -18,12 +18,19 @@ export class AuthRepository {
     }
   }
 
-  async createOTP(userId: string, otpCode: string): Promise<void> {
+  async createOTP(
+    userId: string,
+    otpCode: string,
+    purpose: OtpPurpose = OtpPurpose.LOGIN,
+    ipAddress?: string,
+  ): Promise<void> {
     try {
       await this.db.otp.create({
         data: {
           user_id: userId,
           otp_code: otpCode,
+          purpose: purpose,
+          ip_address: ipAddress,
           expires_at: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes expiry
           is_used: false,
         },
