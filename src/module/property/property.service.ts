@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Property } from '@prisma/client';
+import { EncryptionUtil } from 'src/common/utils/encryption.util';
 import { CreatePropertyDto, UpdatePropertyDto } from './property.dto';
 import { IPropertyRepository, IPropertyService } from './property.interface';
 
@@ -9,12 +10,19 @@ export class PropertyService implements IPropertyService {
     @Inject('IPropertyRepository')
     private readonly repository: IPropertyRepository,
     private readonly logger: Logger,
+    private readonly encryptionUtil: EncryptionUtil,
   ) {}
 
   async createProperty(data: CreatePropertyDto): Promise<Property> {
     try {
-      const property = await this.repository.create(data);
-      return property;
+      // Encrypt the password before saving
+      const encryptedData = {
+        ...data,
+        user_password: this.encryptionUtil.encryptPassword(data.user_password),
+      };
+
+      const property = await this.repository.create(encryptedData);
+      return this.processProperty(property);
     } catch (error) {
       this.logger.error(
         `Error creating property: ${error.message}`,
@@ -58,7 +66,15 @@ export class PropertyService implements IPropertyService {
 
   async updateProperty(id: string, data: UpdatePropertyDto): Promise<Property> {
     try {
-      const property = await this.repository.update(id, data);
+      // Encrypt the password before updating if it's provided
+      const updateData = { ...data };
+      if (data.user_password) {
+        updateData.user_password = this.encryptionUtil.encryptPassword(
+          data.user_password,
+        );
+      }
+
+      const property = await this.repository.update(id, updateData);
       return this.processProperty(property);
     } catch (error) {
       this.logger.error(
@@ -123,7 +139,21 @@ export class PropertyService implements IPropertyService {
   }
 
   private processProperty(property: any) {
-    const credential = { ...property.credentials[0] };
+    // Decrypt the password when returning property data
+    if (property.user_password) {
+      try {
+        property.user_password = this.encryptionUtil.decryptPassword(
+          property.user_password,
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Failed to decrypt password for property ${property.id}: ${error.message}`,
+        );
+        // Keep the encrypted password if decryption fails
+      }
+    }
+
+    const credential = { ...property.credentials?.[0] };
     property.credentials = credential;
     return property;
   }
@@ -141,10 +171,41 @@ export class PropertyService implements IPropertyService {
         userId,
         isAdmin,
       );
-      return properties.map((property) => this.processProperty(property));
+      return properties.map(property => this.processProperty(property));
     } catch (error) {
       this.logger.error(
         `Error getting properties by user permission: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Get decrypted credentials for authentication purposes
+   * @param propertyId - Property ID
+   * @returns Object with decrypted user_email and user_password
+   */
+  async getPropertyCredentials(
+    propertyId: string,
+  ): Promise<{ user_email: string; user_password: string }> {
+    try {
+      const property = await this.repository.findById(propertyId);
+      if (!property) {
+        throw new Error(`Property with ID ${propertyId} not found`);
+      }
+
+      const decryptedPassword = property.user_password
+        ? this.encryptionUtil.decryptPassword(property.user_password)
+        : '';
+
+      return {
+        user_email: property.user_email,
+        user_password: decryptedPassword,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error getting property credentials: ${error.message}`,
         error.stack,
       );
       throw error;

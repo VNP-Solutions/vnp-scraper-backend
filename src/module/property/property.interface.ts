@@ -54,4 +54,7 @@ export interface IPropertyService {
     userId: string,
     isAdmin: boolean,
   ): Promise<Property[]>;
+  getPropertyCredentials(
+    propertyId: string,
+  ): Promise<{ user_email: string; user_password: string }>;
 }

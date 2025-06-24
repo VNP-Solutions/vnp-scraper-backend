@@ -12,7 +12,7 @@ export const createInvitationSchema = z
     property_ids: z.array(z.string()).optional().default([]),
   })
   .refine(
-    (data) => {
+    data => {
       // If role is admin and any permission arrays are provided, it's still valid but will be ignored
       if (
         data.role === 'admin' &&
@@ -46,7 +46,7 @@ export const updateInvitationSchema = z
     sub_portfolio_ids: z.array(z.string()).optional(),
     property_ids: z.array(z.string()).optional(),
   })
-  .refine((data) => {
+  .refine(data => {
     // If changing role to admin, permission arrays will be cleared
     if (
       data.role === 'admin' &&

@@ -148,7 +148,7 @@ export class UserInvitationRepository implements IUserInvitationRepository {
         totalDocuments: total,
         currentPage: page,
         totalPage: Math.ceil(total / limit),
-        limit: limit
+        limit: limit,
       },
     };
   }

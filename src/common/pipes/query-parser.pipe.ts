@@ -6,10 +6,10 @@ export class QueryParserPipe implements PipeTransform {
     if (!value) return {};
 
     const query = value as Record<string, unknown>;
-    
+
     Object.keys(query).forEach(item => {
       const value = query[item];
-      
+
       if (typeof value === 'string') {
         if (value === 'true') {
           query[item] = true;

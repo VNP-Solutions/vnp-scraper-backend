@@ -15,6 +15,10 @@ export const createPropertySchema = z.object({
   booking_status: z.string().optional().nullable(),
   agoda_id: z.number().optional().nullable(),
   agoda_status: z.string().optional().nullable(),
+  user_email: z.string().email('Please provide a valid email address'),
+  user_password: z
+    .string()
+    .min(6, 'Password must be at least 6 characters long'),
 });
 
 export const updatePropertySchema = createPropertySchema;

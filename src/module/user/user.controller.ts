@@ -24,10 +24,9 @@ import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
 import { ResponseHandler } from 'src/common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CreateUserDto, UpdateUserDto } from './user.dto';
+import { UpdateUserDto } from './user.dto';
 import { IUserService } from './user.interface';
 import {
-  createUserWithBusinessRulesSchema,
   updateUserWithBusinessRulesSchema,
 } from './user.validation';
 
@@ -40,49 +39,6 @@ export class UserController {
     private readonly userService: IUserService,
     private readonly logger: Logger,
   ) {}
-
-  @Post()
-  @ValidateBody(createUserWithBusinessRulesSchema)
-  @ApiOperation({ summary: 'Create a new user' })
-  @ApiResponse({ status: 201, description: 'User created successfully' })
-  @ApiResponse({
-    status: 400,
-    description: 'Validation failed',
-    schema: {
-      type: 'object',
-      properties: {
-        statusCode: { type: 'number', example: 400 },
-        message: { type: 'string', example: 'Validation failed' },
-        errors: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              field: { type: 'string', example: 'email' },
-              message: { type: 'string', example: 'Invalid email format' },
-            },
-          },
-        },
-      },
-    },
-  })
-  async createUser(
-    @Body() createUserDto: CreateUserDto,
-    @Res() response: Response,
-  ) {
-    return ResponseHandler.handler(
-      response,
-      async () => {
-        const res = await this.userService.createUser(createUserDto);
-        return {
-          statusCode: 200,
-          message: 'User created successfully',
-          data: res,
-        };
-      },
-      this.logger,
-    );
-  }
 
   @UseGuards(JwtAuthGuard)
   @Get()
