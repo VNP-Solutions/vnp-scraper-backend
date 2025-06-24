@@ -1,4 +1,6 @@
 import { Logger, Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { EncryptionUtil } from 'src/common/utils/encryption.util';
 import { DatabaseService } from '../database/database.service';
 import { PropertyController } from './property.controller';
 import { PropertyRepository } from './property.repository';
@@ -18,6 +20,8 @@ import { PropertyService } from './property.service';
     },
     DatabaseService,
     Logger,
+    EncryptionUtil,
+    ConfigService,
   ],
   exports: ['IPropertyService', 'IPropertyRepository'],
 })

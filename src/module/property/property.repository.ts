@@ -230,7 +230,7 @@ export class PropertyRepository implements IPropertyRepository {
         },
         select: { property_id: true },
       });
-      directAccess.forEach((perm) => {
+      directAccess.forEach(perm => {
         if (perm.property_id) accessiblePropertyIds.add(perm.property_id);
       });
 
@@ -246,7 +246,7 @@ export class PropertyRepository implements IPropertyRepository {
 
       if (portfolioAccess.length > 0) {
         const portfolioIds = portfolioAccess
-          .map((p) => p.portfolio_id)
+          .map(p => p.portfolio_id)
           .filter(Boolean);
         const portfolioProperties = await this.db.property.findMany({
           where: {
@@ -257,9 +257,7 @@ export class PropertyRepository implements IPropertyRepository {
           },
           select: { id: true },
         });
-        portfolioProperties.forEach((prop) =>
-          accessiblePropertyIds.add(prop.id),
-        );
+        portfolioProperties.forEach(prop => accessiblePropertyIds.add(prop.id));
       }
 
       // 3. Sub-portfolio access
@@ -274,7 +272,7 @@ export class PropertyRepository implements IPropertyRepository {
 
       if (subPortfolioAccess.length > 0) {
         const subPortfolioIds = subPortfolioAccess
-          .map((p) => p.sub_portfolio_id)
+          .map(p => p.sub_portfolio_id)
           .filter(Boolean);
         const subPortfolioProperties = await this.db.property.findMany({
           where: {
@@ -282,7 +280,7 @@ export class PropertyRepository implements IPropertyRepository {
           },
           select: { id: true },
         });
-        subPortfolioProperties.forEach((prop) =>
+        subPortfolioProperties.forEach(prop =>
           accessiblePropertyIds.add(prop.id),
         );
       }
@@ -506,10 +504,10 @@ export class PropertyRepository implements IPropertyRepository {
 
         // Get portfolio IDs and sub-portfolio IDs from permissions
         const portfolioIds = userPermissions
-          .map((perm) => perm.portfolio_id)
+          .map(perm => perm.portfolio_id)
           .filter(Boolean);
         const subPortfolioIds = userPermissions
-          .map((perm) => perm.sub_portfolio_id)
+          .map(perm => perm.sub_portfolio_id)
           .filter(Boolean);
 
         const portfolios = await this.db.portfolio.findMany({
@@ -626,7 +624,7 @@ export class PropertyRepository implements IPropertyRepository {
         },
         select: { property_id: true },
       });
-      directAccess.forEach((perm) => {
+      directAccess.forEach(perm => {
         if (perm.property_id) accessiblePropertyIds.add(perm.property_id);
       });
 
@@ -641,7 +639,7 @@ export class PropertyRepository implements IPropertyRepository {
 
       if (portfolioAccess.length > 0) {
         const portfolioIds = portfolioAccess
-          .map((p) => p.portfolio_id)
+          .map(p => p.portfolio_id)
           .filter(Boolean);
         const portfolioProperties = await this.db.property.findMany({
           where: {
@@ -652,9 +650,7 @@ export class PropertyRepository implements IPropertyRepository {
           },
           select: { id: true },
         });
-        portfolioProperties.forEach((prop) =>
-          accessiblePropertyIds.add(prop.id),
-        );
+        portfolioProperties.forEach(prop => accessiblePropertyIds.add(prop.id));
       }
 
       const subPortfolioAccess =
@@ -668,7 +664,7 @@ export class PropertyRepository implements IPropertyRepository {
 
       if (subPortfolioAccess.length > 0) {
         const subPortfolioIds = subPortfolioAccess
-          .map((p) => p.sub_portfolio_id)
+          .map(p => p.sub_portfolio_id)
           .filter(Boolean);
         const subPortfolioProperties = await this.db.property.findMany({
           where: {
@@ -676,7 +672,7 @@ export class PropertyRepository implements IPropertyRepository {
           },
           select: { id: true },
         });
-        subPortfolioProperties.forEach((prop) =>
+        subPortfolioProperties.forEach(prop =>
           accessiblePropertyIds.add(prop.id),
         );
       }
@@ -699,7 +695,7 @@ export class PropertyRepository implements IPropertyRepository {
               portfolio: true,
             },
           },
-        }
+        },
       });
 
       return properties;

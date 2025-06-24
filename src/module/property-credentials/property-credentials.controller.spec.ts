@@ -9,7 +9,9 @@ describe('PropertyCredentialsController', () => {
       controllers: [PropertyCredentialsController],
     }).compile();
 
-    controller = module.get<PropertyCredentialsController>(PropertyCredentialsController);
+    controller = module.get<PropertyCredentialsController>(
+      PropertyCredentialsController,
+    );
   });
 
   it('should be defined', () => {

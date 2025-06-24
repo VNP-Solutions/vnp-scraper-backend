@@ -194,6 +194,8 @@ model Property {
   booking_status                String?
   agoda_id                      Int?
   agoda_status                  String?
+  user_email                    String
+  user_password                 String
   createdAt                     DateTime @default(now())
   updatedAt                     DateTime @updatedAt
   
