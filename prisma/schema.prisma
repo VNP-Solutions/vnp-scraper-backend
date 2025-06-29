@@ -144,6 +144,7 @@ model SubPortfolio {
 
 model Job {
   id                            String      @id @default(auto()) @map("_id") @db.ObjectId
+  name                          String?
   job_status                    JobStatus   @default(Pending)
   portfolio_id                  String?     @db.ObjectId
   sub_portfolio_id              String?     @db.ObjectId
@@ -164,13 +165,14 @@ model Job {
   max_retries                   Int         @default(3)
   retry_delay_ms                Int?
   priority                      Int         @default(0)
-  job_backoff_length_loading     Int
+  job_backoff_length_loading    Int
   job_backoff_length_selector   Int   
   queue_name                    String?
   worker_assigned               String?
   batch_execution_id            String?
   start_date                    String?
   end_date                      String?
+  log_link                      String?
   createdAt                     DateTime    @default(now())
   updatedAt                     DateTime    @updatedAt
 
