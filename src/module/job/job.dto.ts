@@ -1,7 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { JobStatus, PostingType, OTAProvider } from '@prisma/client';
+import { JobStatus, OTAProvider, PostingType } from '@prisma/client';
 
 export class CreateJobDto {
+  @ApiProperty({ required: false })
+  name?: string;
+
   @ApiProperty({ enum: JobStatus, default: JobStatus.Pending })
   job_status?: JobStatus;
 
@@ -82,9 +85,18 @@ export class CreateJobDto {
 
   @ApiProperty({ required: false })
   end_date?: string;
+
+  @ApiProperty({ required: false })
+  log_link?: string;
+
+  @ApiProperty({ required: false })
+  live_url?: string;
 }
 
 export class UpdateJobDto implements Partial<CreateJobDto> {
+  @ApiProperty({ required: false })
+  name?: string;
+
   @ApiProperty({ required: false })
   job_status?: JobStatus;
 
@@ -126,4 +138,10 @@ export class UpdateJobDto implements Partial<CreateJobDto> {
 
   @ApiProperty({ required: false })
   end_date?: string;
+
+  @ApiProperty({ required: false })
+  log_link?: string;
+
+  @ApiProperty({ required: false })
+  live_url?: string;
 }
