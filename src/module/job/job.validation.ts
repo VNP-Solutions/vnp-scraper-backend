@@ -1,5 +1,5 @@
+import { JobStatus, OTAProvider, PostingType } from '@prisma/client';
 import { z } from 'zod';
-import { JobStatus, PostingType, OTAProvider } from '@prisma/client';
 
 // MongoDB ObjectId validation
 const objectIdSchema = z.string().regex(/^[0-9a-fA-F]{24}$/, {
@@ -7,15 +7,28 @@ const objectIdSchema = z.string().regex(/^[0-9a-fA-F]{24}$/, {
 });
 
 export const createJobSchema = z.object({
+  name: z.string().optional().nullable(),
   job_status: z.nativeEnum(JobStatus).default(JobStatus.Pending),
   portfolio_id: objectIdSchema.optional(),
   sub_portfolio_id: objectIdSchema.optional(),
   property_id: objectIdSchema.optional(),
   posting_type: z.nativeEnum(PostingType),
-  portfolio_name: z.string().min(1, 'Portfolio name is required').optional().nullable(),
-  sub_portfolio_name: z.string().min(1, 'Sub portfolio name is required').optional().nullable(),
+  portfolio_name: z
+    .string()
+    .min(1, 'Portfolio name is required')
+    .optional()
+    .nullable(),
+  sub_portfolio_name: z
+    .string()
+    .min(1, 'Sub portfolio name is required')
+    .optional()
+    .nullable(),
   property_name: z.string().min(1, 'Property name is required'),
-  billing_type: z.string().min(1, 'Billing type is required').optional().nullable(),
+  billing_type: z
+    .string()
+    .min(1, 'Billing type is required')
+    .optional()
+    .nullable(),
   next_due_date: z.string(),
   ota_provider: z.nativeEnum(OTAProvider),
   remaining_direct_billed: z.number().min(0),
@@ -33,6 +46,8 @@ export const createJobSchema = z.object({
   batch_execution_id: z.string().optional(),
   start_date: z.string().optional().nullable(),
   end_date: z.string().optional().nullable(),
+  log_link: z.string().optional().nullable(),
+  live_url: z.string().optional().nullable(),
 });
 
 export const updateJobSchema = createJobSchema.partial();

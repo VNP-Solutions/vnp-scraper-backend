@@ -173,6 +173,7 @@ model Job {
   start_date                    String?
   end_date                      String?
   log_link                      String?
+  live_url                      String?
   createdAt                     DateTime    @default(now())
   updatedAt                     DateTime    @updatedAt
 
