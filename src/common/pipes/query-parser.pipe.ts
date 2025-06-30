@@ -46,7 +46,7 @@ export class QueryParserPipe implements PipeTransform {
         delete query[item];
       }
 
-      if (!Number.isNaN(Number(query[item])) && item !== 'phone_number') {
+      if (!Number.isNaN(Number(query[item])) && item !== 'phone_number' && item !== 'search') {
         query[item] = Number(query[item]);
       }
     });
