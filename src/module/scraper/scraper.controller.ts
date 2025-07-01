@@ -5,8 +5,10 @@ import {
   Get,
   HttpStatus,
   Inject,
+  Logger,
   Param,
   Post,
+  Query,
   Req,
   Res,
 } from '@nestjs/common';
@@ -21,6 +23,8 @@ import {
 } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { firstValueFrom } from 'rxjs';
+import { ParseQuery } from '../../common/decorators/parse-query.decorator';
+import { ResponseHandler } from '../../common/utils/response-handler';
 import { IScraperJobItemService } from './scraper-job-item.interface';
 import {
   AllJobItemsResponseDto,
@@ -554,26 +558,29 @@ export class ScraperController {
   @ApiResponse({ status: 200, description: 'Job items retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Job not found' })
   @ApiResponse({ status: 500, description: 'Server error' })
+  @ParseQuery()
   async jobItems(
-    @Req() req: Request,
+    @Query() query: Record<string, any>,
     @Res() res: Response,
     @Param('jobId') jobId: string,
   ) {
-    try {
-      const response = await firstValueFrom(
-        this.httpService.get(`${this.scraperBaseUrl}/api/jobs/${jobId}/items`, {
-          headers: req.headers,
-          params: req.query,
-        }),
-      );
-      return res.status(response.status).json(response.data);
-    } catch (error: any) {
-      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
-      const data = error.response?.data || {
-        message: 'Expedia Job server is down',
-      };
-      return res.status(status).json(data);
-    }
+    return ResponseHandler.handler(
+      res,
+      async () => {
+        const result =
+          await this.jobItemService.getJobItemsByJobIdWithPagination(
+            jobId,
+            query,
+          );
+        return {
+          statusCode: 200,
+          message: 'Job items retrieved successfully',
+          data: result.data,
+          metadata: result.metadata,
+        };
+      },
+      new Logger('ScraperController'),
+    );
   }
 
   @Get('/api/jobs/:jobId/all-items')
