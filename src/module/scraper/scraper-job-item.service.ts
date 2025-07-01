@@ -25,4 +25,23 @@ export class ScraperJobItemService implements IScraperJobItemService {
       throw error;
     }
   }
+
+  async getJobItemsByJobIdWithPagination(
+    jobId: string,
+    query?: Record<string, any>,
+  ): Promise<{ data: JobItem[]; metadata: any }> {
+    try {
+      const result = await this.jobItemRepository.findAllByJobIdWithPagination(
+        jobId,
+        query,
+      );
+      return result;
+    } catch (error) {
+      this.logger.error(
+        `Error getting job items for job ${jobId}: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
 }
