@@ -3,11 +3,11 @@ import { Injectable, PipeTransform } from '@nestjs/common';
 @Injectable()
 export class QueryParserPipe implements PipeTransform {
   transform(value: any) {
-    if (!value) return {};
+    if (!value || typeof value !== 'object') return {};
 
     const query = value as Record<string, unknown>;
 
-    Object.keys(query).forEach(item => {
+    Object.keys(query).forEach((item) => {
       const value = query[item];
 
       if (typeof value === 'string') {
@@ -46,8 +46,16 @@ export class QueryParserPipe implements PipeTransform {
         delete query[item];
       }
 
-      if (!Number.isNaN(Number(query[item])) && item !== 'phone_number' && item !== 'search') {
-        query[item] = Number(query[item]);
+      // Only convert to number if it's a valid number and not an ID-like string
+      const stringValue = String(query[item]);
+      const isValidNumber =
+        !Number.isNaN(Number(stringValue)) && stringValue.trim() !== '';
+      const isNotSpecialField = item !== 'phone_number' && item !== 'search';
+      const isNotObjectId = !/^[a-f\d]{24}$/i.test(stringValue); // MongoDB ObjectId pattern
+      const isNotLongId = stringValue.length < 20; // Avoid converting long ID strings
+
+      if (isValidNumber && isNotSpecialField && isNotObjectId && isNotLongId) {
+        query[item] = Number(stringValue);
       }
     });
 

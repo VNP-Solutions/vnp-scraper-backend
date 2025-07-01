@@ -8,7 +8,6 @@ import {
   Param,
   Post,
   Put,
-  Query,
   Req,
   Res,
   UseGuards,
@@ -21,12 +20,12 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { Response } from 'express';
+import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
 import { ResponseHandler } from 'src/common/utils/response-handler';
 import { CreatePortfolioDto, UpdatePortfolioDto } from './portfolio.dto';
 import { IPortfolioService } from './portfolio.interface';
 
-import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { createPortfolioSchema } from './portfolio.validation';
 @ApiTags('Portfolios')
@@ -83,7 +82,6 @@ export class PortfolioController {
 
   @Get()
   @UseGuards(JwtAuthGuard)
-  @ParseQuery()
   @ApiOperation({
     summary: 'Get all portfolios with filtering, sorting and pagination',
   })
@@ -131,7 +129,7 @@ export class PortfolioController {
   })
   async getAllPortfolios(
     @Req() request: Request,
-    @Query() query: Record<string, any>,
+    @ParseQuery() query: Record<string, any>,
     @Res() response: Response,
   ) {
     const { user } = request as any;

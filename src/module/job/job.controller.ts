@@ -8,7 +8,6 @@ import {
   Param,
   Post,
   Put,
-  Query,
   Req,
   Res,
   UseGuards,
@@ -110,9 +109,8 @@ export class JobController {
     required: false,
     description: 'End date for filtering',
   })
-  @ParseQuery()
   async getAllJobs(
-    @Query() query: Record<string, any>,
+    @ParseQuery() query: Record<string, any>,
     @Res() response: Response,
   ) {
     return ResponseHandler.handler(

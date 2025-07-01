@@ -5,7 +5,6 @@ import {
   Get,
   Inject,
   Param,
-  Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
@@ -102,8 +101,7 @@ export class OtpLogController {
     required: false,
     description: 'Filter by IP address',
   })
-  @ParseQuery()
-  async getAllOtps(@Request() req, @Query() query: Record<string, any>) {
+  async getAllOtps(@Request() req, @ParseQuery() query: Record<string, any>) {
     this.checkAdminRole(req);
     const { page = 1, limit = 10, ...otherQuery } = query;
     return this.otpLogService.getAllOtps(page, limit, otherQuery);

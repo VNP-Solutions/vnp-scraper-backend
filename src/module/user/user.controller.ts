@@ -7,8 +7,6 @@ import {
   Logger,
   Param,
   Patch,
-  Post,
-  Query,
   Res,
   UseGuards,
 } from '@nestjs/common';
@@ -26,9 +24,7 @@ import { ResponseHandler } from 'src/common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UpdateUserDto } from './user.dto';
 import { IUserService } from './user.interface';
-import {
-  updateUserWithBusinessRulesSchema,
-} from './user.validation';
+import { updateUserWithBusinessRulesSchema } from './user.validation';
 
 @ApiTags('Users')
 @ApiBearerAuth('JWT-auth')
@@ -82,9 +78,8 @@ export class UserController {
     description: 'End date for filtering',
   })
   @ApiResponse({ status: 200, description: 'Returns list of users' })
-  @ParseQuery()
   async getAllUsers(
-    @Query() query: Record<string, any>,
+    @ParseQuery() query: Record<string, any>,
     @Res() response: Response,
   ) {
     return ResponseHandler.handler(

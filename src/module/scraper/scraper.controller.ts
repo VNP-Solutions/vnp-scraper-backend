@@ -8,7 +8,6 @@ import {
   Logger,
   Param,
   Post,
-  Query,
   Req,
   Res,
 } from '@nestjs/common';
@@ -558,9 +557,8 @@ export class ScraperController {
   @ApiResponse({ status: 200, description: 'Job items retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Job not found' })
   @ApiResponse({ status: 500, description: 'Server error' })
-  @ParseQuery()
   async jobItems(
-    @Query() query: Record<string, any>,
+    @ParseQuery() query: Record<string, any>,
     @Res() res: Response,
     @Param('jobId') jobId: string,
   ) {

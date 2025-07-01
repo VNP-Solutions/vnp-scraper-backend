@@ -314,7 +314,7 @@ model UserInvitation {
 model JobItem {
   id                           String      @id @default(auto()) @map("_id") @db.ObjectId
   job_id                       String      @db.ObjectId
-  property_id                  String      @db.ObjectId
+  property_id                  String?     @db.ObjectId
   guest_name                   String
   
   reservation_id               String
@@ -342,7 +342,7 @@ model JobItem {
 
   // Relations
   job                          Job         @relation(fields: [job_id], references: [id], onDelete: Cascade)
-  property                     Property    @relation(fields: [property_id], references: [id], onDelete: Cascade)
+  property                     Property?   @relation(fields: [property_id], references: [id], onDelete: Cascade)
 
   @@map("job_items")
 }
