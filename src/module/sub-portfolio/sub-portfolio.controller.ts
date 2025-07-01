@@ -8,7 +8,6 @@ import {
   Param,
   Patch,
   Post,
-  Query,
   Req,
   Res,
   UseGuards,
@@ -136,10 +135,9 @@ export class SubPortfolioController {
     description: 'Portfolio ID for filtering',
   })
   @UseGuards(JwtAuthGuard)
-  @ParseQuery()
   async getAllSubPortfolios(
     @Req() request: Request,
-    @Query() query: Record<string, any>,
+    @ParseQuery() query: Record<string, any>,
     @Res() response: Response,
   ) {
     const { user } = request as any;

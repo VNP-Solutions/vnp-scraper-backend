@@ -5,7 +5,6 @@ import {
   Get,
   Inject,
   Param,
-  Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
@@ -96,8 +95,7 @@ export class ActivityLogController {
     required: false,
     description: 'Filter by resource type',
   })
-  @ParseQuery()
-  async getAllLogs(@Request() req, @Query() query: Record<string, any>) {
+  async getAllLogs(@Request() req, @ParseQuery() query: Record<string, any>) {
     this.checkAdminRole(req);
     const { page = 1, limit = 10, ...otherQuery } = query;
     return this.activityLogService.getAllLogs(page, limit, otherQuery);

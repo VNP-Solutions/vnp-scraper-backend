@@ -88,7 +88,6 @@ export class PropertyController {
     description: 'Returns list of properties',
   })
   @UseGuards(JwtAuthGuard)
-  @ParseQuery()
   @ApiQuery({
     name: 'search',
     required: false,
@@ -167,9 +166,12 @@ export class PropertyController {
     required: false,
     description: 'Filter by Agoda status',
   })
-  async getAllProperties(@Req() request: Request, @Res() response: Response) {
+  async getAllProperties(
+    @Req() request: Request,
+    @ParseQuery() query: Record<string, any>,
+    @Res() response: Response,
+  ) {
     const { user } = request as any;
-    const query = (request as any).query as Record<string, any>;
     let properties = null;
     if (user.role !== 'admin') {
       properties = await this.propertyService.getFilteredProperty(

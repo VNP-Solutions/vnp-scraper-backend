@@ -8,7 +8,6 @@ import {
   Param,
   Patch,
   Post,
-  Query,
   Req,
   Res,
   UseGuards,
@@ -23,6 +22,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { Response } from 'express';
+import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { ResponseHandler } from 'src/common/utils/response-handler';
 import { ValidateBody } from '../../common/decorators/validate.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -39,7 +39,6 @@ import {
   resendInvitationSchema,
   updateInvitationSchema,
 } from './user-invitation.validation';
-import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 
 @ApiTags('User Invitations')
 @Controller('/invitations')
@@ -170,10 +169,9 @@ export class UserInvitationController {
     description: 'Search by email or inviter name',
   })
   @UseGuards(JwtAuthGuard)
-  @ParseQuery()
   async getAllInvitations(
     @Req() request: Request,
-    @Query() query: Record<string, any>,
+    @ParseQuery() query: Record<string, any>,
     @Res() response: Response,
   ) {
     return ResponseHandler.handler(
