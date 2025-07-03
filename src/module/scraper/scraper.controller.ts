@@ -496,7 +496,8 @@ export class ScraperController {
     try {
       const response = await firstValueFrom(
         this.httpService.post(
-          `${this.scraperBaseUrl}/api/expedia/rerun-failed-job`,
+          // `${this.scraperBaseUrl}/api/expedia/rerun-failed-job`,
+          `https://modular-api.vnpmanage.online/api/expedia/rerun-failed-job`,
           body,
           {
             headers: {
