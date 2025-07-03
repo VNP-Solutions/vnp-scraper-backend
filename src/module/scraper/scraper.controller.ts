@@ -32,6 +32,8 @@ import {
   PauseResumeStopResponseDto,
   PropertyRunJobRequestDto,
   PropertyRunJobResponseDto,
+  RerunFailedJobRequestDto,
+  RerunFailedJobResponseDto,
   ReservationRunJobRequestDto,
   ReservationRunJobResponseDto,
   ScrapingStatusResponseDto,
@@ -438,6 +440,63 @@ export class ScraperController {
       const response = await firstValueFrom(
         this.httpService.post(
           `${this.scraperBaseUrl}/api/expedia/reservation-run-job`,
+          body,
+          {
+            headers: {
+              ...req.headers,
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            timeout: 300000, // 5 minute timeout for long-running scraping jobs
+          },
+        ),
+      );
+      return res.status(response.status).json(response.data);
+    } catch (error: any) {
+      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
+      const data = error.response?.data || {
+        message: 'Expedia Job server is down',
+      };
+      return res.status(status).json(data);
+    }
+  }
+
+  @Post('/api/expedia/rerun-failed-job')
+  @ApiOperation({
+    summary: 'Rerun failed or partial failed job',
+    description:
+      'Rerun a job that has failed or partially completed. This endpoint specifically handles jobs with Failed or Partial status and resets them to run again.',
+  })
+  @ApiBody({ type: RerunFailedJobRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Failed/partial job rerun completed successfully',
+    type: RerunFailedJobResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid request or job not eligible for rerun',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Job not found',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Error processing job rerun',
+    type: ErrorResponseDto,
+  })
+  async rerunFailedJob(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Body() body: RerunFailedJobRequestDto,
+  ) {
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${this.scraperBaseUrl}/api/expedia/rerun-failed-job`,
           body,
           {
             headers: {

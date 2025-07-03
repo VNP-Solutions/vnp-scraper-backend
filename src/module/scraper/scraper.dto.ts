@@ -126,3 +126,57 @@ export class AllJobItemsResponseDto {
     jobId: string;
   };
 }
+
+export class RerunFailedJobRequestDto {
+  @ApiProperty({
+    example: '01/01/2024',
+    description: 'Start date for scraping (MM/DD/YYYY format)',
+  })
+  startDate: string;
+
+  @ApiProperty({
+    example: '01/31/2024',
+    description: 'End date for scraping (MM/DD/YYYY format)',
+  })
+  endDate: string;
+
+  @ApiProperty({
+    example: '507f1f77bcf86cd799439011',
+    description: 'MongoDB ObjectId of the failed/partial job to rerun',
+  })
+  jobId: string;
+}
+
+export class JobProgressDto {
+  @ApiProperty({ example: 150 })
+  totalItems: number;
+
+  @ApiProperty({ example: 140 })
+  itemsWithCardInfo: number;
+
+  @ApiProperty({ example: 135 })
+  itemsWithPaymentInfo: number;
+
+  @ApiProperty({ example: 90 })
+  completionPercentage: number;
+}
+
+export class RerunFailedJobResponseDto {
+  @ApiProperty({ example: 200 })
+  status: number;
+
+  @ApiProperty({ example: 'Failed job rerun completed successfully' })
+  message: string;
+
+  @ApiProperty({ example: '507f1f77bcf86cd799439011' })
+  jobId: string;
+
+  @ApiProperty({ example: 'Failed' })
+  originalStatus: string;
+
+  @ApiProperty({ example: 'Completed' })
+  finalStatus: string;
+
+  @ApiProperty({ type: JobProgressDto })
+  progress: JobProgressDto;
+}
