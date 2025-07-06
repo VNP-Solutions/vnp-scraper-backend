@@ -513,7 +513,7 @@ export class ScraperController {
       console.log('Ekhane asche 2');
       return res.status(response.status).json(response.data);
     } catch (error: any) {
-      console.log('Ekhane asche 3');
+      console.log('Error:\n' + error);
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
       const data = error.response?.data || {
         message: 'Expedia Job server is down',
