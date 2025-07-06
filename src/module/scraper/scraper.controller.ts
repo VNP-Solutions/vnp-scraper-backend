@@ -51,7 +51,7 @@ export class ScraperController {
     private readonly jobItemService: IScraperJobItemService,
   ) {
     const baseUrl =
-      this.configService.get<string>('SCRAPER_BASE_URL') || '127.0.0.1:3000';
+      this.configService.get<string>('SCRAPER_BASE_URL');
 
     // Add http:// protocol if missing
     this.scraperBaseUrl =
@@ -233,7 +233,7 @@ export class ScraperController {
           body,
           {
             headers: {
-              ...req.headers,
+              // ...req.headers,
               'Content-Type': 'application/json',
               Accept: 'application/json',
             },
@@ -329,7 +329,7 @@ export class ScraperController {
           body,
           {
             headers: {
-              ...req.headers,
+              // ...req.headers,
               'Content-Type': 'application/json',
               Accept: 'application/json',
             },
@@ -385,7 +385,7 @@ export class ScraperController {
           `${this.scraperBaseUrl}/api/expedia/property-run-job`,
           body,
           {
-            ...req.headers,
+            // ...req.headers,
             headers: {
               'Content-Type': 'application/json',
               Accept: 'application/json',
@@ -442,8 +442,8 @@ export class ScraperController {
           `${this.scraperBaseUrl}/api/expedia/reservation-run-job`,
           body,
           {
+            // ...req.headers,
             headers: {
-              ...req.headers,
               'Content-Type': 'application/json',
               Accept: 'application/json',
             },
@@ -494,15 +494,13 @@ export class ScraperController {
     @Body() body: RerunFailedJobRequestDto,
   ) {
     try {
-      console.log('Ekhane asche 1');
       const response = await firstValueFrom(
         this.httpService.post(
-          // `${this.scraperBaseUrl}/api/expedia/rerun-failed-job`,
-          `https://modular-api.vnpmanage.online/api/expedia/rerun-failed-job`,
+          `${this.scraperBaseUrl}/api/expedia/rerun-failed-job`,
           body,
           {
+            // ...req.headers,
             headers: {
-              ...req.headers,
               'Content-Type': 'application/json',
               Accept: 'application/json',
             },
@@ -510,10 +508,8 @@ export class ScraperController {
           },
         ),
       );
-      console.log('Ekhane asche 2');
       return res.status(response.status).json(response.data);
     } catch (error: any) {
-      console.log('Error:\n' + error);
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
       const data = error.response?.data || {
         message: 'Expedia Job server is down',
