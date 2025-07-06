@@ -494,6 +494,7 @@ export class ScraperController {
     @Body() body: RerunFailedJobRequestDto,
   ) {
     try {
+      console.log('Ekhane asche 1');
       const response = await firstValueFrom(
         this.httpService.post(
           // `${this.scraperBaseUrl}/api/expedia/rerun-failed-job`,
@@ -509,8 +510,10 @@ export class ScraperController {
           },
         ),
       );
+      console.log('Ekhane asche 2');
       return res.status(response.status).json(response.data);
     } catch (error: any) {
+      console.log('Ekhane asche 3');
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
       const data = error.response?.data || {
         message: 'Expedia Job server is down',
