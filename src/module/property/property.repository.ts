@@ -615,93 +615,267 @@ export class PropertyRepository implements IPropertyRepository {
         });
       }
 
-      const accessiblePropertyIds = new Set<string>();
-
-      const directAccess = await this.db.userFeatureAccessPermission.findMany({
-        where: {
-          user_id: userId,
-          property_id: { not: null },
-        },
-        select: { property_id: true },
-      });
-      directAccess.forEach(perm => {
-        if (perm.property_id) accessiblePropertyIds.add(perm.property_id);
-      });
-
-      const portfolioAccess =
+      // Non-admin users only see properties they have permissions for
+      const userPermissions =
         await this.db.userFeatureAccessPermission.findMany({
           where: {
             user_id: userId,
-            portfolio_id: { not: null },
           },
-          select: { portfolio_id: true },
+          include: {
+            portfolio: true,
+            subPortFolio: true,
+            property: true,
+          },
         });
 
-      if (portfolioAccess.length > 0) {
-        const portfolioIds = portfolioAccess
-          .map(p => p.portfolio_id)
-          .filter(Boolean);
-        const portfolioProperties = await this.db.property.findMany({
-          where: {
-            OR: [
-              { portfolio_id: { in: portfolioIds } },
-              { subPortfolio: { portfolio_id: { in: portfolioIds } } },
-            ],
-          },
-          select: { id: true },
-        });
-        portfolioProperties.forEach(prop => accessiblePropertyIds.add(prop.id));
+      const propertyIds = new Set<string>();
+
+      for (const permission of userPermissions) {
+        if (permission.property_id) {
+          propertyIds.add(permission.property_id);
+        }
+
+        if (permission.portfolio_id) {
+          const portfolioProperties = await this.db.property.findMany({
+            where: { portfolio_id: permission.portfolio_id },
+            select: { id: true },
+          });
+          portfolioProperties.forEach((p) => propertyIds.add(p.id));
+        }
+
+        if (permission.sub_portfolio_id) {
+          const subPortfolioProperties = await this.db.property.findMany({
+            where: { sub_portfolio_id: permission.sub_portfolio_id },
+            select: { id: true },
+          });
+          subPortfolioProperties.forEach((p) => propertyIds.add(p.id));
+        }
       }
 
-      const subPortfolioAccess =
-        await this.db.userFeatureAccessPermission.findMany({
-          where: {
-            user_id: userId,
-            sub_portfolio_id: { not: null },
-          },
-          select: { sub_portfolio_id: true },
-        });
-
-      if (subPortfolioAccess.length > 0) {
-        const subPortfolioIds = subPortfolioAccess
-          .map(p => p.sub_portfolio_id)
-          .filter(Boolean);
-        const subPortfolioProperties = await this.db.property.findMany({
-          where: {
-            sub_portfolio_id: { in: subPortfolioIds },
-          },
-          select: { id: true },
-        });
-        subPortfolioProperties.forEach(prop =>
-          accessiblePropertyIds.add(prop.id),
-        );
-      }
-
-      const accessiblePropertyIdsArray = Array.from(accessiblePropertyIds);
-
-      if (accessiblePropertyIdsArray.length === 0) {
-        return [];
-      }
-
-      const properties = await this.db.property.findMany({
+      return await this.db.property.findMany({
         where: {
-          id: { in: accessiblePropertyIdsArray },
+          id: {
+            in: Array.from(propertyIds),
+          },
         },
         include: {
-          credentials: true,
           portfolio: true,
-          subPortfolio: {
-            include: {
-              portfolio: true,
-            },
-          },
+          subPortfolio: true,
         },
       });
-
-      return properties;
     } catch (error) {
-      this.logger.error(error);
+      this.logger.error('Error finding properties by user permission:', error);
       return [];
+    }
+  }
+
+  // Portfolio operations
+  async findPortfolioByName(name: string): Promise<any> {
+    try {
+      return await this.db.portfolio.findFirst({
+        where: { name: name.trim() },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Error finding portfolio by name: ${error.message}`,
+        error.stack,
+      );
+      return null;
+    }
+  }
+
+  async createPortfolio(name: string): Promise<any> {
+    try {
+      return await this.db.portfolio.create({
+        data: { name: name.trim() },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Error creating portfolio: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  // Sub-portfolio operations
+  async findSubPortfolioByNameAndPortfolio(
+    name: string,
+    portfolioId: string,
+  ): Promise<any> {
+    try {
+      return await this.db.subPortfolio.findFirst({
+        where: {
+          name: name.trim(),
+          portfolio_id: portfolioId,
+        },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Error finding sub-portfolio by name and portfolio: ${error.message}`,
+        error.stack,
+      );
+      return null;
+    }
+  }
+
+  async createSubPortfolio(name: string, portfolioId: string): Promise<any> {
+    try {
+      return await this.db.subPortfolio.create({
+        data: {
+          name: name.trim(),
+          portfolio_id: portfolioId,
+        },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Error creating sub-portfolio: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  // Property operations for import
+  async findPropertyByNameAndRelations(
+    name: string,
+    portfolioId?: string,
+    subPortfolioId?: string,
+  ): Promise<any> {
+    try {
+      const whereClause: any = {
+        name: name.trim(),
+      };
+
+      if (portfolioId) {
+        whereClause.portfolio_id = portfolioId;
+      }
+
+      if (subPortfolioId) {
+        whereClause.sub_portfolio_id = subPortfolioId;
+      }
+
+      return await this.db.property.findFirst({
+        where: whereClause,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Error finding property by name and relations: ${error.message}`,
+        error.stack,
+      );
+      return null;
+    }
+  }
+
+  // Property credentials operations
+  async createPropertyCredentials(
+    propertyId: string,
+    credentialsData: any,
+  ): Promise<any> {
+    try {
+      const credentialsPayload: any = {
+        property_id: propertyId,
+      };
+
+      // Add credential fields if they exist
+      if (credentialsData.expediaUsername)
+        credentialsPayload.expediaUsername = credentialsData.expediaUsername;
+      if (credentialsData.expediaPassword)
+        credentialsPayload.expediaPassword = credentialsData.expediaPassword;
+      if (credentialsData.agodaUsername)
+        credentialsPayload.agodaUsername = credentialsData.agodaUsername;
+      if (credentialsData.agodaPassword)
+        credentialsPayload.agodaPassword = credentialsData.agodaPassword;
+      if (credentialsData.bookingUsername)
+        credentialsPayload.bookingUsername = credentialsData.bookingUsername;
+      if (credentialsData.bookingPassword)
+        credentialsPayload.bookingPassword = credentialsData.bookingPassword;
+      if (credentialsData.expediaEmailAssociated)
+        credentialsPayload.expediaEmailAssociated =
+          credentialsData.expediaEmailAssociated;
+      if (credentialsData.propertyContactEmail)
+        credentialsPayload.propertyContactEmail =
+          credentialsData.propertyContactEmail;
+      if (credentialsData.portfolioContactEmail)
+        credentialsPayload.portfolioContactEmail =
+          credentialsData.portfolioContactEmail;
+      if (
+        credentialsData.multiplePortfolioEmails &&
+        Array.isArray(credentialsData.multiplePortfolioEmails)
+      ) {
+        credentialsPayload.multiplePortfolioEmails =
+          credentialsData.multiplePortfolioEmails;
+      }
+
+      return await this.db.propertyCredentials.create({
+        data: credentialsPayload,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Error creating property credentials: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async updatePropertyCredentials(
+    propertyId: string,
+    credentialsData: any,
+  ): Promise<any> {
+    try {
+      const updatePayload: any = {};
+
+      // Add credential fields if they exist
+      if (credentialsData.expediaUsername !== undefined)
+        updatePayload.expediaUsername = credentialsData.expediaUsername;
+      if (credentialsData.expediaPassword !== undefined)
+        updatePayload.expediaPassword = credentialsData.expediaPassword;
+      if (credentialsData.agodaUsername !== undefined)
+        updatePayload.agodaUsername = credentialsData.agodaUsername;
+      if (credentialsData.agodaPassword !== undefined)
+        updatePayload.agodaPassword = credentialsData.agodaPassword;
+      if (credentialsData.bookingUsername !== undefined)
+        updatePayload.bookingUsername = credentialsData.bookingUsername;
+      if (credentialsData.bookingPassword !== undefined)
+        updatePayload.bookingPassword = credentialsData.bookingPassword;
+      if (credentialsData.expediaEmailAssociated !== undefined)
+        updatePayload.expediaEmailAssociated =
+          credentialsData.expediaEmailAssociated;
+      if (credentialsData.propertyContactEmail !== undefined)
+        updatePayload.propertyContactEmail =
+          credentialsData.propertyContactEmail;
+      if (credentialsData.portfolioContactEmail !== undefined)
+        updatePayload.portfolioContactEmail =
+          credentialsData.portfolioContactEmail;
+      if (credentialsData.multiplePortfolioEmails !== undefined)
+        updatePayload.multiplePortfolioEmails =
+          credentialsData.multiplePortfolioEmails;
+
+      return await this.db.propertyCredentials.updateMany({
+        where: { property_id: propertyId },
+        data: updatePayload,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Error updating property credentials: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async findPropertyCredentialsByPropertyId(propertyId: string): Promise<any> {
+    try {
+      return await this.db.propertyCredentials.findFirst({
+        where: { property_id: propertyId },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Error finding property credentials: ${error.message}`,
+        error.stack,
+      );
+      return null;
     }
   }
 }

@@ -10,10 +10,14 @@ import {
   Put,
   Req,
   Res,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiOperation,
   ApiQuery,
   ApiResponse,
@@ -22,9 +26,14 @@ import {
 import { Response } from 'express';
 import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
+import { ExcelFileInterceptor } from 'src/common/interceptors';
 import { ResponseHandler } from 'src/common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CreatePropertyDto, UpdatePropertyDto } from './property.dto';
+import {
+  CreatePropertyDto,
+  ImportPropertiesResponseDto,
+  UpdatePropertyDto,
+} from './property.dto';
 import { IPropertyService } from './property.interface';
 import { createPropertySchema } from './property.validation';
 
@@ -484,6 +493,93 @@ export class PropertyController {
           statusCode: 200,
           message: 'Properties retrieved successfully',
           data: properties,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Post('/import')
+  @ApiOperation({
+    summary: 'Import properties from Excel file',
+    description:
+      'Upload an Excel file to import properties, portfolios, and sub-portfolios. The Excel file should contain columns: Portfolio (optional), Sub Portfolio (optional), Property (required), user_email, user_password, and credential columns like expediaUsername, expediaPassword, agodaUsername, agodaPassword, bookingUsername, bookingPassword, expediaEmailAssociated, propertyContactEmail, portfolioContactEmail, multiplePortfolioEmails.',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description: 'Excel file for property import',
+    type: 'multipart/form-data',
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+          description:
+            'Excel file (.xlsx, .xls, .csv) containing property data',
+        },
+      },
+      required: ['file'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Properties imported successfully',
+    type: ImportPropertiesResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - Invalid file or missing required columns',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - Admin access required',
+  })
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(ExcelFileInterceptor)
+  async importProperties(
+    @Req() request: Request,
+    @UploadedFile() file: Express.Multer.File,
+    @Res() response: Response,
+  ) {
+    const { user } = request as any;
+    if (user.role !== 'admin') {
+      return ResponseHandler.handler(
+        response,
+        async () => {
+          return {
+            statusCode: 403,
+            message: 'You are not authorized to import properties',
+            data: null,
+          };
+        },
+        this.logger,
+      );
+    }
+
+    if (!file) {
+      return ResponseHandler.handler(
+        response,
+        async () => {
+          return {
+            statusCode: 400,
+            message: 'Excel file is required',
+            data: null,
+          };
+        },
+        this.logger,
+      );
+    }
+
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result =
+          await this.propertyService.importPropertiesFromExcel(file);
+        return {
+          statusCode: 200,
+          message: `Import completed successfully: ${result.portfoliosCreated} portfolios, ${result.subPortfoliosCreated} sub-portfolios, ${result.propertiesCreated} properties, and ${result.credentialsCreated} credentials created`,
+          data: result,
         };
       },
       this.logger,
