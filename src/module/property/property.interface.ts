@@ -26,6 +26,31 @@ export interface IPropertyRepository {
     userId: string,
     isAdmin: boolean,
   ): Promise<Property[]>;
+  // Portfolio operations
+  findPortfolioByName(name: string): Promise<any>;
+  createPortfolio(name: string): Promise<any>;
+  // Sub-portfolio operations
+  findSubPortfolioByNameAndPortfolio(
+    name: string,
+    portfolioId: string,
+  ): Promise<any>;
+  createSubPortfolio(name: string, portfolioId: string): Promise<any>;
+  // Property operations for import
+  findPropertyByNameAndRelations(
+    name: string,
+    portfolioId?: string,
+    subPortfolioId?: string,
+  ): Promise<any>;
+  // Property credentials operations
+  createPropertyCredentials(
+    propertyId: string,
+    credentialsData: any,
+  ): Promise<any>;
+  updatePropertyCredentials(
+    propertyId: string,
+    credentialsData: any,
+  ): Promise<any>;
+  findPropertyCredentialsByPropertyId(propertyId: string): Promise<any>;
 }
 
 export interface IPropertyService {
@@ -57,4 +82,13 @@ export interface IPropertyService {
   getPropertyCredentials(
     propertyId: string,
   ): Promise<{ user_email: string; user_password: string }>;
+  importPropertiesFromExcel(file: Express.Multer.File): Promise<{
+    portfoliosCreated: number;
+    subPortfoliosCreated: number;
+    propertiesCreated: number;
+    credentialsCreated: number;
+    portfolios: any[];
+    subPortfolios: any[];
+    properties: any[];
+  }>;
 }
