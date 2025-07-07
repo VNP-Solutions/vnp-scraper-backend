@@ -488,8 +488,8 @@ export class PropertyService implements IPropertyService {
                 .trim();
               hasCredentials = true;
             }
-            if (rowData['Username']) {
-              credentialsData.agodaUsername = rowData['Username']
+            if (rowData['User Name']) {
+              credentialsData.agodaUsername = rowData['User Name']
                 .toString()
                 .trim();
               hasCredentials = true;
@@ -500,8 +500,8 @@ export class PropertyService implements IPropertyService {
                 .trim();
               hasCredentials = true;
             }
-            if (rowData['Username']) {
-              credentialsData.bookingUsername = rowData['Username']
+            if (rowData['User Name']) {
+              credentialsData.bookingUsername = rowData['User Name']
                 .toString()
                 .trim();
               hasCredentials = true;
