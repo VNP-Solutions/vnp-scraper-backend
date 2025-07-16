@@ -2,12 +2,13 @@ import { HttpModule } from '@nestjs/axios';
 import { Logger, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { DatabaseService } from '../database/database.service';
+import { JobQueueUrlModule } from '../job-queue-url/job-queue-url.module';
 import { ScraperJobItemRepository } from './scraper-job-item.repository';
 import { ScraperJobItemService } from './scraper-job-item.service';
 import { ScraperController } from './scraper.controller';
 
 @Module({
-  imports: [HttpModule, ConfigModule],
+  imports: [HttpModule, ConfigModule, JobQueueUrlModule],
   controllers: [ScraperController],
   providers: [
     {
