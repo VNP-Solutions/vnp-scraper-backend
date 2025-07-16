@@ -104,11 +104,8 @@ export class JobQueueUrlService implements IJobQueueUrlService {
         throw new NotFoundException('URL not found');
       }
 
-      // Check if URL is currently in use
-      if (
-        existingUrl.status === JobQueueUrlStatus.Booked ||
-        existingUrl.current_job_count > 0
-      ) {
+      // Check if URL is currently in use (skip job count check as requested)
+      if (existingUrl.status === JobQueueUrlStatus.Booked) {
         throw new ConflictException(
           'Cannot delete URL that is currently in use',
         );
@@ -238,10 +235,7 @@ export class JobQueueUrlService implements IJobQueueUrlService {
           (sum, url) => sum + url.max_concurrent_jobs,
           0,
         ),
-        currentUsage: allUrls.reduce(
-          (sum, url) => sum + url.current_job_count,
-          0,
-        ),
+        currentUsage: 0, // Skip job count tracking as requested
       };
 
       return stats;
@@ -258,10 +252,7 @@ export class JobQueueUrlService implements IJobQueueUrlService {
     const allUrls = await this.repository.findAll();
     return allUrls.map((url) => ({
       ...url,
-      usagePercentage:
-        url.max_concurrent_jobs > 0
-          ? Math.round((url.current_job_count / url.max_concurrent_jobs) * 100)
-          : 0,
+      usagePercentage: 0, // Skip job count tracking as requested
     })) as IJobQueueUrl[];
   }
 
@@ -269,11 +260,7 @@ export class JobQueueUrlService implements IJobQueueUrlService {
     try {
       const url = await this.getUrlById(id);
 
-      if (url.current_job_count > 0) {
-        throw new ConflictException(
-          'Cannot set URL to maintenance while jobs are running',
-        );
-      }
+      // Skip job count check as requested - allow maintenance mode regardless
 
       return await this.repository.update(id, {
         status: JobQueueUrlStatus.Maintenance,

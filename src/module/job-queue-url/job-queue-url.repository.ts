@@ -76,11 +76,7 @@ export class JobQueueUrlRepository implements IJobQueueUrlRepository {
           status: JobQueueUrlStatus.Available,
           is_active: true,
         },
-        orderBy: [
-          { priority: 'desc' },
-          { current_job_count: 'asc' },
-          { last_used: 'asc' },
-        ],
+        orderBy: [{ priority: 'desc' }, { last_used: 'asc' }],
       });
     } catch (error: any) {
       this.logger.error(
@@ -148,25 +144,17 @@ export class JobQueueUrlRepository implements IJobQueueUrlRepository {
 
   async findAvailableUrlForBooking(): Promise<IJobQueueUrl | null> {
     try {
-      // Find the best available URL based on priority, current load, and last used time
+      // Find the best available URL based on priority and last used time
       const availableUrls = await this.db.jobQueueUrl.findMany({
         where: {
           status: JobQueueUrlStatus.Available,
           is_active: true,
         },
-        orderBy: [
-          { priority: 'desc' },
-          { current_job_count: 'asc' },
-          { last_used: 'asc' },
-        ],
+        orderBy: [{ priority: 'desc' }, { last_used: 'asc' }],
       });
 
-      // Filter URLs that have capacity for more jobs
-      const availableWithCapacity = availableUrls.filter(
-        (url) => url.current_job_count < url.max_concurrent_jobs,
-      );
-
-      return availableWithCapacity.length > 0 ? availableWithCapacity[0] : null;
+      // Skip job count capacity check as requested - just return first available URL
+      return availableUrls.length > 0 ? availableUrls[0] : null;
     } catch (error: any) {
       this.logger.error(
         `Error finding available URL for booking: ${error.message}`,
@@ -183,9 +171,9 @@ export class JobQueueUrlRepository implements IJobQueueUrlRepository {
         data: {
           status: JobQueueUrlStatus.Booked,
           assigned_to_job_id: jobId,
-          current_job_count: {
-            increment: 1,
-          },
+          // current_job_count: {
+          //   increment: 1,
+          // },
           last_used: new Date(),
         },
       });
@@ -210,7 +198,7 @@ export class JobQueueUrlRepository implements IJobQueueUrlRepository {
         data: {
           status: JobQueueUrlStatus.Available,
           assigned_to_job_id: null,
-          current_job_count: Math.max(0, currentUrl.current_job_count - 1),
+          // current_job_count: Math.max(0, currentUrl.current_job_count - 1),
         },
       });
     } catch (error: any) {
