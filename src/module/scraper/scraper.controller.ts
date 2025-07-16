@@ -427,30 +427,30 @@ export class ScraperController {
       );
 
       // Job completed successfully - release the URL
-      if (bookedUrl) {
-        try {
-          await this.jobQueueUrlService.releaseUrl(bookedUrl.id);
-        } catch (releaseError: any) {
-          console.error(
-            'Failed to release URL after successful job:',
-            releaseError,
-          );
-        }
-      }
+      // if (bookedUrl) {
+      //   try {
+      //     await this.jobQueueUrlService.releaseUrl(bookedUrl.id);
+      //   } catch (releaseError: any) {
+      //     console.error(
+      //       'Failed to release URL after successful job:',
+      //       releaseError,
+      //     );
+      //   }
+      // }
 
       return res.status(response.status).json(response.data);
     } catch (error: any) {
       // Job failed - release the URL if it was booked
-      if (bookedUrl) {
-        try {
-          await this.jobQueueUrlService.releaseUrl(bookedUrl.id);
-        } catch (releaseError: any) {
-          console.error(
-            'Failed to release URL after failed job:',
-            releaseError,
-          );
-        }
-      }
+      // if (bookedUrl) {
+      //   try {
+      //     await this.jobQueueUrlService.releaseUrl(bookedUrl.id);
+      //   } catch (releaseError: any) {
+      //     console.error(
+      //       'Failed to release URL after failed job:',
+      //       releaseError,
+      //     );
+      //   }
+      // }
 
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
       const data = error.response?.data || {
