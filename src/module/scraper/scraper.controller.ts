@@ -613,12 +613,10 @@ export class ScraperController {
     let bookedUrl: any = null;
 
     try {
-      // Extract jobId from request body (assuming it exists)
-      const jobId = (body as any).jobId || `rerun_${Date.now()}`;
-
       // Book an available URL for this job
-      const urlBookingResult =
-        await this.jobQueueUrlService.bookAvailableUrl(jobId);
+      const urlBookingResult = await this.jobQueueUrlService.bookAvailableUrl(
+        body.jobId,
+      );
 
       if (!urlBookingResult.success) {
         return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
