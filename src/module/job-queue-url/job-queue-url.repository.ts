@@ -76,7 +76,7 @@ export class JobQueueUrlRepository implements IJobQueueUrlRepository {
           status: JobQueueUrlStatus.Available,
           is_active: true,
         },
-        orderBy: [{ priority: 'desc' }, { last_used: 'asc' }],
+        orderBy: [{ id: 'asc' }],
       });
     } catch (error: any) {
       this.logger.error(
