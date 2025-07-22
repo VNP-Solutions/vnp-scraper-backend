@@ -150,7 +150,7 @@ export class JobQueueUrlRepository implements IJobQueueUrlRepository {
           status: JobQueueUrlStatus.Available,
           is_active: true,
         },
-        orderBy: [{ priority: 'desc' }, { last_used: 'asc' }],
+        orderBy: [{ id: 'asc' }],
       });
 
       // Skip job count capacity check as requested - just return first available URL
