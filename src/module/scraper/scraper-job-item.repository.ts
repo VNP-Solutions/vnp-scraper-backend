@@ -16,7 +16,16 @@ export class ScraperJobItemRepository implements IScraperJobItemRepository {
         where: { job_id: jobId },
         include: {
           job: true,
-          property: true,
+          property: {
+            include: {
+              portfolio: true,
+              subPortfolio: {
+                include: {
+                  portfolio: true,
+                },
+              },
+            },
+          },
         },
         orderBy: {
           createdAt: 'desc',
