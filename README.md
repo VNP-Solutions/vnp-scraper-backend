@@ -6,7 +6,36 @@ This project serves as the main backend for managing and orchestrating job execu
 
 # Git clone
 ```
-$ git clone <git_link>
+$ git clone [https://github.com/VNP-Solutions/vnp-scraper-backend]
+```
+
+## Compile and run the project
+
+NPM Setup
+
+```bash
+$ npm install --legacy-per-deps
+```
+
+
+```bash
+#switch to working branch
+git switch staging 
+
+#generate prisma schema
+npx prisma generate
+
+#build
+npm run build
+
+# development(don't follow)
+$ npm run start
+
+# watch mode/development
+$ npm run start:dev
+
+# production mode
+$ npm run start:prod
 ```
 
 # Git commands
@@ -25,21 +54,6 @@ $ git switch new-branch
 $ git rebase staging
 $ git push origin new-branch
 ```
-# NPM Setup
 
-```bash
-$ npm install --legacy-per-deps
-```
 
-## Compile and run the project
 
-```bash
-# development(don't follow)
-$ npm run start
-
-# watch mode/development
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
-```
