@@ -261,7 +261,7 @@ model File {
   thumbnile_url                String?
   originalName                 String
   size                         Int
-  property_id                  String?
+  property_id                  String?  @db.ObjectId
   createdAt                    DateTime @default(now())
   updatedAt                    DateTime @updatedAt
 
