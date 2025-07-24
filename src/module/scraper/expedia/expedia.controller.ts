@@ -22,26 +22,30 @@ import {
 } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { firstValueFrom } from 'rxjs';
-import { ParseQuery } from '../../common/decorators/parse-query.decorator';
-import { ResponseHandler } from '../../common/utils/response-handler';
-import { IScraperJobItemService } from './scraper-job-item.interface';
+import { ParseQuery } from '../../../common/decorators/parse-query.decorator';
+import { ResponseHandler } from '../../../common/utils/response-handler';
+import { IScraperJobItemService } from '../scraper-job-item.interface';
 import {
-  AllJobItemsResponseDto,
-  ErrorResponseDto,
-  HealthResponseDto,
-  PauseResumeStopResponseDto,
   PropertyRunJobRequestDto,
   PropertyRunJobResponseDto,
-  RerunFailedJobRequestDto,
-  RerunFailedJobResponseDto,
   ReservationRunJobRequestDto,
   ReservationRunJobResponseDto,
-  ScrapingStatusResponseDto,
-} from './scraper.dto';
+} from './expedia.dto';
+
+import {
+    AllJobItemsResponseDto,
+    ErrorResponseDto,
+    HealthResponseDto,
+    PauseResumeStopResponseDto,
+    RerunFailedJobRequestDto,
+    RerunFailedJobResponseDto,
+    ScrapingStatusResponseDto,
+  } from '../scraper.dto';
+  
 
 @ApiTags('Expedia Scraper')
 @Controller('/expedia')
-export class ScraperController {
+export class ExpediaController {
   private readonly scraperBaseUrl: string;
 
   constructor(
