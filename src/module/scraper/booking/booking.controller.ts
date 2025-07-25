@@ -25,6 +25,8 @@ import {
   BookingRunJobResponseDto,
   BookingStopJobRequestDto,
   BookingStopJobResponseDto,
+  BookingRerunFailedJobRequestDto,
+  BookingRerunFailedJobResponseDto,
 } from './booking.dto';
 import {
   ErrorResponseDto,
@@ -178,6 +180,72 @@ export class BookingController {
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
       const data = error.response?.data || {
         message: 'Failed to stop booking scraping job',
+      };
+      return res.status(status).json(data);
+    }
+  }
+
+  @Post('/api/booking/rerun-failed-job')
+  @ApiOperation({
+    summary: 'Rerun failed booking scraping job',
+    description: 'Re-execute a failed or cancelled booking job, tracking retry attempts and updating records',
+  })
+  @ApiBody({ type: BookingRerunFailedJobRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Failed booking job rerun completed successfully',
+    type: BookingRerunFailedJobResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - Invalid job ID, job not failed/cancelled, or max retries exceeded',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Job not found',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Server error',
+    type: ErrorResponseDto,
+  })
+  async bookingRerunFailedJob(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Body() body: BookingRerunFailedJobRequestDto,
+  ) {
+    try {
+      const { jobId, startDate, endDate } = body;
+
+      if (!jobId || !startDate || !endDate) {
+        return res.status(HttpStatus.BAD_REQUEST).json({
+          status: HttpStatus.BAD_REQUEST,
+          message: 'Job ID, start date, and end date are required',
+        });
+      }
+
+      // Forward the rerun request to the modular scraper backend
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${this.scraperBaseUrl}/api/booking/rerun-failed-job`,
+          { jobId, startDate, endDate },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            timeout: 300000, // 5 minute timeout for job execution
+          },
+        ),
+      );
+
+      return res.status(response.status).json(response.data);
+    } catch (error: any) {
+      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
+      const data = error.response?.data || {
+        message: 'Failed to rerun failed booking scraping job',
       };
       return res.status(status).json(data);
     }

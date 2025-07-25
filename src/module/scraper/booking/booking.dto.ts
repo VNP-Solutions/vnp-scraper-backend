@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { JobProgressDto } from '../scraper.dto';
 
 export class BookingRunJobRequestDto {
   @ApiProperty({
@@ -70,4 +71,47 @@ export class BookingStopJobResponseDto {
 
   @ApiProperty({ example: 'Cancelled' })
   finalStatus: string;
+}
+
+export class BookingRerunFailedJobRequestDto {
+  @ApiProperty({
+    example: '507f1f77bcf86cd799439011',
+    description: 'MongoDB ObjectId of the failed or cancelled job to rerun',
+  })
+  jobId: string;
+
+  @ApiProperty({
+    example: '01/01/2024',
+    description: 'Start date for booking scraping (MM/DD/YYYY format)',
+  })
+  startDate: string;
+
+  @ApiProperty({
+    example: '01/31/2024',
+    description: 'End date for booking scraping (MM/DD/YYYY format)',
+  })
+  endDate: string;
+}
+
+export class BookingRerunFailedJobResponseDto {
+  @ApiProperty({ example: 200 })
+  status: number;
+
+  @ApiProperty({ example: 'Failed or cancelled booking job rerun completed successfully' })
+  message: string;
+
+  @ApiProperty({ example: '507f1f77bcf86cd799439011' })
+  jobId: string;
+
+  @ApiProperty({ example: 'Failed' })
+  originalStatus: string;
+
+  @ApiProperty({ example: 'Completed' })
+  finalStatus: string;
+
+  @ApiProperty({ example: 2 })
+  retryAttempt: number;
+
+  @ApiProperty({ type: JobProgressDto })
+  progress: JobProgressDto;
 }
