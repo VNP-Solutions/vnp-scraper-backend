@@ -172,9 +172,6 @@ export class BookingController {
         ),
       );
 
-      // Update job items status to Cancelled
-      await this.jobItemService.updateJobItemsStatusByJobId(jobId, 'Cancelled');
-
       return res.status(response.status).json(response.data);
     } catch (error: any) {
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
