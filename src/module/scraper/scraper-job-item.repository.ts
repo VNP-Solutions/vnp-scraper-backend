@@ -130,4 +130,18 @@ export class ScraperJobItemRepository implements IScraperJobItemRepository {
       return { data: [], metadata: null };
     }
   }
+
+  async updateJobItemsStatusByJobId(jobId: string, status: string): Promise<number> {
+    try {
+      const result = await this.db.jobItem.updateMany({
+        where: { job_id: jobId },
+        data: { reservation_status: status },
+      });
+      this.logger.log(`Updated ${result.count} job items to status '${status}' for job ${jobId}`);
+      return result.count;
+    } catch (error) {
+      this.logger.error(`Error updating job items status for job ${jobId}:`, error);
+      throw error;
+    }
+  }
 }

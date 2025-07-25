@@ -23,6 +23,8 @@ import { bookingRunJobSchema } from './booking.validation';
 import {
   BookingRunJobRequestDto,
   BookingRunJobResponseDto,
+  BookingStopJobRequestDto,
+  BookingStopJobResponseDto,
 } from './booking.dto';
 import {
   ErrorResponseDto,
@@ -107,6 +109,75 @@ export class BookingController {
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
       const data = error.response?.data || {
         message: 'Booking scraper server is down',
+      };
+      return res.status(status).json(data);
+    }
+  }
+
+  @Post('/api/booking/stop-job')
+  @ApiOperation({
+    summary: 'Stop booking scraping job',
+    description: 'Stop a running booking scraping job and mark job items as cancelled',
+  })
+  @ApiBody({ type: BookingStopJobRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Booking scraping job stopped successfully',
+    type: BookingStopJobResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - Invalid job ID or job not running',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Job not found',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Server error',
+    type: ErrorResponseDto,
+  })
+  async bookingStopJob(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Body() body: BookingStopJobRequestDto,
+  ) {
+    try {
+      const { jobId } = body;
+
+      if (!jobId) {
+        return res.status(HttpStatus.BAD_REQUEST).json({
+          status: HttpStatus.BAD_REQUEST,
+          message: 'Job ID is required',
+        });
+      }
+
+      // Forward the stop request to the modular scraper backend
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${this.scraperBaseUrl}/api/booking/stop-job`,
+          { jobId },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            timeout: 30000, // 30 second timeout
+          },
+        ),
+      );
+
+      // Update job items status to Cancelled
+      await this.jobItemService.updateJobItemsStatusByJobId(jobId, 'Cancelled');
+
+      return res.status(response.status).json(response.data);
+    } catch (error: any) {
+      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
+      const data = error.response?.data || {
+        message: 'Failed to stop booking scraping job',
       };
       return res.status(status).json(data);
     }

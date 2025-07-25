@@ -44,4 +44,18 @@ export class ScraperJobItemService implements IScraperJobItemService {
       throw error;
     }
   }
+
+  async updateJobItemsStatusByJobId(jobId: string, status: string): Promise<number> {
+    try {
+      const count = await this.jobItemRepository.updateJobItemsStatusByJobId(jobId, status);
+      this.logger.log(`Service: Updated ${count} job items to status '${status}' for job ${jobId}`);
+      return count;
+    } catch (error) {
+      this.logger.error(
+        `Error updating job items status for job ${jobId}: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
 }

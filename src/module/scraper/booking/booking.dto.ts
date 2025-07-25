@@ -49,3 +49,25 @@ export class BookingRunJobResponseDto {
   @ApiProperty({ example: '507f1f77bcf86cd799439012', required: false })
   propertyId?: string;
 }
+
+export class BookingStopJobRequestDto {
+  @ApiProperty({
+    example: '507f1f77bcf86cd799439011',
+    description: 'MongoDB ObjectId of the job to stop',
+  })
+  jobId: string;
+}
+
+export class BookingStopJobResponseDto {
+  @ApiProperty({ example: 200 })
+  status: number;
+
+  @ApiProperty({ example: 'Booking scraping job stopped successfully' })
+  message: string;
+
+  @ApiProperty({ example: '507f1f77bcf86cd799439011' })
+  jobId: string;
+
+  @ApiProperty({ example: 'Cancelled' })
+  finalStatus: string;
+}
