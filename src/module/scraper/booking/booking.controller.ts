@@ -171,7 +171,7 @@ export class BookingController {
           },
         ),
       );
-
+      
       return res.status(response.status).json(response.data);
     } catch (error: any) {
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
