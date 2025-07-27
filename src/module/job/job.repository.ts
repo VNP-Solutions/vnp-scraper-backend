@@ -133,4 +133,62 @@ export class JobRepository implements IJobRepository {
       throw error;
     }
   }
+
+  async findPortfolioByName(name: string): Promise<any> {
+    try {
+      const portfolio = await this.db.portfolio.findFirst({
+        where: { name: { equals: name, mode: 'insensitive' } },
+      });
+      return portfolio;
+    } catch (error) {
+      this.logger.error(error);
+      throw error;
+    }
+  }
+
+  async findSubPortfolioByNameAndPortfolio(
+    name: string,
+    portfolioId: string,
+  ): Promise<any> {
+    try {
+      const subPortfolio = await this.db.subPortfolio.findFirst({
+        where: {
+          name: { equals: name, mode: 'insensitive' },
+          portfolio_id: portfolioId,
+        },
+      });
+      return subPortfolio;
+    } catch (error) {
+      this.logger.error(error);
+      throw error;
+    }
+  }
+
+  async findPropertyByNameAndRelations(
+    name: string,
+    portfolioId?: string,
+    subPortfolioId?: string,
+  ): Promise<any> {
+    try {
+      const whereClause: any = {
+        name: { equals: name, mode: 'insensitive' },
+      };
+
+      if (portfolioId) {
+        whereClause.portfolio_id = portfolioId;
+      }
+
+      if (subPortfolioId) {
+        whereClause.sub_portfolio_id = subPortfolioId;
+      }
+
+      const property = await this.db.property.findFirst({
+        where: whereClause,
+      });
+      return property;
+    } catch (error) {
+      this.logger.error(error);
+      throw error;
+    }
+  }
 }
