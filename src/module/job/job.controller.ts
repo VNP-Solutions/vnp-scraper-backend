@@ -10,10 +10,14 @@ import {
   Put,
   Req,
   Res,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiOperation,
   ApiQuery,
   ApiResponse,
@@ -23,8 +27,9 @@ import { Response } from 'express';
 import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
 import { ResponseHandler } from 'src/common/utils/response-handler';
+import { ExcelFileInterceptor } from 'src/common/interceptors/excel-file.interceptor';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CreateJobDto, UpdateJobDto } from './job.dto';
+import { CreateJobDto, UpdateJobDto, ImportJobsResponseDto } from './job.dto';
 import { IJobService } from './job.interface';
 import { createJobSchema } from './job.validation';
 
@@ -186,6 +191,94 @@ export class JobController {
           statusCode: 200,
           message: 'Job deleted successfully',
           data: null,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Post('/import')
+  @ApiOperation({
+    summary: 'Import jobs from Excel file',
+    description:
+      'Upload an Excel file to import jobs. The Excel file should contain columns: Portfolio (optional, must exist), Sub Portfolio (optional, must exist), Property Name (optional, must exist), Job Name, Job Status, Posting Type, OTA Provider, Billing Type, Next Due Date, Remaining Direct Billed, Total Collectable, Total Amount Confirmed, Execution Type, Retries Attempted, Max Retries, Retry Delay MS, Priority, Job Backoff Length Loading, Job Backoff Length Selector, Queue Name, Worker Assigned, Batch Execution ID, Start Date, End Date, Log Link, Live URL. Note: Portfolios, sub-portfolios, and properties must exist in the system before importing jobs if specified.',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description: 'Excel file for job import',
+    type: 'multipart/form-data',
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Excel file (.xlsx, .xls, .csv) containing job data',
+        },
+      },
+      required: ['file'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Jobs imported successfully',
+    type: ImportJobsResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - Invalid file or missing required columns',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - Admin access required',
+  })
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(ExcelFileInterceptor)
+  async importJobs(
+    @Req() request: any,
+    @UploadedFile() file: Express.Multer.File,
+    @Res() response: Response,
+  ) {
+    const { user } = request;
+    if (user.role !== 'admin') {
+      return ResponseHandler.handler(
+        response,
+        async () => {
+          return {
+            statusCode: 403,
+            message: 'You are not authorized to import jobs',
+            data: null,
+          };
+        },
+        this.logger,
+      );
+    }
+
+    if (!file) {
+      return ResponseHandler.handler(
+        response,
+        async () => {
+          return {
+            statusCode: 400,
+            message: 'Excel file is required',
+            data: null,
+          };
+        },
+        this.logger,
+      );
+    }
+
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result = await this.jobService.importJobsFromExcel(
+          file,
+          user.userId,
+        );
+        return {
+          statusCode: 200,
+          message: `Import completed successfully: ${result.jobsCreated} jobs created`,
+          data: result,
         };
       },
       this.logger,
