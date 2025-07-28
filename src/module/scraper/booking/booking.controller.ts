@@ -17,7 +17,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { Request, Response } from 'express';
-import { firstValueFrom } from 'rxjs';
+import { BaseScraperController } from '../base-scraper.controller';
 import { IScraperJobItemService } from '../scraper-job-item.interface';
 import { bookingRunJobSchema } from './booking.validation';
 import {
@@ -34,23 +34,40 @@ import {
 
 @ApiTags('Booking Scraper')
 @Controller('/booking')
-export class BookingController {
-  private readonly scraperBaseUrl: string;
-
+export class BookingController extends BaseScraperController {
   constructor(
-    private readonly httpService: HttpService,
-    private readonly configService: ConfigService,
+    httpService: HttpService,
+    configService: ConfigService,
     @Inject('IScraperJobItemService')
-    private readonly jobItemService: IScraperJobItemService,
+    jobItemService: IScraperJobItemService,
   ) {
-    const baseUrl =
-      this.configService.get<string>('SCRAPER_BASE_URL');
+    super(httpService, configService, jobItemService);
+  }
 
-    // Add http:// protocol if missing
-    this.scraperBaseUrl =
-      baseUrl.startsWith('http://') || baseUrl.startsWith('https://')
-        ? baseUrl
-        : `http://${baseUrl}`;
+  protected getRunJobEndpoint(): string {
+    return '/api/booking/run-job';
+  }
+
+  protected getStopJobEndpoint(): string {
+    return '/api/booking/stop-job';
+  }
+
+  protected getRerunFailedJobEndpoint(): string {
+    return '/api/booking/rerun-failed-job';
+  }
+
+  protected getPlatformDownMessage(): string {
+    return 'Booking scraper server is down';
+  }
+
+  async runJob(body: BookingRunJobRequestDto): Promise<BookingRunJobResponseDto> {
+    const validationResult = bookingRunJobSchema.safeParse(body);
+    if (!validationResult.success) {
+      throw new Error('Validation failed');
+    }
+    
+    const response = await this.forwardRequest(this.getRunJobEndpoint(), validationResult.data);
+    return response.data;
   }
 
   @Post('/api/booking/run-job')
@@ -80,40 +97,29 @@ export class BookingController {
     @Body() body: BookingRunJobRequestDto,
   ) {
     try {
-      // Validate request payload
-      const validationResult = bookingRunJobSchema.safeParse(body);
-      if (!validationResult.success) {
-        return res.status(HttpStatus.BAD_REQUEST).json({
-          status: HttpStatus.BAD_REQUEST,
-          message: 'Validation failed',
-          errors: validationResult.error.errors.map((err) => ({
-            field: err.path.join('.'),
-            message: err.message,
-          })),
-        });
-      }
-
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.scraperBaseUrl}/api/booking/run-job`,
-          validationResult.data,
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              Accept: 'application/json',
-            },
-            timeout: 300000, // 5 minute timeout for job initialization
-          },
-        ),
-      );
-      return res.status(response.status).json(response.data);
+      const result = await this.runJob(body);
+      return this.sendResponse(res, { status: 200, data: result });
     } catch (error: any) {
-      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
-      const data = error.response?.data || {
-        message: 'Booking scraper server is down',
-      };
-      return res.status(status).json(data);
+      return this.sendErrorResponse(res, error, this.getPlatformDownMessage());
     }
+  }
+
+  async stopJob(body: BookingStopJobRequestDto): Promise<BookingStopJobResponseDto> {
+    if (!body.jobId) {
+      throw new Error('Job ID is required');
+    }
+    
+    const response = await this.forwardRequest(this.getStopJobEndpoint(), body, 30000);
+    return response.data;
+  }
+
+  async rerunFailedJob(body: BookingRerunFailedJobRequestDto): Promise<BookingRerunFailedJobResponseDto> {
+    if (!body.jobId || !body.startDate || !body.endDate) {
+      throw new Error('Job ID, start date, and end date are required');
+    }
+    
+    const response = await this.forwardRequest(this.getRerunFailedJobEndpoint(), body);
+    return response.data;
   }
 
   @Post('/api/booking/stop-job')
@@ -148,37 +154,10 @@ export class BookingController {
     @Body() body: BookingStopJobRequestDto,
   ) {
     try {
-      const { jobId } = body;
-
-      if (!jobId) {
-        return res.status(HttpStatus.BAD_REQUEST).json({
-          status: HttpStatus.BAD_REQUEST,
-          message: 'Job ID is required',
-        });
-      }
-
-      // Forward the stop request to the modular scraper backend
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.scraperBaseUrl}/api/booking/stop-job`,
-          { jobId },
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              Accept: 'application/json',
-            },
-            timeout: 30000, // 30 second timeout
-          },
-        ),
-      );
-      
-      return res.status(response.status).json(response.data);
+      const result = await this.stopJob(body);
+      return this.sendResponse(res, { status: 200, data: result });
     } catch (error: any) {
-      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
-      const data = error.response?.data || {
-        message: 'Failed to stop booking scraping job',
-      };
-      return res.status(status).json(data);
+      return this.sendErrorResponse(res, error, 'Failed to stop booking scraping job');
     }
   }
 
@@ -214,37 +193,11 @@ export class BookingController {
     @Body() body: BookingRerunFailedJobRequestDto,
   ) {
     try {
-      const { jobId, startDate, endDate } = body;
-
-      if (!jobId || !startDate || !endDate) {
-        return res.status(HttpStatus.BAD_REQUEST).json({
-          status: HttpStatus.BAD_REQUEST,
-          message: 'Job ID, start date, and end date are required',
-        });
-      }
-
-      // Forward the rerun request to the modular scraper backend
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.scraperBaseUrl}/api/booking/rerun-failed-job`,
-          { jobId, startDate, endDate },
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              Accept: 'application/json',
-            },
-            timeout: 300000, // 5 minute timeout for job execution
-          },
-        ),
-      );
-
-      return res.status(response.status).json(response.data);
+      const result = await this.rerunFailedJob(body);
+      return this.sendResponse(res, { status: 200, data: result });
     } catch (error: any) {
-      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
-      const data = error.response?.data || {
-        message: 'Failed to rerun failed booking scraping job',
-      };
-      return res.status(status).json(data);
+      return this.sendErrorResponse(res, error, 'Failed to rerun failed booking scraping job');
     }
   }
+
 }

@@ -1,7 +1,15 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { 
+  IPlatformRunJobRequest, 
+  IPlatformRunJobResponse, 
+  IPlatformStopJobRequest, 
+  IPlatformStopJobResponse,
+  IPlatformRerunFailedJobRequest,
+  IPlatformRerunFailedJobResponse 
+} from '../platform.dto';
 import { JobProgressDto } from '../scraper.dto';
 
-export class BookingRunJobRequestDto {
+export class BookingRunJobRequestDto implements IPlatformRunJobRequest {
   @ApiProperty({
     example: '507f1f77bcf86cd799439011',
     description: 'Portfolio ID to scrape booking data for',
@@ -34,7 +42,7 @@ export class BookingRunJobRequestDto {
   jobId: string;
 }
 
-export class BookingRunJobResponseDto {
+export class BookingRunJobResponseDto implements IPlatformRunJobResponse {
   @ApiProperty({ example: 200 })
   status: number;
 
@@ -51,7 +59,7 @@ export class BookingRunJobResponseDto {
   propertyId?: string;
 }
 
-export class BookingStopJobRequestDto {
+export class BookingStopJobRequestDto implements IPlatformStopJobRequest {
   @ApiProperty({
     example: '507f1f77bcf86cd799439011',
     description: 'MongoDB ObjectId of the job to stop',
@@ -59,7 +67,7 @@ export class BookingStopJobRequestDto {
   jobId: string;
 }
 
-export class BookingStopJobResponseDto {
+export class BookingStopJobResponseDto implements IPlatformStopJobResponse {
   @ApiProperty({ example: 200 })
   status: number;
 
@@ -73,7 +81,7 @@ export class BookingStopJobResponseDto {
   finalStatus: string;
 }
 
-export class BookingRerunFailedJobRequestDto {
+export class BookingRerunFailedJobRequestDto implements IPlatformRerunFailedJobRequest {
   @ApiProperty({
     example: '507f1f77bcf86cd799439011',
     description: 'MongoDB ObjectId of the failed or cancelled job to rerun',
@@ -93,7 +101,7 @@ export class BookingRerunFailedJobRequestDto {
   endDate: string;
 }
 
-export class BookingRerunFailedJobResponseDto {
+export class BookingRerunFailedJobResponseDto implements IPlatformRerunFailedJobResponse {
   @ApiProperty({ example: 200 })
   status: number;
 
