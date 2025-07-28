@@ -102,7 +102,6 @@ export class BookingRerunFailedJobRequestDto implements IPlatformRerunFailedJobR
 }
 
 export class BookingRerunFailedJobResponseDto implements IPlatformRerunFailedJobResponse {
-  // TODO - complete rerun logic
   @ApiProperty({ example: 200 })
   status: number;
 

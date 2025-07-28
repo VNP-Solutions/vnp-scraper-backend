@@ -114,7 +114,6 @@ export class BookingController extends BaseScraperController {
   }
 
   async rerunFailedJob(body: BookingRerunFailedJobRequestDto): Promise<BookingRerunFailedJobResponseDto> {
-    // TODO - complete rerun logic
     if (!body.jobId || !body.startDate || !body.endDate) {
       throw new Error('Job ID, start date, and end date are required');
     }
@@ -200,4 +199,5 @@ export class BookingController extends BaseScraperController {
       return this.sendErrorResponse(res, error, 'Failed to rerun failed booking scraping job');
     }
   }
+
 }
