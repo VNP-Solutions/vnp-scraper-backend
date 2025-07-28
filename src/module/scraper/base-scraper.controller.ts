@@ -10,9 +10,9 @@ import {
   IPlatformStopJobRequest, 
   IPlatformStopJobResponse,
   IPlatformRerunFailedJobRequest,
-  IPlatformRerunFailedJobResponse,
-  IPlatformScraperController 
+  IPlatformRerunFailedJobResponse 
 } from './platform.dto';
+import { IPlatformScraperController } from './platform.interface';
 
 export abstract class BaseScraperController implements IPlatformScraperController {
   protected readonly scraperBaseUrl: string;
