@@ -21,15 +21,19 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { Request, Response } from 'express';
-import { firstValueFrom } from 'rxjs';
 import { ParseQuery } from '../../../common/decorators/parse-query.decorator';
 import { ResponseHandler } from '../../../common/utils/response-handler';
+import { BaseScraperController } from '../base-scraper.controller';
 import { IScraperJobItemService } from '../scraper-job-item.interface';
 import {
   PropertyRunJobRequestDto,
   PropertyRunJobResponseDto,
   ReservationRunJobRequestDto,
   ReservationRunJobResponseDto,
+  ExpediaStopJobRequestDto,
+  ExpediaStopJobResponseDto,
+  ExpediaRerunFailedJobRequestDto,
+  ExpediaRerunFailedJobResponseDto,
 } from './expedia.dto';
 
 import {
@@ -37,31 +41,52 @@ import {
     ErrorResponseDto,
     HealthResponseDto,
     PauseResumeStopResponseDto,
-    RerunFailedJobRequestDto,
-    RerunFailedJobResponseDto,
     ScrapingStatusResponseDto,
   } from '../scraper.dto';
   
 
 @ApiTags('Expedia Scraper')
 @Controller('/expedia')
-export class ExpediaController {
-  private readonly scraperBaseUrl: string;
-
+export class ExpediaController extends BaseScraperController {
   constructor(
-    private readonly httpService: HttpService,
-    private readonly configService: ConfigService,
+    httpService: HttpService,
+    configService: ConfigService,
     @Inject('IScraperJobItemService')
-    private readonly jobItemService: IScraperJobItemService,
+    jobItemService: IScraperJobItemService,
   ) {
-    const baseUrl =
-      this.configService.get<string>('SCRAPER_BASE_URL');
+    super(httpService, configService, jobItemService);
+  }
 
-    // Add http:// protocol if missing
-    this.scraperBaseUrl =
-      baseUrl.startsWith('http://') || baseUrl.startsWith('https://')
-        ? baseUrl
-        : `http://${baseUrl}`;
+  protected getRunJobEndpoint(): string {
+    return '/api/expedia/property-run-job';
+  }
+
+  protected getStopJobEndpoint(): string {
+    return '/api/scraping/stop';
+  }
+
+  protected getRerunFailedJobEndpoint(): string {
+    return '/api/expedia/rerun-failed-job';
+  }
+
+  protected getPlatformDownMessage(): string {
+    return 'Expedia Job server is down';
+  }
+
+  // Platform-specific implementations for the generic interface
+  async runJob(body: PropertyRunJobRequestDto): Promise<PropertyRunJobResponseDto> {
+    const response = await this.forwardRequest(this.getRunJobEndpoint(), body);
+    return response.data;
+  }
+
+  async stopJob(body: ExpediaStopJobRequestDto): Promise<ExpediaStopJobResponseDto> {
+    const response = await this.forwardRequest(this.getStopJobEndpoint(), body);
+    return response.data;
+  }
+
+  async rerunFailedJob(body: ExpediaRerunFailedJobRequestDto): Promise<ExpediaRerunFailedJobResponseDto> {
+    const response = await this.forwardRequest(this.getRerunFailedJobEndpoint(), body);
+    return response.data;
   }
 
   @Get('/')
@@ -81,19 +106,10 @@ export class ExpediaController {
   })
   async health(@Req() req: Request, @Res() res: Response) {
     try {
-      const response = await firstValueFrom(
-        this.httpService.get(`${this.scraperBaseUrl}/`, {
-          headers: req.headers,
-          params: req.query,
-        }),
-      );
-      return res.status(response.status).json(response.data);
+      const response = await this.forwardGetRequest('/', req.headers, req.query);
+      return this.sendResponse(res, response);
     } catch (error: any) {
-      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
-      const data = error.response?.data || {
-        message: 'Expedia Job server is down',
-      };
-      return res.status(status).json(data);
+      return this.sendErrorResponse(res, error, this.getPlatformDownMessage());
     }
   }
 
@@ -111,19 +127,10 @@ export class ExpediaController {
   })
   async auth(@Req() req: Request, @Res() res: Response) {
     try {
-      const response = await firstValueFrom(
-        this.httpService.get(`${this.scraperBaseUrl}/auth`, {
-          headers: req.headers,
-          params: req.query,
-        }),
-      );
-      return res.status(response.status).json(response.data);
+      const response = await this.forwardGetRequest('/auth', req.headers, req.query);
+      return this.sendResponse(res, response);
     } catch (error: any) {
-      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
-      const data = error.response?.data || {
-        message: 'Expedia Job server is down',
-      };
-      return res.status(status).json(data);
+      return this.sendErrorResponse(res, error, this.getPlatformDownMessage());
     }
   }
 
@@ -155,19 +162,10 @@ export class ExpediaController {
   })
   async oauth2callback(@Req() req: Request, @Res() res: Response) {
     try {
-      const response = await firstValueFrom(
-        this.httpService.get(`${this.scraperBaseUrl}/oauth2callback`, {
-          headers: req.headers,
-          params: req.query,
-        }),
-      );
-      return res.status(response.status).json(response.data);
+      const response = await this.forwardGetRequest('/oauth2callback', req.headers, req.query);
+      return this.sendResponse(res, response);
     } catch (error: any) {
-      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
-      const data = error.response?.data || {
-        message: 'Expedia Job server is down',
-      };
-      return res.status(status).json(data);
+      return this.sendErrorResponse(res, error, this.getPlatformDownMessage());
     }
   }
 
@@ -189,19 +187,10 @@ export class ExpediaController {
   })
   async scrapingStatus(@Req() req: Request, @Res() res: Response) {
     try {
-      const response = await firstValueFrom(
-        this.httpService.get(`${this.scraperBaseUrl}/api/scraping/status`, {
-          headers: req.headers,
-          params: req.query,
-        }),
-      );
-      return res.status(response.status).json(response.data);
+      const response = await this.forwardGetRequest('/api/scraping/status', req.headers, req.query);
+      return this.sendResponse(res, response);
     } catch (error: any) {
-      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
-      const data = error.response?.data || {
-        message: 'Expedia Job server is down',
-      };
-      return res.status(status).json(data);
+      return this.sendErrorResponse(res, error, this.getPlatformDownMessage());
     }
   }
 
@@ -231,27 +220,10 @@ export class ExpediaController {
     @Body() body: any,
   ) {
     try {
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.scraperBaseUrl}/api/scraping/pause`,
-          body,
-          {
-            headers: {
-              // ...req.headers,
-              'Content-Type': 'application/json',
-              Accept: 'application/json',
-            },
-            timeout: 300000, // 5 minute timeout for long-running scraping jobs
-          },
-        ),
-      );
-      return res.status(response.status).json(response.data);
+      const response = await this.forwardRequest('/api/scraping/pause', body);
+      return this.sendResponse(res, response);
     } catch (error: any) {
-      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
-      const data = error.response?.data || {
-        message: 'Expedia Job server is down',
-      };
-      return res.status(status).json(data);
+      return this.sendErrorResponse(res, error, this.getPlatformDownMessage());
     }
   }
 
@@ -282,27 +254,10 @@ export class ExpediaController {
     @Body() body: any,
   ) {
     try {
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.scraperBaseUrl}/api/scraping/resume`,
-          body,
-          {
-            headers: {
-              ...req.headers,
-              'Content-Type': 'application/json',
-              Accept: 'application/json',
-            },
-            timeout: 300000, // 5 minute timeout for long-running scraping jobs
-          },
-        ),
-      );
-      return res.status(response.status).json(response.data);
+      const response = await this.forwardRequest('/api/scraping/resume', body);
+      return this.sendResponse(res, response);
     } catch (error: any) {
-      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
-      const data = error.response?.data || {
-        message: 'Expedia Job server is down',
-      };
-      return res.status(status).json(data);
+      return this.sendErrorResponse(res, error, this.getPlatformDownMessage());
     }
   }
 
@@ -327,27 +282,10 @@ export class ExpediaController {
     @Body() body: any,
   ) {
     try {
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.scraperBaseUrl}/api/scraping/stop`,
-          body,
-          {
-            headers: {
-              // ...req.headers,
-              'Content-Type': 'application/json',
-              Accept: 'application/json',
-            },
-            timeout: 300000, // 5 minute timeout for long-running scraping jobs
-          },
-        ),
-      );
-      return res.status(response.status).json(response.data);
+      const response = await this.forwardRequest('/api/scraping/stop', body);
+      return this.sendResponse(res, response);
     } catch (error: any) {
-      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
-      const data = error.response?.data || {
-        message: 'Expedia Job server is down',
-      };
-      return res.status(status).json(data);
+      return this.sendErrorResponse(res, error, this.getPlatformDownMessage());
     }
   }
 
@@ -384,27 +322,10 @@ export class ExpediaController {
     @Body() body: PropertyRunJobRequestDto,
   ) {
     try {
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.scraperBaseUrl}/api/expedia/property-run-job`,
-          body,
-          {
-            // ...req.headers,
-            headers: {
-              'Content-Type': 'application/json',
-              Accept: 'application/json',
-            },
-            timeout: 300000, // 5 minute timeout for long-running scraping jobs
-          },
-        ),
-      );
-      return res.status(response.status).json(response.data);
+      const result = await this.runJob(body);
+      return this.sendResponse(res, { status: 200, data: result });
     } catch (error: any) {
-      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
-      const data = error.response?.data || {
-        message: 'Expedia Job server is down',
-      };
-      return res.status(status).json(data);
+      return this.sendErrorResponse(res, error, this.getPlatformDownMessage());
     }
   }
 
@@ -441,27 +362,10 @@ export class ExpediaController {
     @Body() body: ReservationRunJobRequestDto,
   ) {
     try {
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.scraperBaseUrl}/api/expedia/reservation-run-job`,
-          body,
-          {
-            // ...req.headers,
-            headers: {
-              'Content-Type': 'application/json',
-              Accept: 'application/json',
-            },
-            timeout: 300000, // 5 minute timeout for long-running scraping jobs
-          },
-        ),
-      );
-      return res.status(response.status).json(response.data);
+      const response = await this.forwardRequest('/api/expedia/reservation-run-job', body);
+      return this.sendResponse(res, response);
     } catch (error: any) {
-      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
-      const data = error.response?.data || {
-        message: 'Expedia Job server is down',
-      };
-      return res.status(status).json(data);
+      return this.sendErrorResponse(res, error, this.getPlatformDownMessage());
     }
   }
 
@@ -471,11 +375,11 @@ export class ExpediaController {
     description:
       'Rerun a job that has failed or partially completed. This endpoint specifically handles jobs with Failed or Partial status and resets them to run again.',
   })
-  @ApiBody({ type: RerunFailedJobRequestDto })
+  @ApiBody({ type: ExpediaRerunFailedJobRequestDto })
   @ApiResponse({
     status: 200,
     description: 'Failed/partial job rerun completed successfully',
-    type: RerunFailedJobResponseDto,
+    type: ExpediaRerunFailedJobResponseDto,
   })
   @ApiResponse({
     status: 400,
@@ -492,33 +396,16 @@ export class ExpediaController {
     description: 'Error processing job rerun',
     type: ErrorResponseDto,
   })
-  async rerunFailedJob(
+  async expediraRerunFailedJob(
     @Req() req: Request,
     @Res() res: Response,
-    @Body() body: RerunFailedJobRequestDto,
+    @Body() body: ExpediaRerunFailedJobRequestDto,
   ) {
     try {
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.scraperBaseUrl}/api/expedia/rerun-failed-job`,
-          body,
-          {
-            // ...req.headers,
-            headers: {
-              'Content-Type': 'application/json',
-              Accept: 'application/json',
-            },
-            timeout: 300000, // 5 minute timeout for long-running scraping jobs
-          },
-        ),
-      );
-      return res.status(response.status).json(response.data);
+      const result = await this.rerunFailedJob(body);
+      return this.sendResponse(res, { status: 200, data: result });
     } catch (error: any) {
-      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
-      const data = error.response?.data || {
-        message: 'Expedia Job server is down',
-      };
-      return res.status(status).json(data);
+      return this.sendErrorResponse(res, error, this.getPlatformDownMessage());
     }
   }
 
@@ -546,19 +433,10 @@ export class ExpediaController {
     @Param('jobId') jobId: string,
   ) {
     try {
-      const response = await firstValueFrom(
-        this.httpService.get(
-          `${this.scraperBaseUrl}/api/jobs/${jobId}/progress`,
-          { headers: req.headers, params: req.query },
-        ),
-      );
-      return res.status(response.status).json(response.data);
+      const response = await this.forwardGetRequest(`/api/jobs/${jobId}/progress`, req.headers, req.query);
+      return this.sendResponse(res, response);
     } catch (error: any) {
-      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
-      const data = error.response?.data || {
-        message: 'Expedia Job server is down',
-      };
-      return res.status(status).json(data);
+      return this.sendErrorResponse(res, error, this.getPlatformDownMessage());
     }
   }
 
