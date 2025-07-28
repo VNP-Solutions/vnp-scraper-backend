@@ -55,5 +55,33 @@ $ git rebase staging
 $ git push origin new-branch
 ```
 
+## Scraper Module
 
+The scraper module provides a modular architecture for integrating multiple booking platforms (Booking.com, Expedia, etc.) with a unified interface. It uses inheritance and interface patterns to ensure consistency while allowing platform-specific customizations.
+
+### Architecture Overview
+
+```
+├── scraper/
+│   ├── base-scraper.controller.ts     # Abstract base controller with shared functionality
+│   ├── platform.dto.ts                # Generic data transfer objects (type maintenance)
+│   ├── platform.interface.ts          # Behavioral contracts (polymorphism)
+│   ├── scraper.dto.ts                  # Common response DTOs
+│   ├── scraper.module.ts               # Module configuration
+│   ├── expedia/                        # Expedia implementation
+│   │   ├── expedia.controller.ts
+│   │   ├── expedia.dto.ts
+│   │
+    └── new-platform/                  # For example - airbnb/
+        ├── new-platform.controller.ts
+        ├── new-platform.dto.ts
+        └── new-platform.validation.ts
+```
+
+### Adding a New Platform
+ - Create platform directory
+ - Create platform specific DTOs
+ - Create platform controller that extends BaseScraperController and implement the abstract methods
+ - Add validations if needed
+ - Register controller, by updating `scraper.module.ts`
 
