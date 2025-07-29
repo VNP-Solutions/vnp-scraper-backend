@@ -180,7 +180,7 @@ model Job {
   end_date                    String?
   log_link                    String?
   live_url                    String?
-  watcher_email               String[]
+  watcher_emails              String[]
   createdAt                   DateTime    @default(now())
   updatedAt                   DateTime    @updatedAt
 
