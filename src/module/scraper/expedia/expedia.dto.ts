@@ -69,69 +69,6 @@ export class ReservationRunJobResponseDto implements IPlatformRunJobResponse {
   jobId: string;
 }
 
-// Stop Job DTOs
-export class ExpediaStopJobRequestDto implements IPlatformStopJobRequest {
-  @ApiProperty({
-    example: '507f1f77bcf86cd799439011',
-    description: 'MongoDB ObjectId of the job to stop',
-  })
-  jobId: string;
-}
 
-export class ExpediaStopJobResponseDto implements IPlatformStopJobResponse {
-  @ApiProperty({ example: 200 })
-  status: number;
 
-  @ApiProperty({ example: 'Expedia scraping job stopped successfully' })
-  message: string;
 
-  @ApiProperty({ example: '507f1f77bcf86cd799439011' })
-  jobId: string;
-
-  @ApiProperty({ example: 'Cancelled' })
-  finalStatus: string;
-}
-
-// Rerun Failed Job DTOs
-export class ExpediaRerunFailedJobRequestDto implements IPlatformRerunFailedJobRequest {
-  @ApiProperty({
-    example: '507f1f77bcf86cd799439011',
-    description: 'MongoDB ObjectId of the failed or cancelled job to rerun',
-  })
-  jobId: string;
-
-  @ApiProperty({
-    example: '01/01/2024',
-    description: 'Start date for scraping (MM/DD/YYYY format)',
-  })
-  startDate: string;
-
-  @ApiProperty({
-    example: '01/31/2024',
-    description: 'End date for scraping (MM/DD/YYYY format)',
-  })
-  endDate: string;
-}
-
-export class ExpediaRerunFailedJobResponseDto implements IPlatformRerunFailedJobResponse {
-  @ApiProperty({ example: 200 })
-  status: number;
-
-  @ApiProperty({ example: 'Failed or cancelled expedia job rerun completed successfully' })
-  message: string;
-
-  @ApiProperty({ example: '507f1f77bcf86cd799439011' })
-  jobId: string;
-
-  @ApiProperty({ example: 'Failed' })
-  originalStatus: string;
-
-  @ApiProperty({ example: 'Completed' })
-  finalStatus: string;
-
-  @ApiProperty({ example: 2, required: false })
-  retryAttempt?: number;
-
-  @ApiProperty({ required: false })
-  progress?: any;
-}

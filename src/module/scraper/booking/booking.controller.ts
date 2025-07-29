@@ -24,11 +24,13 @@ import { bookingRunJobSchema } from './booking.validation';
 import {
   BookingRunJobRequestDto,
   BookingRunJobResponseDto,
-  BookingStopJobRequestDto,
-  BookingStopJobResponseDto,
-  BookingRerunFailedJobRequestDto,
-  BookingRerunFailedJobResponseDto,
 } from './booking.dto';
+import { 
+  RerunFailedJobResponseDto,
+  StopJobRequestDto,
+  StopJobResponseDto,
+  RerunFailedJobRequestDto
+} from '../platform.dto';
 import {
   ErrorResponseDto,
   HealthResponseDto,
@@ -106,7 +108,7 @@ export class BookingController extends BaseScraperController {
     }
   }
 
-  async stopJob(body: BookingStopJobRequestDto): Promise<BookingStopJobResponseDto> {
+  async stopJob(body: StopJobRequestDto): Promise<StopJobResponseDto> {
     if (!body.jobId) {
       throw new Error('Job ID is required');
     }
@@ -115,7 +117,7 @@ export class BookingController extends BaseScraperController {
     return response.data;
   }
 
-  async rerunFailedJob(body: BookingRerunFailedJobRequestDto): Promise<BookingRerunFailedJobResponseDto> {
+  async rerunFailedJob(body: RerunFailedJobRequestDto): Promise<RerunFailedJobResponseDto> {
     // TODO - complete rerun logic
     if (!body.jobId || !body.startDate || !body.endDate) {
       throw new Error('Job ID, start date, and end date are required');
@@ -154,11 +156,11 @@ export class BookingController extends BaseScraperController {
     summary: 'Stop booking scraping job',
     description: 'Stop a running booking scraping job and mark job items as cancelled',
   })
-  @ApiBody({ type: BookingStopJobRequestDto })
+  @ApiBody({ type: StopJobRequestDto })
   @ApiResponse({
     status: 200,
     description: 'Booking scraping job stopped successfully',
-    type: BookingStopJobResponseDto,
+    type: StopJobResponseDto,
   })
   @ApiResponse({
     status: 400,
@@ -178,7 +180,7 @@ export class BookingController extends BaseScraperController {
   async bookingStopJob(
     @Req() req: Request,
     @Res() res: Response,
-    @Body() body: BookingStopJobRequestDto,
+    @Body() body: StopJobRequestDto,
   ) {
     try {
       const result = await this.stopJob(body);
@@ -193,11 +195,11 @@ export class BookingController extends BaseScraperController {
     summary: 'Rerun failed booking scraping job',
     description: 'Re-execute a failed or cancelled booking job, tracking retry attempts and updating records',
   })
-  @ApiBody({ type: BookingRerunFailedJobRequestDto })
+  @ApiBody({ type: RerunFailedJobRequestDto })
   @ApiResponse({
     status: 200,
     description: 'Failed booking job rerun completed successfully',
-    type: BookingRerunFailedJobResponseDto,
+    type: RerunFailedJobResponseDto,
   })
   @ApiResponse({
     status: 400,
@@ -217,7 +219,7 @@ export class BookingController extends BaseScraperController {
   async bookingRerunFailedJob(
     @Req() req: Request,
     @Res() res: Response,
-    @Body() body: BookingRerunFailedJobRequestDto,
+    @Body() body: RerunFailedJobRequestDto,
   ) {
     try {
       const result = await this.rerunFailedJob(body);

@@ -30,11 +30,13 @@ import {
   PropertyRunJobResponseDto,
   ReservationRunJobRequestDto,
   ReservationRunJobResponseDto,
-  ExpediaStopJobRequestDto,
-  ExpediaStopJobResponseDto,
-  ExpediaRerunFailedJobRequestDto,
-  ExpediaRerunFailedJobResponseDto,
 } from './expedia.dto';
+import { 
+  StopJobRequestDto,
+  StopJobResponseDto,
+  RerunFailedJobRequestDto,
+  RerunFailedJobResponseDto
+} from '../platform.dto';
 
 import {
     AllJobItemsResponseDto,
@@ -79,12 +81,12 @@ export class ExpediaController extends BaseScraperController {
     return response.data;
   }
 
-  async stopJob(body: ExpediaStopJobRequestDto): Promise<ExpediaStopJobResponseDto> {
+  async stopJob(body: StopJobRequestDto): Promise<StopJobResponseDto> {
     const response = await this.forwardRequest(this.getStopJobEndpoint(), body);
     return response.data;
   }
 
-  async rerunFailedJob(body: ExpediaRerunFailedJobRequestDto): Promise<ExpediaRerunFailedJobResponseDto> {
+  async rerunFailedJob(body: RerunFailedJobRequestDto): Promise<RerunFailedJobResponseDto> {
     const response = await this.forwardRequest(this.getRerunFailedJobEndpoint(), body);
     return response.data;
   }
@@ -279,7 +281,7 @@ export class ExpediaController extends BaseScraperController {
   async scrapingStop(
     @Req() req: Request,
     @Res() res: Response,
-    @Body() body: ExpediaStopJobRequestDto,
+    @Body() body: StopJobRequestDto,
   ) {
     try {
       const result = await this.stopJob(body);
@@ -375,11 +377,11 @@ export class ExpediaController extends BaseScraperController {
     description:
       'Rerun a job that has failed or partially completed. This endpoint specifically handles jobs with Failed or Partial status and resets them to run again.',
   })
-  @ApiBody({ type: ExpediaRerunFailedJobRequestDto })
+  @ApiBody({ type: RerunFailedJobRequestDto })
   @ApiResponse({
     status: 200,
     description: 'Failed/partial job rerun completed successfully',
-    type: ExpediaRerunFailedJobResponseDto,
+    type: RerunFailedJobResponseDto,
   })
   @ApiResponse({
     status: 400,
@@ -399,7 +401,7 @@ export class ExpediaController extends BaseScraperController {
   async expediraRerunFailedJob(
     @Req() req: Request,
     @Res() res: Response,
-    @Body() body: ExpediaRerunFailedJobRequestDto,
+    @Body() body: RerunFailedJobRequestDto,
   ) {
     try {
       const result = await this.rerunFailedJob(body);
