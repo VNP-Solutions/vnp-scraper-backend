@@ -28,6 +28,7 @@ export class JobRepository implements IJobRepository {
           ? { connect: { id: sub_portfolio_id } }
           : undefined,
         property: property_id ? { connect: { id: property_id } } : undefined,
+        watcher_emails: data.watcher_emails || [],
       };
       const job = await this.db.job.create({
         data: jobData,

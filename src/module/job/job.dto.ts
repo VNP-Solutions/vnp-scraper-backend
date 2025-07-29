@@ -91,6 +91,9 @@ export class CreateJobDto {
 
   @ApiProperty({ required: false })
   live_url?: string;
+
+  @ApiProperty({ required: false })
+  watcher_emails?: string[];
 }
 
 export class UpdateJobDto implements Partial<CreateJobDto> {
