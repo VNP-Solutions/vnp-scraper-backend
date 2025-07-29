@@ -1,13 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { 
   IPlatformRunJobRequest, 
-  IPlatformRunJobResponse, 
-  IPlatformStopJobRequest, 
-  IPlatformStopJobResponse,
-  IPlatformRerunFailedJobRequest,
-  IPlatformRerunFailedJobResponse 
+  IPlatformRunJobResponse,
 } from '../platform.dto';
-import { JobProgressDto } from '../scraper.dto';
 
 export class BookingRunJobRequestDto implements IPlatformRunJobRequest {
   @ApiProperty({
