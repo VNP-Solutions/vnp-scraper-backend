@@ -279,11 +279,11 @@ export class ExpediaController extends BaseScraperController {
   async scrapingStop(
     @Req() req: Request,
     @Res() res: Response,
-    @Body() body: any,
+    @Body() body: ExpediaStopJobRequestDto,
   ) {
     try {
-      const response = await this.forwardRequest('/api/scraping/stop', body);
-      return this.sendResponse(res, response);
+      const result = await this.stopJob(body);
+      return this.sendResponse(res, { status: 200, data: result });
     } catch (error: any) {
       return this.sendErrorResponse(res, error, this.getPlatformDownMessage());
     }
