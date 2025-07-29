@@ -80,6 +80,7 @@ export abstract class BaseScraperController implements IPlatformScraperControlle
   abstract runJob(body: IPlatformRunJobRequest): Promise<IPlatformRunJobResponse>;
   abstract stopJob(body: IPlatformStopJobRequest): Promise<IPlatformStopJobResponse>;
   abstract rerunFailedJob(body: IPlatformRerunFailedJobRequest): Promise<IPlatformRerunFailedJobResponse>;
+  abstract health(req: Request, res: Response): Promise<any>;
 
   // Platform-specific endpoint paths - to be overridden
   protected abstract getRunJobEndpoint(): string;

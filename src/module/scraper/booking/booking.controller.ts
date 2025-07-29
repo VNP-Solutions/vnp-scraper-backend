@@ -2,6 +2,7 @@ import { HttpService } from '@nestjs/axios';
 import {
   Body,
   Controller,
+  Get,
   HttpStatus,
   Inject,
   Post,
@@ -30,6 +31,7 @@ import {
 } from './booking.dto';
 import {
   ErrorResponseDto,
+  HealthResponseDto,
 } from '../scraper.dto';
 
 @ApiTags('Booking Scraper')
@@ -121,6 +123,30 @@ export class BookingController extends BaseScraperController {
     
     const response = await this.forwardRequest(this.getRerunFailedJobEndpoint(), body);
     return response.data;
+  }
+
+  @Get('/')
+  @ApiOperation({
+    summary: 'Health check endpoint',
+    description: 'Check if the Booking scraper server is running and accessible',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Server is running',
+    type: HealthResponseDto,
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Server error',
+    type: ErrorResponseDto,
+  })
+  async health(@Req() req: Request, @Res() res: Response) {
+    try {
+      const response = await this.forwardGetRequest('/', req.headers, req.query);
+      return this.sendResponse(res, response);
+    } catch (error: any) {
+      return this.sendErrorResponse(res, error, this.getPlatformDownMessage());
+    }
   }
 
   @Post('/api/booking/stop-job')
