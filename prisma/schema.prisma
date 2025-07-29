@@ -100,7 +100,7 @@ model User {
   jobs                         Job[]
   userFeatureAccessPermissions UserFeatureAccessPermission[]
   sentInvitations              UserInvitation[]              @relation("InvitedBy")
-  receivedInvitation           UserInvitation?               @relation("InvitedUser")
+  receivedInvitations          UserInvitation[]              @relation("InvitedUser")
 
   @@map("users")
 }
@@ -294,7 +294,7 @@ model UserInvitation {
   id                String           @id @default(auto()) @map("_id") @db.ObjectId
   email             String
   invited_by_id     String           @db.ObjectId
-  invited_user_id   String?          @unique @db.ObjectId
+  invited_user_id   String?          @db.ObjectId
   invitation_token  String           @unique
   role              RoleEnum         @default(partial)
   status            InvitationStatus @default(Pending)
@@ -310,8 +310,10 @@ model UserInvitation {
   invitedBy   User  @relation("InvitedBy", fields: [invited_by_id], references: [id], onDelete: Cascade)
   invitedUser User? @relation("InvitedUser", fields: [invited_user_id], references: [id], onDelete: SetNull)
 
+  @@unique([email, status], name: "unique_pending_invitation")
   @@index([email])
   @@index([status])
+  @@index([invited_user_id])
   @@map("user_invitations")
 }
 
