@@ -91,6 +91,9 @@ export class CreateJobDto {
 
   @ApiProperty({ required: false })
   live_url?: string;
+
+  @ApiProperty({ required: false })
+  watcher_emails?: string[];
 }
 
 export class UpdateJobDto implements Partial<CreateJobDto> {
@@ -144,4 +147,35 @@ export class UpdateJobDto implements Partial<CreateJobDto> {
 
   @ApiProperty({ required: false })
   live_url?: string;
+}
+
+export class ImportJobsResponseDto {
+  @ApiProperty({
+    description: 'Number of jobs created',
+    example: 25,
+  })
+  jobsCreated: number;
+
+  @ApiProperty({
+    description: 'List of created jobs',
+    type: 'array',
+    items: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        name: { type: 'string' },
+        job_status: { type: 'string' },
+        portfolio_name: { type: 'string' },
+        sub_portfolio_name: { type: 'string' },
+        property_name: { type: 'string' },
+        posting_type: { type: 'string' },
+        ota_provider: { type: 'string' },
+        execution_type: { type: 'string' },
+        user_id: { type: 'string' },
+        createdAt: { type: 'string', format: 'date-time' },
+        updatedAt: { type: 'string', format: 'date-time' },
+      },
+    },
+  })
+  jobs: any[];
 }

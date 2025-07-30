@@ -16,7 +16,16 @@ export class ScraperJobItemRepository implements IScraperJobItemRepository {
         where: { job_id: jobId },
         include: {
           job: true,
-          property: true,
+          property: {
+            include: {
+              portfolio: true,
+              subPortfolio: {
+                include: {
+                  portfolio: true,
+                },
+              },
+            },
+          },
         },
         orderBy: {
           createdAt: 'desc',
@@ -42,6 +51,7 @@ export class ScraperJobItemRepository implements IScraperJobItemRepository {
         search,
         start_date,
         end_date,
+        reason_for_charge,
         ...filters
       } = query || {};
 
@@ -69,31 +79,29 @@ export class ScraperJobItemRepository implements IScraperJobItemRepository {
         ...filters,
       };
 
+      if (reason_for_charge) {
+        allFilters.card_info = {
+          is: {
+            reason_for_charge: reason_for_charge,
+          },
+        };
+      }
+
       if (search) {
         allFilters = {
           ...allFilters,
-          AND: [
+          OR: [
             {
-              OR: [
-                {
-                  guest_name: {
-                    contains: search,
-                    mode: 'insensitive',
-                  },
-                },
-                {
-                  reservation_id: {
-                    contains: search,
-                    mode: 'insensitive',
-                  },
-                },
-                {
-                  reasonForCharge: {
-                    contains: search,
-                    mode: 'insensitive',
-                  },
-                },
-              ],
+              guest_name: {
+                contains: search,
+                mode: 'insensitive',
+              },
+            },
+            {
+              reservation_id: {
+                contains: search,
+                mode: 'insensitive',
+              },
             },
           ],
         };

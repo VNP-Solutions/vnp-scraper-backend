@@ -61,328 +61,327 @@ enum JobQueueUrlStatus {
 }
 
 type CardInfo {
-  card_number    String    // Store encrypted or masked
-  expiry_date    String
-  cvv            String?   // Optional or encrypted
-  reason_for_charge                 String?
+  card_number       String // Store encrypted or masked
+  expiry_date       String
+  cvv               String? // Optional or encrypted
+  reason_for_charge String?
 }
 
 type PaymentInfo {
-  total_guest_payment               Float
-  cancellation_fee                  Float
-  total_payout                      Float
-  amount_to_charge_or_refund        Float
+  total_guest_payment        Float
+  cancellation_fee           Float
+  total_payout               Float
+  amount_to_charge_or_refund Float
 }
 
 model User {
-  id                            String   @id @default(auto()) @map("_id") @db.ObjectId
-  email                         String   @unique
-  password                      String
-  name                          String
-  role                          RoleEnum
-  image                         String?
-  phone_number                  String?
-  invited_user_id               String?  @db.ObjectId
-  mfa_enabled                   Boolean  @default(false)
-  mfa_secret                    String?
-  is_verified                   Boolean  @default(false)
-  is_active                     Boolean  @default(false)
-  download_report               Boolean  @default(false)
-  last_login                    DateTime?
-  createdAt                     DateTime @default(now())
-  updatedAt                     DateTime @updatedAt
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  email           String    @unique
+  password        String
+  name            String
+  role            RoleEnum
+  image           String?
+  phone_number    String?
+  invited_user_id String?   @db.ObjectId
+  mfa_enabled     Boolean   @default(false)
+  mfa_secret      String?
+  is_verified     Boolean   @default(false)
+  is_active       Boolean   @default(false)
+  download_report Boolean   @default(false)
+  last_login      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  invited_user                  User?     @relation("UserInvites", fields: [invited_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  invited_user User? @relation("UserInvites", fields: [invited_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
-  invitedUsers                  User[]    @relation("UserInvites") 
-  connected_entities            ConnectedEntity[]
-  otps                          Otp[]
-  jobs                          Job[]
-  userFeatureAccessPermissions  UserFeatureAccessPermission[]
-  sentInvitations               UserInvitation[] @relation("InvitedBy")
-  receivedInvitation            UserInvitation? @relation("InvitedUser")
+  invitedUsers                 User[]                        @relation("UserInvites")
+  connected_entities           ConnectedEntity[]
+  otps                         Otp[]
+  jobs                         Job[]
+  userFeatureAccessPermissions UserFeatureAccessPermission[]
+  sentInvitations              UserInvitation[]              @relation("InvitedBy")
+  receivedInvitations          UserInvitation[]              @relation("InvitedUser")
 
   @@map("users")
 }
 
 model ConnectedEntity {
-  id                            String   @id @default(auto()) @map("_id") @db.ObjectId
-  user_id                       String   @db.ObjectId
-  portfolio_id                  String?
-  sub_portfolio_id              String?
-  property_id                   String?
+  id               String  @id @default(auto()) @map("_id") @db.ObjectId
+  user_id          String  @db.ObjectId
+  portfolio_id     String?
+  sub_portfolio_id String?
+  property_id      String?
 
-  user                          User?     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [user_id], references: [id], onDelete: Cascade)
 }
 
 model Portfolio {
-  id                            String   @id @default(auto()) @map("_id") @db.ObjectId
-  name                          String   @unique
-  createdBy                     String?
-  updatedBy                     String?
-  createdAt                     DateTime @default(now())
-  updatedAt                     DateTime @updatedAt
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String   @unique
+  createdBy String?
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  sub_portfolios                SubPortfolio[]
-  jobs                          Job[]
-  userFeatureAccessPermissions  UserFeatureAccessPermission[]
-  property                      Property[]
+  sub_portfolios               SubPortfolio[]
+  jobs                         Job[]
+  userFeatureAccessPermissions UserFeatureAccessPermission[]
+  property                     Property[]
 
   @@map("portfolios")
 }
 
 model SubPortfolio {
-  id                            String   @id @default(auto()) @map("_id") @db.ObjectId
-  name                          String   @unique
-  description                   String?
-  portfolio_id                  String   @db.ObjectId
-  createdAt                     DateTime @default(now())
-  updatedAt                     DateTime @updatedAt
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  name         String   @unique
+  description  String?
+  portfolio_id String   @db.ObjectId
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
+  portfolio Portfolio? @relation(fields: [portfolio_id], references: [id], onDelete: Cascade)
 
-  portfolio                     Portfolio? @relation(fields: [portfolio_id], references: [id], onDelete: Cascade)
+  jobs                         Job[]
+  userFeatureAccessPermissions UserFeatureAccessPermission[]
+  property                     Property[]
 
-  jobs                          Job[]
-  userFeatureAccessPermissions  UserFeatureAccessPermission[]
-  property                      Property[]
-  
   @@map("sub_portfolios")
 }
 
 model Job {
-  id                            String      @id @default(auto()) @map("_id") @db.ObjectId
-  name                          String?
-  job_status                    JobStatus   @default(Pending)
-  portfolio_id                  String?     @db.ObjectId
-  sub_portfolio_id              String?     @db.ObjectId
-  property_id                   String?     @db.ObjectId
-  user_id                       String      @db.ObjectId
-  posting_type                  PostingType
-  portfolio_name                String?
-  sub_portfolio_name            String?
-  property_name                 String
-  billing_type                  String?
-  next_due_date                 DateTime?
-  ota_provider                  OTAProvider @map("OTA")
-  remaining_direct_billed       Float
-  total_collectable             Float
-  total_amount_confirmed        Float
-  execution_type                String      
-  retries_attempted             Int         @default(0)
-  max_retries                   Int         @default(3)
-  retry_delay_ms                Int?
-  priority                      Int         @default(0)
-  job_backoff_length_loading    Int
-  job_backoff_length_selector   Int   
-  queue_name                    String?
-  worker_assigned               String?
-  batch_execution_id            String?
-  start_date                    String?
-  end_date                      String?
-  log_link                      String?
-  live_url                      String?
-  createdAt                     DateTime    @default(now())
-  updatedAt                     DateTime    @updatedAt
+  id                          String      @id @default(auto()) @map("_id") @db.ObjectId
+  name                        String?
+  job_status                  JobStatus   @default(Pending)
+  portfolio_id                String?     @db.ObjectId
+  sub_portfolio_id            String?     @db.ObjectId
+  property_id                 String?     @db.ObjectId
+  user_id                     String      @db.ObjectId
+  posting_type                PostingType
+  portfolio_name              String?
+  sub_portfolio_name          String?
+  property_name               String
+  billing_type                String?
+  next_due_date               DateTime?
+  ota_provider                OTAProvider @map("OTA")
+  remaining_direct_billed     Float
+  total_collectable           Float
+  total_amount_confirmed      Float
+  execution_type              String
+  retries_attempted           Int         @default(0)
+  max_retries                 Int         @default(3)
+  retry_delay_ms              Int?
+  priority                    Int         @default(0)
+  job_backoff_length_loading  Int
+  job_backoff_length_selector Int
+  queue_name                  String?
+  worker_assigned             String?
+  batch_execution_id          String?
+  start_date                  String?
+  end_date                    String?
+  log_link                    String?
+  live_url                    String?
+  watcher_emails              String[]
+  createdAt                   DateTime    @default(now())
+  updatedAt                   DateTime    @updatedAt
 
-  portfolio                     Portfolio?  @relation(fields: [portfolio_id], references: [id])
-  subPortfolio                  SubPortfolio? @relation(fields: [sub_portfolio_id], references: [id])
-  property                      Property?   @relation(fields: [property_id], references: [id])
-  user                          User?       @relation(fields: [user_id], references: [id])
-  jobItem                       JobItem[]
+  portfolio    Portfolio?    @relation(fields: [portfolio_id], references: [id])
+  subPortfolio SubPortfolio? @relation(fields: [sub_portfolio_id], references: [id])
+  property     Property?     @relation(fields: [property_id], references: [id])
+  user         User?         @relation(fields: [user_id], references: [id])
+  jobItem      JobItem[]
 
   @@map("jobs")
 }
 
 model Property {
-  id                            String   @id @default(auto()) @map("_id") @db.ObjectId
-  portfolio_id                  String?  @db.ObjectId
-  sub_portfolio_id              String?  @db.ObjectId
-  name                          String
-  expedia_id                    Int?
-  expedia_status                String?
-  booking_id                    Int?
-  booking_status                String?
-  agoda_id                      Int?
-  agoda_status                  String?
-  user_email                    String
-  user_password                 String
-  createdAt                     DateTime @default(now())
-  updatedAt                     DateTime @updatedAt
-  
-  portfolio                     Portfolio?  @relation(fields: [portfolio_id], references: [id])
-  subPortfolio                  SubPortfolio?  @relation(fields: [sub_portfolio_id], references: [id])
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  portfolio_id     String?  @db.ObjectId
+  sub_portfolio_id String?  @db.ObjectId
+  name             String
+  expedia_id       Int?
+  expedia_status   String?
+  booking_id       Int?
+  booking_status   String?
+  agoda_id         Int?
+  agoda_status     String?
+  user_email       String
+  user_password    String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  jobs                          Job[]
-  files                         File[]
-  credentials                   PropertyCredentials[]
-  userFeatureAccessPermissions  UserFeatureAccessPermission[]
-  jobItem                       JobItem[]
+  portfolio    Portfolio?    @relation(fields: [portfolio_id], references: [id])
+  subPortfolio SubPortfolio? @relation(fields: [sub_portfolio_id], references: [id])
+
+  jobs                         Job[]
+  files                        File[]
+  credentials                  PropertyCredentials[]
+  userFeatureAccessPermissions UserFeatureAccessPermission[]
+  jobItem                      JobItem[]
 
   @@map("properties")
 }
 
 model PropertyCredentials {
-  id                           String   @id @default(auto()) @map("_id") @db.ObjectId
-  property_id                  String   @db.ObjectId
-  expediaUsername              String?
-  expediaPassword              String?
-  agodaUsername                String?
-  agodaPassword                String?
-  bookingUsername              String?
-  bookingPassword              String?
-  expediaEmailAssociated       String?
-  propertyContactEmail         String?
-  portfolioContactEmail        String?
-  multiplePortfolioEmails      String[]
+  id                      String   @id @default(auto()) @map("_id") @db.ObjectId
+  property_id             String   @db.ObjectId
+  expediaUsername         String?
+  expediaPassword         String?
+  agodaUsername           String?
+  agodaPassword           String?
+  bookingUsername         String?
+  bookingPassword         String?
+  expediaEmailAssociated  String?
+  propertyContactEmail    String?
+  portfolioContactEmail   String?
+  multiplePortfolioEmails String[]
 
-  property                     Property  @relation(fields: [property_id], references: [id], onDelete: Cascade)
+  property Property @relation(fields: [property_id], references: [id], onDelete: Cascade)
 
   @@map("property_credentials")
 }
 
 model Otp {
-  id                            String     @id @default(auto()) @map("_id") @db.ObjectId
-  user_id                       String     @db.ObjectId
-  otp_code                      String
-  purpose                       OtpPurpose @default(LOGIN)
-  ip_address                    String?
-  expires_at                    DateTime
-  is_used                       Boolean    @default(false)
-  created_at                    DateTime   @default(now())
-  updated_at                    DateTime   @updatedAt
+  id         String     @id @default(auto()) @map("_id") @db.ObjectId
+  user_id    String     @db.ObjectId
+  otp_code   String
+  purpose    OtpPurpose @default(LOGIN)
+  ip_address String?
+  expires_at DateTime
+  is_used    Boolean    @default(false)
+  created_at DateTime   @default(now())
+  updated_at DateTime   @updatedAt
 
-  user                          User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id])
   @@index([otp_code])
   @@index([purpose])
   @@index([ip_address])
-
   @@map("otps")
 }
 
-
 model File {
-  id                           String   @id @default(auto()) @map("_id") @db.ObjectId
-  url                          String
-  thumbnile_url                String?
-  originalName                 String
-  size                         Int
-  property_id                  String?
-  createdAt                    DateTime @default(now())
-  updatedAt                    DateTime @updatedAt
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  url           String
+  thumbnile_url String?
+  originalName  String
+  size          Int
+  property_id   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  property                     Property? @relation(fields: [property_id], references: [id], onDelete: Cascade)
+  property Property? @relation(fields: [property_id], references: [id], onDelete: Cascade)
 
   @@map("files")
 }
 
 model UserFeatureAccessPermission {
-  id                           String   @id @default(auto()) @map("_id") @db.ObjectId
-  user_id                      String   @db.ObjectId
-  portfolio_id                 String?  @db.ObjectId
-  sub_portfolio_id             String?  @db.ObjectId
-  property_id                  String?  @db.ObjectId
+  id               String  @id @default(auto()) @map("_id") @db.ObjectId
+  user_id          String  @db.ObjectId
+  portfolio_id     String? @db.ObjectId
+  sub_portfolio_id String? @db.ObjectId
+  property_id      String? @db.ObjectId
 
-  user                         User?         @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  portfolio                    Portfolio?    @relation(fields: [portfolio_id], references: [id], onDelete: Cascade)
-  subPortFolio                 SubPortfolio? @relation(fields: [sub_portfolio_id], references: [id], onDelete: Cascade)
-  property                     Property?     @relation(fields: [property_id], references: [id], onDelete: Cascade)
+  user         User?         @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  portfolio    Portfolio?    @relation(fields: [portfolio_id], references: [id], onDelete: Cascade)
+  subPortFolio SubPortfolio? @relation(fields: [sub_portfolio_id], references: [id], onDelete: Cascade)
+  property     Property?     @relation(fields: [property_id], references: [id], onDelete: Cascade)
 
   @@map("user_feature_access_permissions")
 }
 
 model UserInvitation {
-  id                           String           @id @default(auto()) @map("_id") @db.ObjectId
-  email                        String
-  invited_by_id                String           @db.ObjectId
-  invited_user_id              String?          @unique @db.ObjectId
-  invitation_token             String           @unique
-  role                         RoleEnum         @default(partial)
-  status                       InvitationStatus @default(Pending)
-  expires_at                   DateTime
-  accepted_at                  DateTime?
-  message                      String?
-  portfolio_ids                String[]         @default([]) @db.ObjectId
-  sub_portfolio_ids            String[]         @default([]) @db.ObjectId
-  property_ids                 String[]         @default([]) @db.ObjectId
-  createdAt                    DateTime         @default(now())
-  updatedAt                    DateTime         @updatedAt
+  id                String           @id @default(auto()) @map("_id") @db.ObjectId
+  email             String
+  invited_by_id     String           @db.ObjectId
+  invited_user_id   String?          @db.ObjectId
+  invitation_token  String           @unique
+  role              RoleEnum         @default(partial)
+  status            InvitationStatus @default(Pending)
+  expires_at        DateTime
+  accepted_at       DateTime?
+  message           String?
+  portfolio_ids     String[]         @default([]) @db.ObjectId
+  sub_portfolio_ids String[]         @default([]) @db.ObjectId
+  property_ids      String[]         @default([]) @db.ObjectId
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 
-  invitedBy                    User             @relation("InvitedBy", fields: [invited_by_id], references: [id], onDelete: Cascade)
-  invitedUser                  User?            @relation("InvitedUser", fields: [invited_user_id], references: [id], onDelete: SetNull)
+  invitedBy   User  @relation("InvitedBy", fields: [invited_by_id], references: [id], onDelete: Cascade)
+  invitedUser User? @relation("InvitedUser", fields: [invited_user_id], references: [id], onDelete: SetNull)
 
+  @@unique([email, status], name: "unique_pending_invitation")
   @@index([email])
   @@index([status])
-
+  @@index([invited_user_id])
   @@map("user_invitations")
 }
 
 model JobItem {
-  id                           String      @id @default(auto()) @map("_id") @db.ObjectId
-  job_id                       String      @db.ObjectId
-  property_id                  String?     @db.ObjectId
-  guest_name                   String
-  
-  reservation_id               String
-  confirmation_number          String
-  
-  check_in_date                DateTime
-  check_out_date               DateTime
-  
-  room_type                    String
-  
-  booking_amount               Float       // Original amount booked
-  
-  booked_date                  DateTime
-  has_card_info                Boolean     @default(false)
-  
-  card_info                    CardInfo?   // Embedded document
-  
-  has_payment_info             Boolean     @default(false)
-  payment_info                 PaymentInfo? // Embedded document
-  
-  reservation_status           String      // e.g., 'Active', 'Cancelled'
-  
-  createdAt                    DateTime    @default(now())
-  updatedAt                    DateTime    @updatedAt
+  id          String  @id @default(auto()) @map("_id") @db.ObjectId
+  job_id      String  @db.ObjectId
+  property_id String? @db.ObjectId
+  guest_name  String
+
+  reservation_id      String
+  confirmation_number String
+
+  check_in_date  DateTime
+  check_out_date DateTime
+
+  room_type String
+
+  booking_amount Float // Original amount booked
+
+  booked_date   DateTime
+  has_card_info Boolean  @default(false)
+
+  card_info CardInfo? // Embedded document
+
+  has_payment_info Boolean      @default(false)
+  payment_info     PaymentInfo? // Embedded document
+
+  reservation_status String // e.g., 'Active', 'Cancelled'
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  job                          Job         @relation(fields: [job_id], references: [id], onDelete: Cascade)
-  property                     Property?   @relation(fields: [property_id], references: [id], onDelete: Cascade)
+  job      Job       @relation(fields: [job_id], references: [id], onDelete: Cascade)
+  property Property? @relation(fields: [property_id], references: [id], onDelete: Cascade)
 
   @@map("job_items")
 }
 
 model JobQueueUrl {
-  id                           String              @id @default(auto()) @map("_id") @db.ObjectId
-  name                         String              // Descriptive name for the URL/server
-  url                          String              @unique
-  status                       JobQueueUrlStatus   @default(Available)
-  description                  String?             // Optional description
-  assigned_to_job_id           String?             // Track which job is using this URL
-  last_used                    DateTime?           // When was this URL last used
-  priority                     Int                 @default(1) // Higher number = higher priority
-  max_concurrent_jobs          Int                 @default(1) // How many jobs can use this URL simultaneously
-  current_job_count            Int                 @default(0) // Current number of jobs using this URL
-  is_active                    Boolean             @default(true)
-  createdAt                    DateTime            @default(now())
-  updatedAt                    DateTime            @updatedAt
+  id                  String            @id @default(auto()) @map("_id") @db.ObjectId
+  name                String // Descriptive name for the URL/server
+  url                 String            @unique
+  status              JobQueueUrlStatus @default(Available)
+  description         String? // Optional description
+  assigned_to_job_id  String? // Track which job is using this URL
+  last_used           DateTime? // When was this URL last used
+  priority            Int               @default(1) // Higher number = higher priority
+  max_concurrent_jobs Int               @default(1) // How many jobs can use this URL simultaneously
+  current_job_count   Int               @default(0) // Current number of jobs using this URL
+  is_active           Boolean           @default(true)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
 
   @@map("job_queue_urls")
 }
 
 model ActivityLog {
-  id            String   @id @default(auto()) @map("_id") @db.ObjectId
-  username      String
-  role          String
-  endpoint      String
-  success       Boolean
-  statusCode    Int
-  ipAddress     String
-  resource      String
-  responseTime  Int
-  timestamp     DateTime @default(now())
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  username     String
+  role         String
+  endpoint     String
+  success      Boolean
+  statusCode   Int
+  ipAddress    String
+  resource     String
+  responseTime Int
+  timestamp    DateTime @default(now())
 
   @@map("activity_logs")
 }

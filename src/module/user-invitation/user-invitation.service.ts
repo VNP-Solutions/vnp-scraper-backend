@@ -64,7 +64,7 @@ export class UserInvitationService implements IUserInvitationService {
     invitedByName: string,
     message?: string,
   ): Promise<void> {
-    const invitationUrl = `${this.configService.get('FRONTEND_URL')}/accept-invitation?token=${invitationToken}`;
+    const invitationUrl = `${this.configService.get('INVITATION_REDIRECT_URL')}/auth/accept-invitation?token=${invitationToken}`;
 
     const emailHTML = `
     <body style="margin: 0; padding: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f4f4f4; color: #333333; line-height: 1.6;">
