@@ -198,6 +198,69 @@ export class JobController {
     );
   }
 
+  @Get('/:jobId/latest-checkout-date')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Get latest checkout date for a job',
+    description:
+      'Returns the most recent checkout date from job items belonging to a specific job',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Latest checkout date retrieved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 200 },
+        message: {
+          type: 'string',
+          example: 'Latest checkout date retrieved successfully',
+        },
+        data: {
+          type: 'object',
+          properties: {
+            check_out_date: {
+              type: 'string',
+              format: 'date-time',
+              example: '2025-12-31T10:00:00.000Z',
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'No checkout dates found for this job',
+  })
+  async getLatestCheckoutDateByJobId(
+    @Param('jobId') jobId: string,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result =
+          await this.jobService.getLatestCheckoutDateByJobId(jobId);
+
+        if (!result) {
+          return {
+            statusCode: 404,
+            message: 'No checkout dates found for this job',
+            data: null,
+          };
+        }
+
+        return {
+          statusCode: 200,
+          message: 'Latest checkout date retrieved successfully',
+          data: result,
+        };
+      },
+      this.logger,
+    );
+  }
+
   @Post('/import')
   @ApiOperation({
     summary: 'Import jobs from Excel file',

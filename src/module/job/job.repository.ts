@@ -247,4 +247,29 @@ export class JobRepository implements IJobRepository {
       throw error;
     }
   }
+
+  async findLatestCheckoutDateByJobId(
+    jobId: string,
+  ): Promise<{ check_out_date: Date } | null> {
+    try {
+      const latestJobItem = await this.db.jobItem.findFirst({
+        where: {
+          job_id: jobId,
+        },
+        orderBy: {
+          check_out_date: 'desc',
+        },
+        select: {
+          check_out_date: true,
+        },
+      });
+      return latestJobItem;
+    } catch (error) {
+      this.logger.error(
+        `Error finding latest checkout date for job ${jobId}:`,
+        error,
+      );
+      throw error;
+    }
+  }
 }
