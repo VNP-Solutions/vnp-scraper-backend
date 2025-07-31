@@ -503,7 +503,7 @@ export class PropertyController {
   @ApiOperation({
     summary: 'Import properties from Excel file',
     description:
-      'Upload an Excel file to import properties, portfolios, and sub-portfolios. The Excel file should contain columns: Portfolio (optional), Sub Portfolio (optional), Property (required), user_email, user_password, and credential columns like expediaUsername, expediaPassword, agodaUsername, agodaPassword, bookingUsername, bookingPassword, expediaEmailAssociated, propertyContactEmail, portfolioContactEmail, multiplePortfolioEmails.',
+      'Upload an Excel file to import properties, portfolios, and sub-portfolios. The Excel file should contain columns: Portfolio (optional), Sub Portfolio (optional), Property (required), and credential columns like expediaUsername, expediaPassword, agodaUsername, agodaPassword, bookingUsername, bookingPassword, expediaEmailAssociated, propertyContactEmail, portfolioContactEmail, multiplePortfolioEmails.',
   })
   @ApiConsumes('multipart/form-data')
   @ApiBody({

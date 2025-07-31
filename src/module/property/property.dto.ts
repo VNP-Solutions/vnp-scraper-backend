@@ -45,18 +45,6 @@ export class CreatePropertyDto {
     description: 'Agoda Status',
   })
   agoda_status?: string;
-
-  @ApiProperty({
-    description: 'User email for property access',
-    example: 'user@example.com',
-  })
-  user_email: string;
-
-  @ApiProperty({
-    description: 'User password for property access (will be encrypted)',
-    example: 'securePassword123',
-  })
-  user_password: string;
 }
 
 export class UpdatePropertyDto {
@@ -105,18 +93,6 @@ export class UpdatePropertyDto {
     description: 'Agoda Status',
   })
   agoda_status?: string;
-
-  @ApiPropertyOptional({
-    description: 'User email for property access',
-    example: 'user@example.com',
-  })
-  user_email?: string;
-
-  @ApiPropertyOptional({
-    description: 'User password for property access (will be encrypted)',
-    example: 'securePassword123',
-  })
-  user_password?: string;
 }
 
 export class ImportPropertiesResponseDto {
@@ -185,7 +161,6 @@ export class ImportPropertiesResponseDto {
         name: { type: 'string' },
         portfolio_id: { type: 'string' },
         sub_portfolio_id: { type: 'string' },
-        user_email: { type: 'string' },
         createdAt: { type: 'string', format: 'date-time' },
         updatedAt: { type: 'string', format: 'date-time' },
       },
