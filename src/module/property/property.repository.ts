@@ -18,7 +18,17 @@ export class PropertyRepository implements IPropertyRepository {
   async create(data: CreatePropertyDto): Promise<Property> {
     try {
       const property = await this.db.property.create({
-        data,
+        data: {
+          name: data.name,
+          portfolio_id: data.portfolio_id,
+          sub_portfolio_id: data.sub_portfolio_id,
+          expedia_id: data.expedia_id,
+          expedia_status: data.expedia_status,
+          booking_id: data.booking_id,
+          booking_status: data.booking_status,
+          agoda_id: data.agoda_id,
+          agoda_status: data.agoda_status,
+        },
       });
       return property;
     } catch (error) {
