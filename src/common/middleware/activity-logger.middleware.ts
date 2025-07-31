@@ -47,6 +47,10 @@ export class ActivityLoggerMiddleware implements NestMiddleware {
             if (dbUser) {
               user.username = dbUser.name;
               user.role = dbUser.role;
+            } else {
+              // Fallback to JWT token information when database lookup fails
+              user.username = (req as any).user?.email || 'anonymous';
+              user.role = (req as any).user?.role || 'guest';
             }
           }
 
