@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { Job, PostingType, OTAProvider } from '@prisma/client';
+import { Job, OTAProvider, PostingType } from '@prisma/client';
 import * as XLSX from 'xlsx';
 import { CreateJobDto, UpdateJobDto } from './job.dto';
 import { IJobRepository, IJobService } from './job.interface';
@@ -308,6 +308,21 @@ export class JobService implements IJobService {
     } catch (error) {
       this.logger.error(
         `Error importing jobs from Excel: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async getLatestCheckoutDateByJobId(
+    jobId: string,
+  ): Promise<{ check_out_date: Date } | null> {
+    try {
+      const result = await this.repository.findLatestCheckoutDateByJobId(jobId);
+      return result;
+    } catch (error) {
+      this.logger.error(
+        `Error getting latest checkout date for job ${jobId}: ${error.message}`,
         error.stack,
       );
       throw error;

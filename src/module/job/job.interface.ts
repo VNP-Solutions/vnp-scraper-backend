@@ -17,6 +17,9 @@ export interface IJobRepository {
     portfolioId?: string,
     subPortfolioId?: string,
   ): Promise<any>;
+  findLatestCheckoutDateByJobId(
+    jobId: string,
+  ): Promise<{ check_out_date: Date } | null>;
 }
 
 export interface IJobService {
@@ -34,4 +37,7 @@ export interface IJobService {
     jobsCreated: number;
     jobs: any[];
   }>;
+  getLatestCheckoutDateByJobId(
+    jobId: string,
+  ): Promise<{ check_out_date: Date } | null>;
 }
