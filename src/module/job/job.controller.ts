@@ -26,10 +26,10 @@ import {
 import { Response } from 'express';
 import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
-import { ResponseHandler } from 'src/common/utils/response-handler';
 import { ExcelFileInterceptor } from 'src/common/interceptors/excel-file.interceptor';
+import { ResponseHandler } from 'src/common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CreateJobDto, UpdateJobDto, ImportJobsResponseDto } from './job.dto';
+import { CreateJobDto, ImportJobsResponseDto, UpdateJobDto } from './job.dto';
 import { IJobService } from './job.interface';
 import { createJobSchema } from './job.validation';
 
@@ -79,7 +79,8 @@ export class JobController {
   @ApiQuery({
     name: 'search',
     required: false,
-    description: 'Search jobs by portfolio, sub-portfolio, or property name',
+    description:
+      'Search jobs by job ID, job name, portfolio name, sub-portfolio name, property name, Expedia ID, Booking ID, or Agoda ID',
   })
   @ApiQuery({
     name: 'page',
