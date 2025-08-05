@@ -227,7 +227,8 @@ export class JobRepository implements IJobRepository {
   ): Promise<any> {
     try {
       const whereClause: any = {
-        name: { equals: name, mode: 'insensitive' },
+        //name: { equals: name, mode: 'insensitive' },
+        name: name,
       };
 
       if (portfolioId) {

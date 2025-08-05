@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Property, RoleEnum } from '@prisma/client';
+import { EncryptionUtil } from 'src/common/utils/encryption.util';
 import { DatabaseService } from '../database/database.service';
 import { CreatePropertyDto, UpdatePropertyDto } from './property.dto';
 import { IPropertyRepository } from './property.interface';
@@ -9,6 +10,7 @@ export class PropertyRepository implements IPropertyRepository {
   constructor(
     private readonly db: DatabaseService,
     private readonly logger: Logger,
+    private readonly encryptionUtil: EncryptionUtil,
   ) {}
 
   get databaseService(): DatabaseService {
@@ -230,7 +232,7 @@ export class PropertyRepository implements IPropertyRepository {
         },
         select: { property_id: true },
       });
-      directAccess.forEach(perm => {
+      directAccess.forEach((perm) => {
         if (perm.property_id) accessiblePropertyIds.add(perm.property_id);
       });
 
@@ -246,7 +248,7 @@ export class PropertyRepository implements IPropertyRepository {
 
       if (portfolioAccess.length > 0) {
         const portfolioIds = portfolioAccess
-          .map(p => p.portfolio_id)
+          .map((p) => p.portfolio_id)
           .filter(Boolean);
         const portfolioProperties = await this.db.property.findMany({
           where: {
@@ -257,7 +259,9 @@ export class PropertyRepository implements IPropertyRepository {
           },
           select: { id: true },
         });
-        portfolioProperties.forEach(prop => accessiblePropertyIds.add(prop.id));
+        portfolioProperties.forEach((prop) =>
+          accessiblePropertyIds.add(prop.id),
+        );
       }
 
       // 3. Sub-portfolio access
@@ -272,7 +276,7 @@ export class PropertyRepository implements IPropertyRepository {
 
       if (subPortfolioAccess.length > 0) {
         const subPortfolioIds = subPortfolioAccess
-          .map(p => p.sub_portfolio_id)
+          .map((p) => p.sub_portfolio_id)
           .filter(Boolean);
         const subPortfolioProperties = await this.db.property.findMany({
           where: {
@@ -280,7 +284,7 @@ export class PropertyRepository implements IPropertyRepository {
           },
           select: { id: true },
         });
-        subPortfolioProperties.forEach(prop =>
+        subPortfolioProperties.forEach((prop) =>
           accessiblePropertyIds.add(prop.id),
         );
       }
@@ -504,10 +508,10 @@ export class PropertyRepository implements IPropertyRepository {
 
         // Get portfolio IDs and sub-portfolio IDs from permissions
         const portfolioIds = userPermissions
-          .map(perm => perm.portfolio_id)
+          .map((perm) => perm.portfolio_id)
           .filter(Boolean);
         const subPortfolioIds = userPermissions
-          .map(perm => perm.sub_portfolio_id)
+          .map((perm) => perm.sub_portfolio_id)
           .filter(Boolean);
 
         const portfolios = await this.db.portfolio.findMany({
@@ -826,19 +830,25 @@ export class PropertyRepository implements IPropertyRepository {
     try {
       const updatePayload: any = {};
 
-      // Add credential fields if they exist
+      // Add credential fields if they exist (encrypt passwords)
       if (credentialsData.expediaUsername !== undefined)
         updatePayload.expediaUsername = credentialsData.expediaUsername;
       if (credentialsData.expediaPassword !== undefined)
-        updatePayload.expediaPassword = credentialsData.expediaPassword;
+        updatePayload.expediaPassword = this.encryptionUtil.encryptPassword(
+          credentialsData.expediaPassword,
+        );
       if (credentialsData.agodaUsername !== undefined)
         updatePayload.agodaUsername = credentialsData.agodaUsername;
       if (credentialsData.agodaPassword !== undefined)
-        updatePayload.agodaPassword = credentialsData.agodaPassword;
+        updatePayload.agodaPassword = this.encryptionUtil.encryptPassword(
+          credentialsData.agodaPassword,
+        );
       if (credentialsData.bookingUsername !== undefined)
         updatePayload.bookingUsername = credentialsData.bookingUsername;
       if (credentialsData.bookingPassword !== undefined)
-        updatePayload.bookingPassword = credentialsData.bookingPassword;
+        updatePayload.bookingPassword = this.encryptionUtil.encryptPassword(
+          credentialsData.bookingPassword,
+        );
       if (credentialsData.expediaEmailAssociated !== undefined)
         updatePayload.expediaEmailAssociated =
           credentialsData.expediaEmailAssociated;
@@ -852,10 +862,26 @@ export class PropertyRepository implements IPropertyRepository {
         updatePayload.multiplePortfolioEmails =
           credentialsData.multiplePortfolioEmails;
 
-      return await this.db.propertyCredentials.updateMany({
+      // Check if credentials exist for this property
+      const existingCredentials = await this.db.propertyCredentials.findFirst({
         where: { property_id: propertyId },
-        data: updatePayload,
       });
+
+      if (existingCredentials) {
+        // Update existing credentials
+        return await this.db.propertyCredentials.update({
+          where: { id: existingCredentials.id },
+          data: updatePayload,
+        });
+      } else {
+        // Create new credentials
+        return await this.db.propertyCredentials.create({
+          data: {
+            property_id: propertyId,
+            ...updatePayload,
+          },
+        });
+      }
     } catch (error) {
       this.logger.error(
         `Error updating property credentials: ${error.message}`,
