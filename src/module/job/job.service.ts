@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Job, OTAProvider, PostingType } from '@prisma/client';
 import * as XLSX from 'xlsx';
+import { IPropertyRepository } from '../property/property.interface';
 import { CreateJobDto, UpdateJobDto } from './job.dto';
 import { IJobRepository, IJobService } from './job.interface';
 
@@ -9,6 +10,8 @@ export class JobService implements IJobService {
   constructor(
     @Inject('IJobRepository')
     private readonly repository: IJobRepository,
+    @Inject('IPropertyRepository')
+    private readonly propertyRepository: IPropertyRepository,
     private readonly logger: Logger,
   ) {}
 
@@ -281,8 +284,9 @@ export class JobService implements IJobService {
             queue_name: rowData['Queue Name'] || 'default',
             worker_assigned: rowData['Worker Assigned'] || null,
             batch_execution_id: rowData['Batch Execution ID'] || null,
-            start_date: rowData['Start Date'] || null,
-            end_date: rowData['End Date'] || null,
+            start_date:
+              rowData['From (MM/DD/YYYY)'] || rowData['Start Date'] || null,
+            end_date: rowData['To (MM/DD/YYYY)'] || rowData['End Date'] || null,
             log_link: rowData['Log Link'] || null,
             live_url: rowData['Live URL'] || null,
           };
@@ -292,6 +296,89 @@ export class JobService implements IJobService {
           jobs.push(newJob);
           jobsCreated++;
           this.logger.log(`Created new job: ${newJob.name}`);
+
+          // Handle credentials storage for all OTA providers
+          if (propertyId) {
+            try {
+              const credentialsData: any = {};
+              let hasCredentials = false;
+
+              // Check Expedia credentials
+              if (rowData['Expedia Username']) {
+                credentialsData.expediaUsername = rowData['Expedia Username']
+                  .toString()
+                  .trim();
+                hasCredentials = true;
+              }
+              if (rowData['Expedia Password']) {
+                credentialsData.expediaPassword = rowData['Expedia Password']
+                  .toString()
+                  .trim();
+                hasCredentials = true;
+              }
+
+              // Check Agoda credentials
+              if (rowData['Agoda Username']) {
+                credentialsData.agodaUsername = rowData['Agoda Username']
+                  .toString()
+                  .trim();
+                hasCredentials = true;
+              }
+              if (rowData['Agoda Password']) {
+                credentialsData.agodaPassword = rowData['Agoda Password']
+                  .toString()
+                  .trim();
+                hasCredentials = true;
+              }
+
+              // Check Booking credentials
+              if (rowData['Booking Username']) {
+                credentialsData.bookingUsername = rowData['Booking Username']
+                  .toString()
+                  .trim();
+                hasCredentials = true;
+              }
+              if (rowData['Booking Password']) {
+                credentialsData.bookingPassword = rowData['Booking Password']
+                  .toString()
+                  .trim();
+                hasCredentials = true;
+              }
+
+              // Update property credentials if we have any
+              if (hasCredentials) {
+                await this.propertyRepository.updatePropertyCredentials(
+                  propertyId,
+                  credentialsData,
+                );
+                const credentialTypes = [];
+                if (
+                  credentialsData.expediaUsername ||
+                  credentialsData.expediaPassword
+                )
+                  credentialTypes.push('Expedia');
+                if (
+                  credentialsData.agodaUsername ||
+                  credentialsData.agodaPassword
+                )
+                  credentialTypes.push('Agoda');
+                if (
+                  credentialsData.bookingUsername ||
+                  credentialsData.bookingPassword
+                )
+                  credentialTypes.push('Booking');
+
+                this.logger.log(
+                  `Updated ${credentialTypes.join(', ')} credentials for property: ${propertyName}`,
+                );
+              }
+            } catch (credentialError) {
+              this.logger.error(
+                `Error updating credentials for property ${propertyName}: ${credentialError.message}`,
+              );
+              // Don't fail the job creation if credentials update fails
+            }
+          }
         } catch (error) {
           this.logger.error(`Error processing job row: ${error.message}`);
           // Re-throw the error to stop the import process
