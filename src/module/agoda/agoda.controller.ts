@@ -133,11 +133,11 @@ export class AgodaController {
       // bookedUrl = urlBookingResult.url;
 
       // Add the booked URL to the request body
-      const enhancedBody = {
-        ...body,
-        scraperUrl: bookedUrl.url,
-        urlId: bookedUrl.id,
-      };
+      // const enhancedBody = {
+      //   ...body,
+      //   scraperUrl: bookedUrl.url,
+      //   urlId: bookedUrl.id,
+      // };
 
       // const response = await firstValueFrom(
       //   this.httpService.post(
@@ -170,9 +170,11 @@ export class AgodaController {
       return res.status(response.status).json(response.data);
     } catch (error: any) {
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
-      const data = error.response?.data || {
-        message: 'Agoda Job server is down',
-      };
+      const data = error
+        ? { message: error.message }
+        : {
+            message: 'Agoda Job server is down',
+          };
       return res.status(status).json(data);
     }
   }
