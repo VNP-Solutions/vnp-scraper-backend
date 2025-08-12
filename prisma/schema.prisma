@@ -180,6 +180,7 @@ model Job {
   end_date                    String?
   log_link                    String?
   live_url                    String?
+  case_open                   Boolean?    @default(false)
   watcher_emails              String[]
   createdAt                   DateTime    @default(now())
   updatedAt                   DateTime    @updatedAt
@@ -336,7 +337,6 @@ model JobItem {
 
   card_info CardInfo? // Embedded document
 
-  case_open        Boolean?     @default(false)
   has_payment_info Boolean      @default(false)
   payment_info     PaymentInfo? // Embedded document
 
