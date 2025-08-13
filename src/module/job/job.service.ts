@@ -1,7 +1,9 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { Job } from '@prisma/client';
+import { Job, OTAProvider } from '@prisma/client';
 import { CreateJobDto, UpdateJobDto } from './job.dto';
 import { IJobRepository, IJobService } from './job.interface';
+import { BookingJobRouterService } from './booking-job-router.service';
+import { DatabaseService } from '../database/database.service';
 
 @Injectable()
 export class JobService implements IJobService {
@@ -9,15 +11,63 @@ export class JobService implements IJobService {
     @Inject('IJobRepository')
     private readonly repository: IJobRepository,
     private readonly logger: Logger,
+    private readonly bookingJobRouter: BookingJobRouterService,
+    private readonly db: DatabaseService,
   ) {}
 
   async createJob(data: CreateJobDto): Promise<Job> {
     try {
+      // Check if this is a Booking.com job and property needs trust verification
+      if (data.ota_provider === OTAProvider.Booking && data.property_id) {
+        const trustStatus = await this.bookingJobRouter.getPropertyTrustStatus(data.property_id);
+        
+        if (trustStatus.needsVerification) {
+          this.logger.log(
+            `Booking job for property ${data.property_id} requires trust verification first. ` +
+            `Status: ${trustStatus.trustStatus}, Score: ${trustStatus.trustScore}, ` +
+            `Hours since login: ${trustStatus.hoursSinceLastLogin.toFixed(1)}`,
+          );
+          
+          // Add a note to the job about trust verification requirement
+          data.log_link = `Trust verification required - ${trustStatus.trustStatus} (${trustStatus.hoursSinceLastLogin.toFixed(1)}h since last login)`;
+        }
+      }
+      
       const job = await this.repository.create(data);
+      
+      // If it's a Booking job, check if we should trigger trust verification immediately
+      if (job.ota_provider === OTAProvider.Booking && job.property_id) {
+        this.triggerBookingJobProcessing(job);
+      }
+      
       return job;
     } catch (error) {
       this.logger.error(`Error creating job: ${error.message}`, error.stack);
       throw error;
+    }
+  }
+
+  /**
+   * Trigger processing for a booking job (trust verification if needed, then scraping)
+   */
+  private async triggerBookingJobProcessing(job: Job): Promise<void> {
+    try {
+      // Process in background, don't wait
+      setImmediate(async () => {
+        try {
+          await this.bookingJobRouter.processBookingJob(job);
+        } catch (error) {
+          this.logger.error(
+            `Background processing failed for booking job ${job.id}: ${error.message}`,
+            error.stack,
+          );
+        }
+      });
+    } catch (error) {
+      this.logger.error(
+        `Error triggering booking job processing for job ${job.id}: ${error.message}`,
+        error.stack,
+      );
     }
   }
 

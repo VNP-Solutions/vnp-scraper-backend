@@ -195,6 +195,12 @@ model Property {
   expedia_status                String?
   booking_id                    Int?
   booking_status                String?
+  booking_trusted_status        String?  @default("not_trusted")
+  booking_trust_score           Int?     @default(0)
+  booking_successful_logins     Int?     @default(0)
+  booking_failed_logins         Int?     @default(0)
+  booking_last_login            DateTime?
+  booking_trust_established_date DateTime?
   agoda_id                      Int?
   agoda_status                  String?
   user_email                    String

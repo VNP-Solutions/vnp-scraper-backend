@@ -22,7 +22,24 @@ export class PropertyService implements IPropertyService {
         user_password: this.encryptionUtil.encryptPassword(data.user_password),
       };
 
+      // If property has booking_id, set default trust status
+      if (data.booking_id && data.booking_id > 0) {
+        encryptedData.booking_trusted_status = 'not_trusted';
+        encryptedData.booking_trust_score = 0;
+        encryptedData.booking_successful_logins = 0;
+        encryptedData.booking_failed_logins = 0;
+        this.logger.log(
+          `Setting booking property ${data.name} as untrusted for trust verification flow`,
+        );
+      }
+
       const property = await this.repository.create(encryptedData);
+      
+      // If it's a booking property, trigger trust verification
+      if (property.booking_id && property.booking_id > 0) {
+        this.triggerBookingTrustVerification(property.id);
+      }
+      
       return this.processProperty(property);
     } catch (error) {
       this.logger.error(
@@ -30,6 +47,26 @@ export class PropertyService implements IPropertyService {
         error.stack,
       );
       throw error;
+    }
+  }
+
+  /**
+   * Trigger booking trust verification for a property
+   * This will be picked up by the trust scheduler on its next run
+   */
+  private async triggerBookingTrustVerification(propertyId: string): Promise<void> {
+    try {
+      this.logger.log(
+        `Booking property ${propertyId} enrolled for trust verification. Will be processed in next scheduler run.`,
+      );
+      // The trust scheduler will automatically pick this up based on:
+      // - booking_trusted_status = 'not_trusted'
+      // - booking_last_login = null or older than 23 hours
+    } catch (error) {
+      this.logger.error(
+        `Error triggering trust verification for property ${propertyId}: ${error.message}`,
+        error.stack,
+      );
     }
   }
 
@@ -67,6 +104,9 @@ export class PropertyService implements IPropertyService {
 
   async updateProperty(id: string, data: UpdatePropertyDto): Promise<Property> {
     try {
+      // Get existing property to check if booking_id is being added
+      const existingProperty = await this.repository.findById(id);
+      
       // Encrypt the password before updating if it's provided
       const updateData = { ...data };
       if (data.user_password) {
@@ -75,7 +115,31 @@ export class PropertyService implements IPropertyService {
         );
       }
 
+      // Check if booking_id is being added or changed
+      const isAddingBookingId = !existingProperty.booking_id && data.booking_id && data.booking_id > 0;
+      const isChangingBookingId = existingProperty.booking_id !== data.booking_id && data.booking_id && data.booking_id > 0;
+      
+      if (isAddingBookingId || isChangingBookingId) {
+        // Reset trust status when booking_id is added or changed
+        updateData.booking_trusted_status = 'not_trusted';
+        updateData.booking_trust_score = 0;
+        updateData.booking_successful_logins = 0;
+        updateData.booking_failed_logins = 0;
+        updateData.booking_last_login = null;
+        updateData.booking_trust_established_date = null;
+        
+        this.logger.log(
+          `Resetting trust status for property ${id} due to booking_id ${isAddingBookingId ? 'addition' : 'change'}`,
+        );
+      }
+
       const property = await this.repository.update(id, updateData);
+      
+      // Trigger trust verification if booking was added/changed
+      if (isAddingBookingId || isChangingBookingId) {
+        this.triggerBookingTrustVerification(property.id);
+      }
+      
       return this.processProperty(property);
     } catch (error) {
       this.logger.error(
