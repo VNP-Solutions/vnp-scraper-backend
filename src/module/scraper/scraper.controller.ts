@@ -628,7 +628,6 @@ export class ScraperController {
 
       bookedUrl = urlBookingResult.url;
 
-      
       // Add the booked URL to the request body
       const enhancedBody = {
         ...body,
@@ -861,6 +860,119 @@ export class ScraperController {
           jobId: jobId,
         },
       });
+    }
+  }
+
+  @Post('/api/expedia/graphql-run-job')
+  @ApiOperation({
+    summary: 'Start property scraping job',
+    description:
+      'Start a new property scraping job for the specified property ID, date range, and job ID. Automatically assigns an available URL from the job queue.',
+  })
+  @ApiBody({ type: PropertyRunJobRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Property scraping job completed successfully',
+    type: PropertyRunJobResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Missing required parameters in request body',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Scraping job already running',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 503,
+    description: 'All servers are busy - no available URLs',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Error processing property search',
+    type: ErrorResponseDto,
+  })
+  async graphqlPropertyRunJob(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Body() body: PropertyRunJobRequestDto,
+  ) {
+    let bookedUrl: any = null;
+
+    try {
+      // Book an available URL for this job
+      const urlBookingResult = await this.jobQueueUrlService.bookAvailableUrl(
+        body.jobId,
+      );
+
+      if (!urlBookingResult.success) {
+        return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message: urlBookingResult.message,
+          error: 'All servers are busy',
+        });
+      }
+
+      bookedUrl = urlBookingResult.url;
+
+      // Add the booked URL to the request body
+      const enhancedBody = {
+        ...body,
+        scraperUrl: bookedUrl.url,
+        urlId: bookedUrl.id,
+      };
+
+      // console.log('enhancedBody', enhancedBody);
+
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${bookedUrl.url}/api/expedia/graphql-run-job`,
+          enhancedBody,
+          {
+            // ...req.headers,
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            timeout: 300000, // 5 minute timeout for long-running scraping jobs
+          },
+        ),
+      );
+
+      // Job completed successfully - release the URL
+      if (bookedUrl) {
+        try {
+          await this.jobQueueUrlService.releaseUrl(bookedUrl.id);
+        } catch (releaseError: any) {
+          console.error(
+            'Failed to release URL after successful job:',
+            releaseError,
+          );
+        }
+      }
+
+      return res.status(response.status).json(response.data);
+    } catch (error: any) {
+      // Job failed - release the URL if it was booked
+      if (bookedUrl) {
+        try {
+          await this.jobQueueUrlService.releaseUrl(bookedUrl.id);
+        } catch (releaseError: any) {
+          console.error(
+            'Failed to release URL after failed job:',
+            releaseError,
+          );
+        }
+      }
+
+      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
+      const data = error.response?.data || {
+        message: 'Expedia Job server is down',
+      };
+      return res.status(status).json(data);
     }
   }
 }
