@@ -13,23 +13,36 @@ export class JobRepository implements IJobRepository {
 
   async create(data: CreateJobDto): Promise<Job> {
     try {
-      const { portfolio_id, sub_portfolio_id, property_id, user_id, ...rest } =
-        data;
+      const { property_id, user_id, ...rest } = data;
+
+      const propertyData = await this.db.property.findFirst({
+        where: {
+          id: property_id,
+        },
+        include: {
+          portfolio: true,
+          subPortfolio: true,
+        },
+      });
+
       const jobData: Prisma.JobCreateInput = {
         ...rest,
         next_due_date: data.next_due_date || null,
-        portfolio_name: data.portfolio_name || '',
-        sub_portfolio_name: data.sub_portfolio_name || '',
         property_name: data.property_name,
         billing_type: data.billing_type || '',
         user: { connect: { id: user_id } },
-        portfolio: portfolio_id ? { connect: { id: portfolio_id } } : undefined,
-        subPortfolio: sub_portfolio_id
-          ? { connect: { id: sub_portfolio_id } }
-          : undefined,
         property: property_id ? { connect: { id: property_id } } : undefined,
+        portfolio_name: propertyData?.portfolio?.name || '',
+        sub_portfolio_name: propertyData?.subPortfolio?.name || '',
         watcher_emails: data.watcher_emails || [],
+        portfolio: propertyData?.portfolio?.id
+          ? { connect: { id: propertyData?.portfolio?.id } }
+          : undefined,
+        subPortfolio: propertyData?.subPortfolio?.id
+          ? { connect: { id: propertyData?.subPortfolio?.id } }
+          : undefined,
       };
+
       const job = await this.db.job.create({
         data: jobData,
       });
