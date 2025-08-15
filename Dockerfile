@@ -18,8 +18,6 @@ RUN cp src/prisma-migrate.ts dist/ 2>/dev/null || true
 FROM base AS runner
 RUN apk add --no-cache dumb-init
 ENV NODE_ENV=production
-ENV AUTO_MIGRATE=true
-ENV STRICT_MIGRATION=false
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma

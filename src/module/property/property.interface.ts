@@ -79,9 +79,7 @@ export interface IPropertyService {
     userId: string,
     isAdmin: boolean,
   ): Promise<Property[]>;
-  getPropertyCredentials(
-    propertyId: string,
-  ): Promise<{ user_email: string; user_password: string }>;
+  // getPropertyCredentials(propertyId: string): Promise<any>;
   importPropertiesFromExcel(file: Express.Multer.File): Promise<{
     portfoliosCreated: number;
     subPortfoliosCreated: number;

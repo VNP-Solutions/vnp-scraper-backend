@@ -3,14 +3,12 @@ import { ConfigService } from '@nestjs/config';
 import { EncryptionUtil } from 'src/common/utils/encryption.util';
 import { DatabaseService } from '../database/database.service';
 import { PropertyController } from './property.controller';
-import { PropertyTrustController } from './property-trust.controller';
 import { PropertyRepository } from './property.repository';
 import { PropertyService } from './property.service';
-import { BookingJobRouterService } from '../job/booking-job-router.service';
 
 @Module({
   imports: [],
-  controllers: [PropertyController, PropertyTrustController],
+  controllers: [PropertyController],
   providers: [
     {
       provide: 'IPropertyService',
@@ -24,7 +22,6 @@ import { BookingJobRouterService } from '../job/booking-job-router.service';
     Logger,
     EncryptionUtil,
     ConfigService,
-    BookingJobRouterService,
   ],
   exports: ['IPropertyService', 'IPropertyRepository'],
 })

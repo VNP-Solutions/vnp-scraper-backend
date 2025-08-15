@@ -2,29 +2,8 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
-import { runPrismaMigrations } from './prisma-migrate';
 
 async function bootstrap() {
-  // Run Prisma migrations before starting the application
-  if (process.env.AUTO_MIGRATE !== 'false') {
-    console.log('🚀 Running automatic database migrations...');
-    try {
-      await runPrismaMigrations();
-      console.log('✅ Database is ready');
-    } catch (error) {
-      console.error('❌ Failed to run migrations:', error);
-      // Decide whether to continue or exit based on your needs
-      if (process.env.STRICT_MIGRATION === 'true') {
-        console.error('Exiting due to migration failure (STRICT_MIGRATION=true)');
-        process.exit(1);
-      } else {
-        console.warn('⚠️ Continuing despite migration failure (STRICT_MIGRATION!=true)');
-      }
-    }
-  } else {
-    console.log('ℹ️ Skipping automatic migrations (AUTO_MIGRATE=false)');
-  }
-
   const app = await NestFactory.create(AppModule);
   app.enableCors();
   app.getHttpAdapter().getInstance().set('trust proxy', true);

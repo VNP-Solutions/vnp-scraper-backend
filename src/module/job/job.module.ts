@@ -1,9 +1,11 @@
-import { Module, Logger } from '@nestjs/common';
-import { JobController } from './job.controller';
-import { JobService } from './job.service';
-import { JobRepository } from './job.repository';
-import { BookingJobRouterService } from './booking-job-router.service';
+import { Logger, Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { EncryptionUtil } from 'src/common/utils/encryption.util';
 import { DatabaseService } from '../database/database.service';
+import { PropertyRepository } from '../property/property.repository';
+import { JobController } from './job.controller';
+import { JobRepository } from './job.repository';
+import { JobService } from './job.service';
 
 @Module({
   controllers: [JobController],
@@ -16,10 +18,15 @@ import { DatabaseService } from '../database/database.service';
       provide: 'IJobRepository',
       useClass: JobRepository,
     },
-    BookingJobRouterService,
+    {
+      provide: 'IPropertyRepository',
+      useClass: PropertyRepository,
+    },
     DatabaseService,
     Logger,
+    EncryptionUtil,
+    ConfigService,
   ],
-  exports: ['IJobService', BookingJobRouterService],
+  exports: ['IJobService'],
 })
 export class JobModule {}

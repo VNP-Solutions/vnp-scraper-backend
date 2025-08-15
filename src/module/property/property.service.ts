@@ -16,30 +16,7 @@ export class PropertyService implements IPropertyService {
 
   async createProperty(data: CreatePropertyDto): Promise<Property> {
     try {
-      // Encrypt the password before saving
-      const encryptedData = {
-        ...data,
-        user_password: this.encryptionUtil.encryptPassword(data.user_password),
-      };
-
-      // If property has booking_id, set default trust status
-      if (data.booking_id && data.booking_id > 0) {
-        encryptedData.booking_trusted_status = 'not_trusted';
-        encryptedData.booking_trust_score = 0;
-        encryptedData.booking_successful_logins = 0;
-        encryptedData.booking_failed_logins = 0;
-        this.logger.log(
-          `Setting booking property ${data.name} as untrusted for trust verification flow`,
-        );
-      }
-
-      const property = await this.repository.create(encryptedData);
-      
-      // If it's a booking property, trigger trust verification
-      if (property.booking_id && property.booking_id > 0) {
-        this.triggerBookingTrustVerification(property.id);
-      }
-      
+      const property = await this.repository.create(data);
       return this.processProperty(property);
     } catch (error) {
       this.logger.error(
@@ -47,26 +24,6 @@ export class PropertyService implements IPropertyService {
         error.stack,
       );
       throw error;
-    }
-  }
-
-  /**
-   * Trigger booking trust verification for a property
-   * This will be picked up by the trust scheduler on its next run
-   */
-  private async triggerBookingTrustVerification(propertyId: string): Promise<void> {
-    try {
-      this.logger.log(
-        `Booking property ${propertyId} enrolled for trust verification. Will be processed in next scheduler run.`,
-      );
-      // The trust scheduler will automatically pick this up based on:
-      // - booking_trusted_status = 'not_trusted'
-      // - booking_last_login = null or older than 23 hours
-    } catch (error) {
-      this.logger.error(
-        `Error triggering trust verification for property ${propertyId}: ${error.message}`,
-        error.stack,
-      );
     }
   }
 
@@ -104,42 +61,7 @@ export class PropertyService implements IPropertyService {
 
   async updateProperty(id: string, data: UpdatePropertyDto): Promise<Property> {
     try {
-      // Get existing property to check if booking_id is being added
-      const existingProperty = await this.repository.findById(id);
-      
-      // Encrypt the password before updating if it's provided
-      const updateData = { ...data };
-      if (data.user_password) {
-        updateData.user_password = this.encryptionUtil.encryptPassword(
-          data.user_password,
-        );
-      }
-
-      // Check if booking_id is being added or changed
-      const isAddingBookingId = !existingProperty.booking_id && data.booking_id && data.booking_id > 0;
-      const isChangingBookingId = existingProperty.booking_id !== data.booking_id && data.booking_id && data.booking_id > 0;
-      
-      if (isAddingBookingId || isChangingBookingId) {
-        // Reset trust status when booking_id is added or changed
-        updateData.booking_trusted_status = 'not_trusted';
-        updateData.booking_trust_score = 0;
-        updateData.booking_successful_logins = 0;
-        updateData.booking_failed_logins = 0;
-        updateData.booking_last_login = null;
-        updateData.booking_trust_established_date = null;
-        
-        this.logger.log(
-          `Resetting trust status for property ${id} due to booking_id ${isAddingBookingId ? 'addition' : 'change'}`,
-        );
-      }
-
-      const property = await this.repository.update(id, updateData);
-      
-      // Trigger trust verification if booking was added/changed
-      if (isAddingBookingId || isChangingBookingId) {
-        this.triggerBookingTrustVerification(property.id);
-      }
-      
+      const property = await this.repository.update(id, data);
       return this.processProperty(property);
     } catch (error) {
       this.logger.error(
@@ -251,38 +173,31 @@ export class PropertyService implements IPropertyService {
    * @param propertyId - Property ID
    * @returns Object with decrypted user_email and user_password
    */
-  async getPropertyCredentials(
-    propertyId: string,
-  ): Promise<{ user_email: string; user_password: string }> {
-    try {
-      const property = await this.repository.findById(propertyId);
-      if (!property) {
-        throw new Error(`Property with ID ${propertyId} not found`);
-      }
+  // async getPropertyCredentials(
+  //   propertyId: string,
+  // ): Promise<any> {
+  //   try {
+  //     const property = await this.repository.findById(propertyId);
+  //     if (!property) {
+  //       throw new Error(`Property with ID ${propertyId} not found`);
+  //     }
 
-      const decryptedPassword = property.user_password
-        ? this.encryptionUtil.decryptPassword(property.user_password)
-        : '';
-
-      return {
-        user_email: property.user_email,
-        user_password: decryptedPassword,
-      };
-    } catch (error) {
-      this.logger.error(
-        `Error getting property credentials: ${error.message}`,
-        error.stack,
-      );
-      throw error;
-    }
-  }
+  //     return property
+  //   } catch (error) {
+  //     this.logger.error(
+  //       `Error getting property credentials: ${error.message}`,
+  //       error.stack,
+  //     );
+  //     throw error;
+  //   }
+  // }
 
   /**
    * Import properties from Excel file
    *
    * Expected Excel format:
    * - Required columns: "Property"
-   * - Optional columns: "Portfolio", "Sub Portfolio", "user_email", "user_password", "email", "password"
+   * - Optional columns: "Portfolio", "Sub Portfolio", "email", "password"
    * - OTA columns: "expedia_id", "expedia_status", "booking_id", "booking_status", "agoda_id", "agoda_status"
    * - Credential columns: "expediaUsername", "expediaPassword", "agodaUsername", "agodaPassword", "bookingUsername", "bookingPassword", "expediaEmailAssociated", "propertyContactEmail", "portfolioContactEmail"
    *
@@ -469,7 +384,10 @@ export class PropertyService implements IPropertyService {
       for (const row of data) {
         const rowData = row as any;
 
-        if (!rowData['Property Name'] || rowData['Property Name'].trim() === '') {
+        if (
+          !rowData['Property Name'] ||
+          rowData['Property Name'].trim() === ''
+        ) {
           continue;
         }
 
@@ -510,22 +428,13 @@ export class PropertyService implements IPropertyService {
               name: rowData['Property Name'].toString().trim(),
               portfolio_id: portfolioId,
               sub_portfolio_id: subPortfolioId,
-              user_email: rowData['User Name'] || rowData['User Email'] || '',
-              user_password:
-                rowData['Password'] ||
-                rowData.password ||
-                'defaultPassword123',
               expedia_id: rowData['Expedia ID']
                 ? parseInt(rowData['Expedia ID'])
                 : 0,
               expedia_status: rowData['Expedia Status'] || 'Access Required',
-              booking_id: rowData.booking_id
-                ? parseInt(rowData.booking_id)
-                : 0,
+              booking_id: rowData.booking_id ? parseInt(rowData.booking_id) : 0,
               booking_status: rowData['Booking Status'] || 'Access Required',
-              agoda_id: rowData['Agoda ID']
-                ? parseInt(rowData['Agoda ID'])
-                : 0,
+              agoda_id: rowData['Agoda ID'] ? parseInt(rowData['Agoda ID']) : 0,
               agoda_status: rowData['Agoda Status'] || 'Access Required',
             };
 

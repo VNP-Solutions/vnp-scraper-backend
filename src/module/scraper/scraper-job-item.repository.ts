@@ -16,7 +16,16 @@ export class ScraperJobItemRepository implements IScraperJobItemRepository {
         where: { job_id: jobId },
         include: {
           job: true,
-          property: true,
+          property: {
+            include: {
+              portfolio: true,
+              subPortfolio: {
+                include: {
+                  portfolio: true,
+                },
+              },
+            },
+          },
         },
         orderBy: {
           createdAt: 'desc',
@@ -65,37 +74,37 @@ export class ScraperJobItemRepository implements IScraperJobItemRepository {
         };
       }
 
-      // Build the base filters
       let allFilters: any = {
         job_id: jobId,
+        ...filters,
       };
 
-      // Handle reasonForCharge filter
       if (reason_for_charge) {
         allFilters.card_info = {
           is: {
-            reason_for_charge: {
-              equals: reason_for_charge,
-            },
+            reason_for_charge: reason_for_charge,
           },
         };
       }
 
       if (search) {
-        allFilters.OR = [
-          {
-            guest_name: {
-              contains: search,
-              mode: 'insensitive',
+        allFilters = {
+          ...allFilters,
+          OR: [
+            {
+              guest_name: {
+                contains: search,
+                mode: 'insensitive',
+              },
             },
-          },
-          {
-            reservation_id: {
-              contains: search,
-              mode: 'insensitive',
+            {
+              reservation_id: {
+                contains: search,
+                mode: 'insensitive',
+              },
             },
-          },
-        ];
+          ],
+        };
       }
 
       const [jobItems, totalDocuments] = await Promise.all([

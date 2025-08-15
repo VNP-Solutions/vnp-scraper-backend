@@ -17,6 +17,7 @@ import { UploadModule } from './module/upload/upload.module';
 import { UserFeatureAccessPermissionModule } from './module/user-feature-access-permission/user-feature-access-permission.module';
 import { UserInvitationModule } from './module/user-invitation/user-invitation.module';
 import { UserModule } from './module/user/user.module';
+import { JobQueueUrlModule } from './module/job-queue-url/job-queue-url.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { UserModule } from './module/user/user.module';
     PropertyModule,
     SubPortfolioModule,
     JobModule,
+    JobQueueUrlModule,
     UploadModule,
     UserFeatureAccessPermissionModule,
     UserInvitationModule,
