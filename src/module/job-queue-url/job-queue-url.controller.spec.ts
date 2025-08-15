@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { JobQueueUrlStatus } from '@prisma/client';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { JobQueueUrlController } from './job-queue-url.controller';
 import { IJobQueueUrlService } from './job-queue-url.interface';
 
@@ -28,6 +28,14 @@ describe('JobQueueUrlController', () => {
     status: jest.fn().mockReturnThis(),
     json: jest.fn().mockReturnThis(),
   } as unknown as Response;
+
+  const mockRequest = {
+    user: {
+      id: 'test-user-id',
+      email: 'test@example.com',
+      role: 'admin',
+    },
+  } as unknown as Request;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -76,7 +84,7 @@ describe('JobQueueUrlController', () => {
     it('should create a new URL successfully', async () => {
       mockJobQueueUrlService.createUrl.mockResolvedValue(mockCreatedUrl);
 
-      await controller.createUrl(createUrlDto, mockResponse);
+      await controller.createUrl(mockRequest, createUrlDto, mockResponse);
 
       expect(service.createUrl).toHaveBeenCalledWith(createUrlDto);
     });
@@ -220,7 +228,7 @@ describe('JobQueueUrlController', () => {
         mockMaintenanceUrl,
       );
 
-      await controller.setMaintenance(urlId, mockResponse);
+      await controller.setMaintenance(mockRequest, urlId, mockResponse);
 
       expect(service.setUrlMaintenance).toHaveBeenCalledWith(urlId);
     });
