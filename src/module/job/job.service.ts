@@ -230,22 +230,6 @@ export class JobService implements IJobService {
             propertyId = existingProperty.id;
           }
 
-          // Check if job already exists
-          const existingJob = await this.repository.findAll({
-            property_id: propertyId,
-            portfolio_id: portfolioId,
-            sub_portfolio_id: subPortfolioId,
-            posting_type: this.convertToPostingType(rowData['Posting Type']),
-            ota_provider: this.convertToOTAProvider(rowData['OTA Provider']),
-          });
-
-          if (existingJob.data.length > 0) {
-            this.logger.log(
-              `Job already exists with the same configuration, skipping`,
-            );
-            continue;
-          }
-
           // Create job data
           const jobData: CreateJobDto = {
             name: rowData['Job Name'] || `Job ${jobsCreated + 1}`,
@@ -296,89 +280,6 @@ export class JobService implements IJobService {
           jobs.push(newJob);
           jobsCreated++;
           this.logger.log(`Created new job: ${newJob.name}`);
-
-          // Handle credentials storage for all OTA providers
-          if (propertyId) {
-            try {
-              const credentialsData: any = {};
-              let hasCredentials = false;
-
-              // Check Expedia credentials
-              if (rowData['Expedia Username']) {
-                credentialsData.expediaUsername = rowData['Expedia Username']
-                  .toString()
-                  .trim();
-                hasCredentials = true;
-              }
-              if (rowData['Expedia Password']) {
-                credentialsData.expediaPassword = rowData['Expedia Password']
-                  .toString()
-                  .trim();
-                hasCredentials = true;
-              }
-
-              // Check Agoda credentials
-              if (rowData['Agoda Username']) {
-                credentialsData.agodaUsername = rowData['Agoda Username']
-                  .toString()
-                  .trim();
-                hasCredentials = true;
-              }
-              if (rowData['Agoda Password']) {
-                credentialsData.agodaPassword = rowData['Agoda Password']
-                  .toString()
-                  .trim();
-                hasCredentials = true;
-              }
-
-              // Check Booking credentials
-              if (rowData['Booking Username']) {
-                credentialsData.bookingUsername = rowData['Booking Username']
-                  .toString()
-                  .trim();
-                hasCredentials = true;
-              }
-              if (rowData['Booking Password']) {
-                credentialsData.bookingPassword = rowData['Booking Password']
-                  .toString()
-                  .trim();
-                hasCredentials = true;
-              }
-
-              // Update property credentials if we have any
-              if (hasCredentials) {
-                await this.propertyRepository.updatePropertyCredentials(
-                  propertyId,
-                  credentialsData,
-                );
-                const credentialTypes = [];
-                if (
-                  credentialsData.expediaUsername ||
-                  credentialsData.expediaPassword
-                )
-                  credentialTypes.push('Expedia');
-                if (
-                  credentialsData.agodaUsername ||
-                  credentialsData.agodaPassword
-                )
-                  credentialTypes.push('Agoda');
-                if (
-                  credentialsData.bookingUsername ||
-                  credentialsData.bookingPassword
-                )
-                  credentialTypes.push('Booking');
-
-                this.logger.log(
-                  `Updated ${credentialTypes.join(', ')} credentials for property: ${propertyName}`,
-                );
-              }
-            } catch (credentialError) {
-              this.logger.error(
-                `Error updating credentials for property ${propertyName}: ${credentialError.message}`,
-              );
-              // Don't fail the job creation if credentials update fails
-            }
-          }
         } catch (error) {
           this.logger.error(`Error processing job row: ${error.message}`);
           // Re-throw the error to stop the import process

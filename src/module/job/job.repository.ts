@@ -13,7 +13,8 @@ export class JobRepository implements IJobRepository {
 
   async create(data: CreateJobDto): Promise<Job> {
     try {
-      const { property_id, user_id, ...rest } = data;
+      const { property_id, user_id, portfolio_id, sub_portfolio_id, ...rest } =
+        data;
 
       const propertyData = await this.db.property.findFirst({
         where: {
@@ -32,15 +33,24 @@ export class JobRepository implements IJobRepository {
         billing_type: data.billing_type || '',
         user: { connect: { id: user_id } },
         property: property_id ? { connect: { id: property_id } } : undefined,
-        portfolio_name: propertyData?.portfolio?.name || '',
-        sub_portfolio_name: propertyData?.subPortfolio?.name || '',
+        portfolio_name:
+          propertyData?.portfolio?.name || data.portfolio_name || '',
+        sub_portfolio_name:
+          propertyData?.subPortfolio?.name || data.sub_portfolio_name || '',
         watcher_emails: data.watcher_emails || [],
-        portfolio: propertyData?.portfolio?.id
-          ? { connect: { id: propertyData?.portfolio?.id } }
-          : undefined,
-        subPortfolio: propertyData?.subPortfolio?.id
-          ? { connect: { id: propertyData?.subPortfolio?.id } }
-          : undefined,
+        // Use portfolio_id from data if available, otherwise use from property relationship
+        portfolio:
+          portfolio_id || propertyData?.portfolio?.id
+            ? { connect: { id: portfolio_id || propertyData?.portfolio?.id } }
+            : undefined,
+        subPortfolio:
+          sub_portfolio_id || propertyData?.subPortfolio?.id
+            ? {
+                connect: {
+                  id: sub_portfolio_id || propertyData?.subPortfolio?.id,
+                },
+              }
+            : undefined,
       };
 
       const job = await this.db.job.create({
