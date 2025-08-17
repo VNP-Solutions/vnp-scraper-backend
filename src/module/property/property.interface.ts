@@ -51,6 +51,16 @@ export interface IPropertyRepository {
     credentialsData: any,
   ): Promise<any>;
   findPropertyCredentialsByPropertyId(propertyId: string): Promise<any>;
+  // Excel import operations
+  importPropertiesFromExcel(file: Express.Multer.File): Promise<{
+    portfoliosCreated: number;
+    subPortfoliosCreated: number;
+    propertiesCreated: number;
+    credentialsCreated: number;
+    portfolios: any[];
+    subPortfolios: any[];
+    properties: any[];
+  }>;
 }
 
 export interface IPropertyService {
