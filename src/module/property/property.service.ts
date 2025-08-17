@@ -449,60 +449,72 @@ export class PropertyService implements IPropertyService {
             let hasCredentials = false;
 
             // Check for credential columns and extract data
-            if (rowData['User Name']) {
-              credentialsData.expediaUsername = rowData['User Name']
+            if (rowData['Expedia Username']) {
+              credentialsData.expediaUsername = rowData['Expedia Username']
                 .toString()
                 .trim();
               hasCredentials = true;
             }
-            if (rowData['Password']) {
-              credentialsData.expediaPassword = rowData['Password']
+            if (rowData['Expedia Password']) {
+              credentialsData.expediaPassword =
+                this.encryptionUtil.encryptPassword(
+                  rowData['Expedia Password'],
+                );
+
+              hasCredentials = true;
+            }
+            if (rowData['Agoda Username']) {
+              credentialsData.agodaUsername = rowData['Agoda Username']
                 .toString()
                 .trim();
               hasCredentials = true;
             }
-            if (rowData['User Name']) {
-              credentialsData.agodaUsername = rowData['User Name']
+            if (rowData['Agoda Password']) {
+              credentialsData.agodaPassword =
+                this.encryptionUtil.encryptPassword(rowData['Agoda Password']);
+
+              hasCredentials = true;
+            }
+            if (rowData['Booking Username']) {
+              credentialsData.bookingUsername = rowData['Booking Username']
                 .toString()
                 .trim();
               hasCredentials = true;
             }
-            if (rowData['Password']) {
-              credentialsData.agodaPassword = rowData['Password']
+            if (rowData['Booking Password']) {
+              credentialsData.bookingPassword =
+                this.encryptionUtil.encryptPassword(
+                  rowData['Booking Password'],
+                );
+              hasCredentials = true;
+            }
+            if (rowData['Expedia Email Associated']) {
+              credentialsData.expediaEmailAssociated = rowData[
+                'Expedia Email Associated'
+              ]
                 .toString()
                 .trim();
               hasCredentials = true;
             }
-            if (rowData['User Name']) {
-              credentialsData.bookingUsername = rowData['User Name']
+            if (rowData['Property Contact Email']) {
+              credentialsData.propertyContactEmail = rowData[
+                'Property Contact Email'
+              ]
                 .toString()
                 .trim();
               hasCredentials = true;
             }
-            if (rowData['Password']) {
-              credentialsData.bookingPassword = rowData['Password']
+            if (rowData['Portfolio Contact Email']) {
+              credentialsData.portfolioContactEmail = rowData[
+                'Portfolio Contact Email'
+              ]
                 .toString()
                 .trim();
               hasCredentials = true;
             }
-            if (rowData.expediaEmailAssociated) {
-              credentialsData.expediaEmailAssociated =
-                rowData.expediaEmailAssociated.toString().trim();
-              hasCredentials = true;
-            }
-            if (rowData.propertyContactEmail) {
-              credentialsData.propertyContactEmail =
-                rowData.propertyContactEmail.toString().trim();
-              hasCredentials = true;
-            }
-            if (rowData.portfolioContactEmail) {
-              credentialsData.portfolioContactEmail =
-                rowData.portfolioContactEmail.toString().trim();
-              hasCredentials = true;
-            }
-            if (rowData.multiplePortfolioEmails) {
+            if (rowData['Multiple Portfolio Emails']) {
               // Handle comma-separated emails
-              const emails = rowData.multiplePortfolioEmails
+              const emails = rowData['Multiple Portfolio Emails']
                 .toString()
                 .split(',')
                 .map((email: string) => email.trim())
