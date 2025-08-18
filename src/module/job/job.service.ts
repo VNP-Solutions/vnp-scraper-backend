@@ -246,7 +246,13 @@ export class JobService implements IJobService {
             next_due_date: rowData['Next Due Date']
               ? new Date(rowData['Next Due Date'])
               : undefined,
-            ota_provider: this.convertToOTAProvider(rowData['OTA Provider']),
+            ota_provider: rowData['Expedia ID']
+              ? OTAProvider.Expedia
+              : rowData['Booking ID']
+                ? OTAProvider.Booking
+                : rowData['Agoda ID']
+                  ? OTAProvider.Agoda
+                  : OTAProvider.Expedia,
             remaining_direct_billed: parseFloat(
               rowData['Remaining Direct Billed'] || '0',
             ),
