@@ -19,19 +19,30 @@ export class PropertyRepository implements IPropertyRepository {
   }
 
   async create(data: CreatePropertyDto): Promise<Property> {
+    const propertyData: CreatePropertyDto = {
+      name: data.name,
+      portfolio_id: data.portfolio_id,
+      sub_portfolio_id: data.sub_portfolio_id,
+      expedia_status: data.expedia_status || 'Access Required',
+      booking_status: data.booking_status || 'Access Required',
+      agoda_status: data.agoda_status || 'Access Required',
+    };
+
+    if (data.expedia_id) {
+      propertyData.expedia_id = data.expedia_id;
+    }
+    if (data.booking_id) {
+      propertyData.booking_id = data.booking_id;
+    }
+    if (data.agoda_id) {
+      propertyData.agoda_id = data.agoda_id;
+    }
+
+    console.log('From Create Method', propertyData);
+
     try {
       const property = await this.db.property.create({
-        data: {
-          name: data.name,
-          portfolio_id: data.portfolio_id,
-          sub_portfolio_id: data.sub_portfolio_id,
-          expedia_id: data.expedia_id,
-          expedia_status: data.expedia_status,
-          booking_id: data.booking_id,
-          booking_status: data.booking_status,
-          agoda_id: data.agoda_id,
-          agoda_status: data.agoda_status,
-        },
+        data: propertyData,
       });
       return property;
     } catch (error) {
@@ -1150,19 +1161,24 @@ export class PropertyRepository implements IPropertyRepository {
               name: rowData['Property Name'].toString().trim(),
               portfolio_id: portfolioId,
               sub_portfolio_id: subPortfolioId,
-              expedia_id: rowData['Expedia ID']
-                ? parseInt(rowData['Expedia ID'])
-                : 0,
               expedia_status: rowData['Expedia Status'] || 'Access Required',
-              booking_id: rowData['Booking ID']
-                ? parseInt(rowData['Booking ID'])
-                : 0,
               booking_status: rowData['Booking Status'] || 'Access Required',
-              agoda_id: rowData['Agoda ID'] ? parseInt(rowData['Agoda ID']) : 0,
               agoda_status: rowData['Agoda Status'] || 'Access Required',
             };
 
+            if (rowData['Expedia ID']) {
+              propertyData.expedia_id = rowData['Expedia ID'];
+            }
+
+            if (rowData['Booking ID']) {
+              propertyData.booking_id = rowData['Booking ID'];
+            }
+            if (rowData['Agoda ID']) {
+              propertyData.agoda_id = rowData['Agoda ID'];
+            }
+
             // Create property using repository method
+            console.log('From Excel Method', propertyData);
             const newProperty = await this.create(propertyData);
             properties.push(newProperty);
             propertiesCreated++;
