@@ -38,8 +38,6 @@ export class PropertyRepository implements IPropertyRepository {
       propertyData.agoda_id = data.agoda_id;
     }
 
-    console.log('From Create Method', propertyData);
-
     try {
       const property = await this.db.property.create({
         data: propertyData,
@@ -1178,7 +1176,6 @@ export class PropertyRepository implements IPropertyRepository {
             }
 
             // Create property using repository method
-            console.log('From Excel Method', propertyData);
             const newProperty = await this.create(propertyData);
             properties.push(newProperty);
             propertiesCreated++;
