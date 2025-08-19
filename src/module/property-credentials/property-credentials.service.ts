@@ -8,6 +8,7 @@ import {
   IPropertyCredentialsRepository,
   IPropertyCredentialsService,
 } from './property-credentials.interface';
+import { EncryptionUtil } from 'src/common/utils/encryption.util';
 
 @Injectable()
 export class PropertyCredentialsService implements IPropertyCredentialsService {
@@ -15,13 +16,30 @@ export class PropertyCredentialsService implements IPropertyCredentialsService {
     @Inject('IPropertyCredentialsRepository')
     private readonly repository: IPropertyCredentialsRepository,
     private readonly logger: Logger,
+    private readonly encryptionUtil: EncryptionUtil,
   ) {}
 
   async createPropertyCredentials(
     data: CreatePropertyCredentialsDto,
   ): Promise<PropertyCredentials> {
     try {
-      const credentials = await this.repository.create(data);
+      let encryptedData = { ...data };
+      if (data.expediaPassword) {
+        encryptedData.expediaPassword = this.encryptionUtil.encryptPassword(
+          data.expediaPassword,
+        );
+      }
+      if (data.agodaPassword) {
+        encryptedData.agodaPassword = this.encryptionUtil.encryptPassword(
+          data.agodaPassword,
+        );
+      }
+      if (data.bookingPassword) {
+        encryptedData.bookingPassword = this.encryptionUtil.encryptPassword(
+          data.bookingPassword,
+        );
+      }
+      const credentials = await this.repository.create(encryptedData);
       return credentials;
     } catch (error) {
       this.logger.error(

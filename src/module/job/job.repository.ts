@@ -28,6 +28,7 @@ export class JobRepository implements IJobRepository {
           ? { connect: { id: sub_portfolio_id } }
           : undefined,
         property: property_id ? { connect: { id: property_id } } : undefined,
+        watcher_emails: data.watcher_emails || [],
       };
       const job = await this.db.job.create({
         data: jobData,
@@ -66,19 +67,43 @@ export class JobRepository implements IJobRepository {
         ...filters
       } = query || {};
       let allFilters: any = { ...filters };
+
       if (search) {
+        // Convert search term to string and check if it's numeric for ID searches
+        const searchTerm = search.toString().trim();
+        const isNumeric = !isNaN(Number(searchTerm));
+
+        // Check if search term is a valid MongoDB ObjectId (24 character hex string)
+        const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(searchTerm);
+
         allFilters.OR = [
-          { portfolio_name: { contains: search, mode: 'insensitive' } },
-          { sub_portfolio_name: { contains: search, mode: 'insensitive' } },
-          { property_name: { contains: search, mode: 'insensitive' } },
+          // Job fields - only search by ID if it's a valid ObjectId format
+          ...(isValidObjectId ? [{ id: searchTerm }] : []),
+          { name: { contains: searchTerm, mode: 'insensitive' } },
+
+          // Portfolio/Sub-portfolio/Property names (existing)
+          { portfolio_name: { contains: searchTerm, mode: 'insensitive' } },
+          { sub_portfolio_name: { contains: searchTerm, mode: 'insensitive' } },
+          { property_name: { contains: searchTerm, mode: 'insensitive' } },
+
+          // Property IDs through relationship (only search if numeric)
+          ...(isNumeric
+            ? [
+                { property: { expedia_id: parseInt(searchTerm) } },
+                { property: { booking_id: parseInt(searchTerm) } },
+                { property: { agoda_id: parseInt(searchTerm) } },
+              ]
+            : []),
         ];
       }
+
       if (start_date && end_date) {
         allFilters.createdAt = {
           gte: new Date(start_date),
           lte: new Date(end_date),
         };
       }
+
       const skip = page
         ? (parseInt(page || '1') - 1) * parseInt(limit || '10')
         : 0;
@@ -89,13 +114,44 @@ export class JobRepository implements IJobRepository {
           [sortBy]: sortOrder?.toLowerCase() === 'desc' ? 'desc' : 'asc',
         };
       }
-      const totalDocuments = await this.db.job.count({ where: allFilters });
+
+      // Include property relationship for searching and data completeness
+      const include = {
+        property: {
+          select: {
+            id: true,
+            name: true,
+            expedia_id: true,
+            booking_id: true,
+            agoda_id: true,
+          },
+        },
+        portfolio: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        subPortfolio: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      };
+
+      const totalDocuments = await this.db.job.count({
+        where: allFilters,
+      });
+
       const jobs = await this.db.job.findMany({
         where: allFilters,
+        include,
         skip,
         take,
         orderBy,
       });
+
       const metadata = {
         totalDocuments,
         currentPage: parseInt(page),
@@ -130,6 +186,90 @@ export class JobRepository implements IJobRepository {
       return job;
     } catch (error) {
       this.logger.error(error);
+      throw error;
+    }
+  }
+
+  async findPortfolioByName(name: string): Promise<any> {
+    try {
+      const portfolio = await this.db.portfolio.findFirst({
+        where: { name: { equals: name, mode: 'insensitive' } },
+      });
+      return portfolio;
+    } catch (error) {
+      this.logger.error(error);
+      throw error;
+    }
+  }
+
+  async findSubPortfolioByNameAndPortfolio(
+    name: string,
+    portfolioId: string,
+  ): Promise<any> {
+    try {
+      const subPortfolio = await this.db.subPortfolio.findFirst({
+        where: {
+          name: { equals: name, mode: 'insensitive' },
+          portfolio_id: portfolioId,
+        },
+      });
+      return subPortfolio;
+    } catch (error) {
+      this.logger.error(error);
+      throw error;
+    }
+  }
+
+  async findPropertyByNameAndRelations(
+    name: string,
+    portfolioId?: string,
+    subPortfolioId?: string,
+  ): Promise<any> {
+    try {
+      const whereClause: any = {
+        //name: { equals: name, mode: 'insensitive' },
+        name: name,
+      };
+
+      if (portfolioId) {
+        whereClause.portfolio_id = portfolioId;
+      }
+
+      if (subPortfolioId) {
+        whereClause.sub_portfolio_id = subPortfolioId;
+      }
+
+      const property = await this.db.property.findFirst({
+        where: whereClause,
+      });
+      return property;
+    } catch (error) {
+      this.logger.error(error);
+      throw error;
+    }
+  }
+
+  async findLatestCheckoutDateByJobId(
+    jobId: string,
+  ): Promise<{ check_out_date: Date } | null> {
+    try {
+      const latestJobItem = await this.db.jobItem.findFirst({
+        where: {
+          job_id: jobId,
+        },
+        orderBy: {
+          check_out_date: 'desc',
+        },
+        select: {
+          check_out_date: true,
+        },
+      });
+      return latestJobItem;
+    } catch (error) {
+      this.logger.error(
+        `Error finding latest checkout date for job ${jobId}:`,
+        error,
+      );
       throw error;
     }
   }

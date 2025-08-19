@@ -24,6 +24,7 @@ import { Request, Response } from 'express';
 import { firstValueFrom } from 'rxjs';
 import { ParseQuery } from '../../common/decorators/parse-query.decorator';
 import { ResponseHandler } from '../../common/utils/response-handler';
+import { IJobQueueUrlService } from '../job-queue-url/job-queue-url.interface';
 import { IScraperJobItemService } from './scraper-job-item.interface';
 import {
   AllJobItemsResponseDto,
@@ -49,9 +50,10 @@ export class ScraperController {
     private readonly configService: ConfigService,
     @Inject('IScraperJobItemService')
     private readonly jobItemService: IScraperJobItemService,
+    @Inject('IJobQueueUrlService')
+    private readonly jobQueueUrlService: IJobQueueUrlService,
   ) {
-    const baseUrl =
-      this.configService.get<string>('SCRAPER_BASE_URL');
+    const baseUrl = this.configService.get<string>('SCRAPER_BASE_URL');
 
     // Add http:// protocol if missing
     this.scraperBaseUrl =
@@ -351,7 +353,7 @@ export class ScraperController {
   @ApiOperation({
     summary: 'Start property scraping job',
     description:
-      'Start a new property scraping job for the specified property ID, date range, and job ID',
+      'Start a new property scraping job for the specified property ID, date range, and job ID. Automatically assigns an available URL from the job queue.',
   })
   @ApiBody({ type: PropertyRunJobRequestDto })
   @ApiResponse({
@@ -370,6 +372,11 @@ export class ScraperController {
     type: ErrorResponseDto,
   })
   @ApiResponse({
+    status: 503,
+    description: 'All servers are busy - no available URLs',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
     status: 500,
     description: 'Error processing property search',
     type: ErrorResponseDto,
@@ -379,11 +386,35 @@ export class ScraperController {
     @Res() res: Response,
     @Body() body: PropertyRunJobRequestDto,
   ) {
+    let bookedUrl: any = null;
+
     try {
+      // Book an available URL for this job
+      const urlBookingResult = await this.jobQueueUrlService.bookAvailableUrl(
+        body.jobId,
+      );
+
+      if (!urlBookingResult.success) {
+        return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message: urlBookingResult.message,
+          error: 'All servers are busy',
+        });
+      }
+
+      bookedUrl = urlBookingResult.url;
+
+      // Add the booked URL to the request body
+      const enhancedBody = {
+        ...body,
+        scraperUrl: bookedUrl.url,
+        urlId: bookedUrl.id,
+      };
+
       const response = await firstValueFrom(
         this.httpService.post(
-          `${this.scraperBaseUrl}/api/expedia/property-run-job`,
-          body,
+          `${bookedUrl.url}/api/expedia/property-run-job`,
+          enhancedBody,
           {
             // ...req.headers,
             headers: {
@@ -394,8 +425,33 @@ export class ScraperController {
           },
         ),
       );
+
+      // Job completed successfully - release the URL
+      // if (bookedUrl) {
+      //   try {
+      //     await this.jobQueueUrlService.releaseUrl(bookedUrl.id);
+      //   } catch (releaseError: any) {
+      //     console.error(
+      //       'Failed to release URL after successful job:',
+      //       releaseError,
+      //     );
+      //   }
+      // }
+
       return res.status(response.status).json(response.data);
     } catch (error: any) {
+      // Job failed - release the URL if it was booked
+      // if (bookedUrl) {
+      //   try {
+      //     await this.jobQueueUrlService.releaseUrl(bookedUrl.id);
+      //   } catch (releaseError: any) {
+      //     console.error(
+      //       'Failed to release URL after failed job:',
+      //       releaseError,
+      //     );
+      //   }
+      // }
+
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
       const data = error.response?.data || {
         message: 'Expedia Job server is down',
@@ -408,7 +464,7 @@ export class ScraperController {
   @ApiOperation({
     summary: 'Start reservation scraping job',
     description:
-      'Start a new reservation scraping job for the specified reservations',
+      'Start a new reservation scraping job for the specified reservations. Automatically assigns an available URL from the job queue.',
   })
   @ApiBody({ type: ReservationRunJobRequestDto })
   @ApiResponse({
@@ -427,6 +483,11 @@ export class ScraperController {
     type: ErrorResponseDto,
   })
   @ApiResponse({
+    status: 503,
+    description: 'All servers are busy - no available URLs',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
     status: 500,
     description: 'Error processing reservation search',
     type: ErrorResponseDto,
@@ -436,11 +497,37 @@ export class ScraperController {
     @Res() res: Response,
     @Body() body: ReservationRunJobRequestDto,
   ) {
+    let bookedUrl: any = null;
+
     try {
+      // Check if jobId exists in the request body
+      const jobId = (body as any).jobId || `reservation_${Date.now()}`;
+
+      // Book an available URL for this job
+      const urlBookingResult =
+        await this.jobQueueUrlService.bookAvailableUrl(jobId);
+
+      if (!urlBookingResult.success) {
+        return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message: urlBookingResult.message,
+          error: 'All servers are busy',
+        });
+      }
+
+      bookedUrl = urlBookingResult.url;
+
+      // Add the booked URL to the request body
+      const enhancedBody = {
+        ...body,
+        scraperUrl: bookedUrl.url,
+        urlId: bookedUrl.id,
+      };
+
       const response = await firstValueFrom(
         this.httpService.post(
           `${this.scraperBaseUrl}/api/expedia/reservation-run-job`,
-          body,
+          enhancedBody,
           {
             // ...req.headers,
             headers: {
@@ -451,8 +538,33 @@ export class ScraperController {
           },
         ),
       );
+
+      // Job completed successfully - release the URL
+      if (bookedUrl) {
+        try {
+          await this.jobQueueUrlService.releaseUrl(bookedUrl.id);
+        } catch (releaseError: any) {
+          console.error(
+            'Failed to release URL after successful job:',
+            releaseError,
+          );
+        }
+      }
+
       return res.status(response.status).json(response.data);
     } catch (error: any) {
+      // Job failed - release the URL if it was booked
+      if (bookedUrl) {
+        try {
+          await this.jobQueueUrlService.releaseUrl(bookedUrl.id);
+        } catch (releaseError: any) {
+          console.error(
+            'Failed to release URL after failed job:',
+            releaseError,
+          );
+        }
+      }
+
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
       const data = error.response?.data || {
         message: 'Expedia Job server is down',
@@ -465,7 +577,7 @@ export class ScraperController {
   @ApiOperation({
     summary: 'Rerun failed or partial failed job',
     description:
-      'Rerun a job that has failed or partially completed. This endpoint specifically handles jobs with Failed or Partial status and resets them to run again.',
+      'Rerun a job that has failed or partially completed. This endpoint specifically handles jobs with Failed or Partial status and resets them to run again. Automatically assigns an available URL from the job queue.',
   })
   @ApiBody({ type: RerunFailedJobRequestDto })
   @ApiResponse({
@@ -484,6 +596,11 @@ export class ScraperController {
     type: ErrorResponseDto,
   })
   @ApiResponse({
+    status: 503,
+    description: 'All servers are busy - no available URLs',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
     status: 500,
     description: 'Error processing job rerun',
     type: ErrorResponseDto,
@@ -493,11 +610,36 @@ export class ScraperController {
     @Res() res: Response,
     @Body() body: RerunFailedJobRequestDto,
   ) {
+    let bookedUrl: any = null;
+
     try {
+      // Book an available URL for this job
+      const urlBookingResult = await this.jobQueueUrlService.bookAvailableUrl(
+        body.jobId,
+      );
+
+      if (!urlBookingResult.success) {
+        return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message: urlBookingResult.message,
+          error: 'All servers are busy',
+        });
+      }
+
+      bookedUrl = urlBookingResult.url;
+
+      
+      // Add the booked URL to the request body
+      const enhancedBody = {
+        ...body,
+        scraperUrl: bookedUrl.url,
+        urlId: bookedUrl.id,
+      };
+
       const response = await firstValueFrom(
         this.httpService.post(
-          `${this.scraperBaseUrl}/api/expedia/rerun-failed-job`,
-          body,
+          `${bookedUrl.url}/api/expedia/rerun-failed-job`,
+          enhancedBody,
           {
             // ...req.headers,
             headers: {
@@ -508,8 +650,33 @@ export class ScraperController {
           },
         ),
       );
+
+      // Job completed successfully - release the URL
+      // if (bookedUrl) {
+      //   try {
+      //     await this.jobQueueUrlService.releaseUrl(bookedUrl.id);
+      //   } catch (releaseError: any) {
+      //     console.error(
+      //       'Failed to release URL after successful job:',
+      //       releaseError,
+      //     );
+      //   }
+      // }
+
       return res.status(response.status).json(response.data);
     } catch (error: any) {
+      // Job failed - release the URL if it was booked
+      // if (bookedUrl) {
+      //   try {
+      //     await this.jobQueueUrlService.releaseUrl(bookedUrl.id);
+      //   } catch (releaseError: any) {
+      //     console.error(
+      //       'Failed to release URL after failed job:',
+      //       releaseError,
+      //     );
+      //   }
+      // }
+
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
       const data = error.response?.data || {
         message: 'Expedia Job server is down',

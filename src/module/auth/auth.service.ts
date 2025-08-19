@@ -23,17 +23,25 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
   ) {
+    const smtpHost = this.configService.get('SMTP_HOST') || 'smtp.gmail.com';
+    const smtpPort = parseInt(this.configService.get('SMTP_PORT') || '465');
+    const smtpSecure = this.configService.get('SMTP_SECURE') !== 'false';
+    const smtpUser = this.configService.get('SMTP_EMAIL');
+    const smtpPass = this.configService.get('SMTP_PASSWORD');
+
     this.transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
-      service: 'gmail',
-      auth: {
-        user: this.configService.get('SMTP_EMAIL'),
-        pass: this.configService.get('SMTP_PASSWORD'),
-      },
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpSecure,
+      ...(smtpHost === 'smtp.gmail.com' && { service: 'gmail' }),
+      ...(smtpUser && smtpPass && {
+        auth: {
+          user: smtpUser,
+          pass: smtpPass,
+        },
+      }),
       tls: {
-        rejectUnauthorized: true,
+        rejectUnauthorized: smtpSecure,
       },
     });
   }

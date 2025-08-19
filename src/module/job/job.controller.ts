@@ -10,10 +10,14 @@ import {
   Put,
   Req,
   Res,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiOperation,
   ApiQuery,
   ApiResponse,
@@ -22,9 +26,10 @@ import {
 import { Response } from 'express';
 import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
+import { ExcelFileInterceptor } from 'src/common/interceptors/excel-file.interceptor';
 import { ResponseHandler } from 'src/common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CreateJobDto, UpdateJobDto } from './job.dto';
+import { CreateJobDto, ImportJobsResponseDto, UpdateJobDto } from './job.dto';
 import { IJobService } from './job.interface';
 import { createJobSchema } from './job.validation';
 
@@ -74,7 +79,8 @@ export class JobController {
   @ApiQuery({
     name: 'search',
     required: false,
-    description: 'Search jobs by portfolio, sub-portfolio, or property name',
+    description:
+      'Search jobs by job ID, job name, portfolio name, sub-portfolio name, property name, Expedia ID, Booking ID, or Agoda ID',
   })
   @ApiQuery({
     name: 'page',
@@ -186,6 +192,157 @@ export class JobController {
           statusCode: 200,
           message: 'Job deleted successfully',
           data: null,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Get('/:jobId/latest-checkout-date')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Get latest checkout date for a job',
+    description:
+      'Returns the most recent checkout date from job items belonging to a specific job',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Latest checkout date retrieved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 200 },
+        message: {
+          type: 'string',
+          example: 'Latest checkout date retrieved successfully',
+        },
+        data: {
+          type: 'object',
+          properties: {
+            check_out_date: {
+              type: 'string',
+              format: 'date-time',
+              example: '2025-12-31T10:00:00.000Z',
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'No checkout dates found for this job',
+  })
+  async getLatestCheckoutDateByJobId(
+    @Param('jobId') jobId: string,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result =
+          await this.jobService.getLatestCheckoutDateByJobId(jobId);
+
+        if (!result) {
+          return {
+            statusCode: 404,
+            message: 'No checkout dates found for this job',
+            data: null,
+          };
+        }
+
+        return {
+          statusCode: 200,
+          message: 'Latest checkout date retrieved successfully',
+          data: result,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Post('/import')
+  @ApiOperation({
+    summary: 'Import jobs from Excel file',
+    description:
+      'Upload an Excel file to import jobs. The Excel file should contain columns: Portfolio (optional, must exist), Sub Portfolio (optional, must exist), Property Name (optional, must exist), Job Name, Job Status, Posting Type, OTA Provider, Billing Type, Next Due Date, Remaining Direct Billed, Total Collectable, Total Amount Confirmed, Execution Type, Retries Attempted, Max Retries, Retry Delay MS, Priority, Job Backoff Length Loading, Job Backoff Length Selector, Queue Name, Worker Assigned, Batch Execution ID, Start Date, End Date, Log Link, Live URL. Note: Portfolios, sub-portfolios, and properties must exist in the system before importing jobs if specified.',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description: 'Excel file for job import',
+    type: 'multipart/form-data',
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Excel file (.xlsx, .xls, .csv) containing job data',
+        },
+      },
+      required: ['file'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Jobs imported successfully',
+    type: ImportJobsResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - Invalid file or missing required columns',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - Admin access required',
+  })
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(ExcelFileInterceptor)
+  async importJobs(
+    @Req() request: any,
+    @UploadedFile() file: Express.Multer.File,
+    @Res() response: Response,
+  ) {
+    const { user } = request;
+    if (user.role !== 'admin') {
+      return ResponseHandler.handler(
+        response,
+        async () => {
+          return {
+            statusCode: 403,
+            message: 'You are not authorized to import jobs',
+            data: null,
+          };
+        },
+        this.logger,
+      );
+    }
+
+    if (!file) {
+      return ResponseHandler.handler(
+        response,
+        async () => {
+          return {
+            statusCode: 400,
+            message: 'Excel file is required',
+            data: null,
+          };
+        },
+        this.logger,
+      );
+    }
+
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result = await this.jobService.importJobsFromExcel(
+          file,
+          user.userId,
+        );
+        return {
+          statusCode: 200,
+          message: `Import completed successfully: ${result.jobsCreated} jobs created`,
+          data: result,
         };
       },
       this.logger,
