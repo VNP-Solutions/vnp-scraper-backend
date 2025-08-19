@@ -406,7 +406,7 @@ export class ScraperController {
 
       bookedUrl = urlBookingResult.url;
 
-      scrapeUrl = this.scraperBaseUrl;
+      scrapeUrl = bookedUrl.url;
 
       // Add the booked URL to the request body
       const enhancedBody = {
