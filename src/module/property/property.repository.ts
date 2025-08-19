@@ -795,15 +795,21 @@ export class PropertyRepository implements IPropertyRepository {
       if (credentialsData.expediaUsername)
         credentialsPayload.expediaUsername = credentialsData.expediaUsername;
       if (credentialsData.expediaPassword)
-        credentialsPayload.expediaPassword = credentialsData.expediaPassword;
+        credentialsPayload.expediaPassword = this.encryptionUtil.encryptPassword(
+          credentialsData.expediaPassword,
+        );
       if (credentialsData.agodaUsername)
         credentialsPayload.agodaUsername = credentialsData.agodaUsername;
       if (credentialsData.agodaPassword)
-        credentialsPayload.agodaPassword = credentialsData.agodaPassword;
+        credentialsPayload.agodaPassword = this.encryptionUtil.encryptPassword(
+          credentialsData.agodaPassword,
+        );
       if (credentialsData.bookingUsername)
         credentialsPayload.bookingUsername = credentialsData.bookingUsername;
       if (credentialsData.bookingPassword)
-        credentialsPayload.bookingPassword = credentialsData.bookingPassword;
+        credentialsPayload.bookingPassword = this.encryptionUtil.encryptPassword(
+          credentialsData.bookingPassword,
+        );
       if (credentialsData.expediaEmailAssociated)
         credentialsPayload.expediaEmailAssociated =
           credentialsData.expediaEmailAssociated;
