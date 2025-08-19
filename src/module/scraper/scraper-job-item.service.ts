@@ -44,4 +44,17 @@ export class ScraperJobItemService implements IScraperJobItemService {
       throw error;
     }
   }
+
+  async updateJobCurrentUrl(jobId: string, currentUrl: string): Promise<void> {
+    try {
+      await this.jobItemRepository.updateJobCurrentUrl(jobId, currentUrl);
+      this.logger.log(`Successfully updated current_url for job ${jobId}`);
+    } catch (error) {
+      this.logger.error(
+        `Error updating current_url for job ${jobId}: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
 }

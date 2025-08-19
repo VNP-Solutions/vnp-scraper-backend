@@ -6,6 +6,7 @@ export interface IScraperJobItemRepository {
     jobId: string,
     query?: Record<string, any>,
   ): Promise<{ data: JobItem[]; metadata: any }>;
+  updateJobCurrentUrl(jobId: string, currentUrl: string): Promise<void>;
 }
 
 export interface IScraperJobItemService {
@@ -14,4 +15,5 @@ export interface IScraperJobItemService {
     jobId: string,
     query?: Record<string, any>,
   ): Promise<{ data: JobItem[]; metadata: any }>;
+  updateJobCurrentUrl(jobId: string, currentUrl: string): Promise<void>;
 }
