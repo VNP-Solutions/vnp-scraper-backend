@@ -180,6 +180,7 @@ model Job {
   end_date                    String?
   log_link                    String?
   live_url                    String?
+  current_url                 String?
   case_open                   Boolean?    @default(false)
   watcher_emails              String[]
   createdAt                   DateTime    @default(now())

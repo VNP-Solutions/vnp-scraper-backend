@@ -498,6 +498,7 @@ export class ScraperController {
     @Body() body: ReservationRunJobRequestDto,
   ) {
     let bookedUrl: any = null;
+    let scrapeUrl: any = null;
 
     try {
       // Check if jobId exists in the request body
@@ -517,12 +518,21 @@ export class ScraperController {
 
       bookedUrl = urlBookingResult.url;
 
+      scrapeUrl = this.scraperBaseUrl;
+
       // Add the booked URL to the request body
       const enhancedBody = {
         ...body,
         scraperUrl: bookedUrl.url,
         urlId: bookedUrl.id,
       };
+
+      // INSERT_YOUR_CODE
+      setTimeout(async () => {
+        if (scrapeUrl) {
+          await this.jobItemService.updateJobCurrentUrl(jobId, scrapeUrl);
+        }
+      }, 1000);
 
       const response = await firstValueFrom(
         this.httpService.post(
@@ -554,6 +564,7 @@ export class ScraperController {
       return res.status(response.status).json(response.data);
     } catch (error: any) {
       // Job failed - release the URL if it was booked
+      scrapeUrl = null;
       if (bookedUrl) {
         try {
           await this.jobQueueUrlService.releaseUrl(bookedUrl.id);
