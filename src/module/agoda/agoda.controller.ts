@@ -13,7 +13,8 @@ import { ConfigService } from '@nestjs/config';
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { firstValueFrom } from 'rxjs';
-import { IJobQueueUrlService } from '../job-queue-url/job-queue-url.interface';
+import { IJobService } from '../job/job.interface';
+
 import {
   AgodaErrorResponseDto,
   HealthResponseDto,
@@ -24,24 +25,59 @@ import {
 @ApiTags('Agoda Scraper')
 @Controller('/agoda')
 export class AgodaController {
-  private readonly scraperBaseUrl: string;
-
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
-    @Inject('IJobQueueUrlService')
-    private readonly jobQueueUrlService: IJobQueueUrlService,
+    @Inject('IJobService')
+    private readonly jobService: IJobService,
   ) {
-    const baseUrl = this.configService.get<string>('SCRAPER_BASE_URL');
+    // No need for base URL anymore - using OTA-specific URLs
+  }
+
+  /**
+   * Get Agoda scraper URL for health check
+   */
+  private getAgodaScraperUrl(): string {
+    const agodaUrl = this.configService.get<string>('AGODA_SERVER_URL');
+    if (agodaUrl) {
+      return agodaUrl.startsWith('http://') || agodaUrl.startsWith('https://')
+        ? agodaUrl
+        : `http://${agodaUrl}`;
+    }
+
+    // Fallback to localhost
+    return 'http://localhost:3001';
+  }
+
+  /**
+   * Get scraper URL based on OTA provider
+   */
+  private getUrlByOtaProvider(otaProvider: string): string | null {
+    let envKey: string;
+
+    switch (otaProvider) {
+      case 'Expedia':
+        envKey = 'EXPEDIA_SERVER_URL';
+        break;
+      case 'Agoda':
+        envKey = 'AGODA_SERVER_URL';
+        break;
+      case 'Booking':
+        envKey = 'BOOKING_SERVER_URL';
+        break;
+      default:
+        return null;
+    }
+
+    const url = this.configService.get<string>(envKey);
+    if (!url) {
+      return null;
+    }
 
     // Add http:// protocol if missing
-    this.scraperBaseUrl =
-      baseUrl &&
-      (baseUrl.startsWith('http://') || baseUrl.startsWith('https://'))
-        ? baseUrl
-        : baseUrl
-          ? `http://${baseUrl}`
-          : 'http://localhost:3001'; // Default fallback
+    return url.startsWith('http://') || url.startsWith('https://')
+      ? url
+      : `http://${url}`;
   }
 
   @Get('/')
@@ -62,7 +98,7 @@ export class AgodaController {
   async health(@Req() req: Request, @Res() res: Response) {
     try {
       const response = await firstValueFrom(
-        this.httpService.get(`${this.scraperBaseUrl}/`, {
+        this.httpService.get(`${this.getAgodaScraperUrl()}/`, {
           headers: req.headers,
           params: req.query,
         }),
@@ -79,9 +115,9 @@ export class AgodaController {
 
   @Post('/api/agoda/property-run-job')
   @ApiOperation({
-    summary: 'Start Agoda property scraping job',
+    summary: '[DEPRECATED] Start Agoda property scraping job',
     description:
-      'Start a new Agoda property scraping job for the specified property ID, date range, and job ID. Automatically assigns an available URL from the job queue.',
+      '[DEPRECATED] This endpoint is deprecated. Please use the unified endpoint at /scraper/api/property-run-job instead. Start a new Agoda property scraping job for the specified property ID, date range, and job ID.',
   })
   @ApiBody({ type: PropertyRunJobRequestDto })
   @ApiResponse({
@@ -101,7 +137,7 @@ export class AgodaController {
   })
   @ApiResponse({
     status: 503,
-    description: 'All servers are busy - no available URLs',
+    description: 'Scraper URL not configured for OTA provider',
     type: AgodaErrorResponseDto,
   })
   @ApiResponse({
@@ -114,49 +150,32 @@ export class AgodaController {
     @Res() res: Response,
     @Body() body: PropertyRunJobRequestDto,
   ) {
-    let bookedUrl: any = null;
+    let selectedUrl: string | null = null;
 
     try {
-      // Book an available URL for this job
-      // const urlBookingResult = await this.jobQueueUrlService.bookAvailableUrl(
-      //   body.jobId,
-      // );
+      // Fetch job details to get OTA provider
+      const job = await this.jobService.getJobById(body.jobId);
+      const otaProvider = job.ota_provider || 'Agoda'; // Default to Agoda
+      selectedUrl = this.getUrlByOtaProvider(otaProvider);
 
-      // if (!urlBookingResult.success) {
-      //   return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
-      //     success: false,
-      //     message: urlBookingResult.message,
-      //     error: 'All servers are busy',
-      //   });
-      // }
+      if (!selectedUrl) {
+        return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message: `No scraper URL configured for OTA provider: ${otaProvider}`,
+          error: 'Scraper URL not configured',
+        });
+      }
 
-      // bookedUrl = urlBookingResult.url;
-
-      // Add the booked URL to the request body
-      // const enhancedBody = {
-      //   ...body,
-      //   scraperUrl: bookedUrl.url,
-      //   urlId: bookedUrl.id,
-      // };
-
-      // const response = await firstValueFrom(
-      //   this.httpService.post(
-      //     `${bookedUrl.url}/api/agoda/property-run-job`,
-      //     enhancedBody,
-      //     {
-      //       headers: {
-      //         'Content-Type': 'application/json',
-      //         Accept: 'application/json',
-      //       },
-      //       timeout: 300000, // 5 minute timeout for long-running scraping jobs
-      //     },
-      //   ),
-      // );
+      // Add the selected URL to the request body
+      const enhancedBody = {
+        ...body,
+        scraperUrl: selectedUrl,
+      };
 
       const response = await firstValueFrom(
         this.httpService.post(
-          `${this.scraperBaseUrl}/api/agoda/property-run-job`,
-          body,
+          `${selectedUrl}/api/agoda/property-run-job`,
+          enhancedBody,
           {
             headers: {
               'Content-Type': 'application/json',
@@ -170,11 +189,9 @@ export class AgodaController {
       return res.status(response.status).json(response.data);
     } catch (error: any) {
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
-      const data = error
-        ? { message: error.message }
-        : {
-            message: 'Agoda Job server is down',
-          };
+      const data = error.response?.data || {
+        message: 'Agoda Job server is down',
+      };
       return res.status(status).json(data);
     }
   }

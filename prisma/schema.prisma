@@ -53,12 +53,7 @@ enum OtpPurpose {
   MFA_SETUP
 }
 
-enum JobQueueUrlStatus {
-  Available
-  Booked
-  Maintenance
-  Offline
-}
+
 
 type CardInfo {
   card_number       String // Store encrypted or masked
@@ -363,23 +358,7 @@ model JobItem {
   @@map("job_items")
 }
 
-model JobQueueUrl {
-  id                  String            @id @default(auto()) @map("_id") @db.ObjectId
-  name                String // Descriptive name for the URL/server
-  url                 String            @unique
-  status              JobQueueUrlStatus @default(Available)
-  description         String? // Optional description
-  assigned_to_job_id  String? // Track which job is using this URL
-  last_used           DateTime? // When was this URL last used
-  priority            Int               @default(1) // Higher number = higher priority
-  max_concurrent_jobs Int               @default(1) // How many jobs can use this URL simultaneously
-  current_job_count   Int               @default(0) // Current number of jobs using this URL
-  is_active           Boolean           @default(true)
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
 
-  @@map("job_queue_urls")
-}
 
 model ActivityLog {
   id           String   @id @default(auto()) @map("_id") @db.ObjectId
