@@ -23,8 +23,9 @@ import {
 import { Request, Response } from 'express';
 import { firstValueFrom } from 'rxjs';
 import { ParseQuery } from '../../common/decorators/parse-query.decorator';
+
 import { ResponseHandler } from '../../common/utils/response-handler';
-import { IJobQueueUrlService } from '../job-queue-url/job-queue-url.interface';
+import { IJobService } from '../job/job.interface';
 import { IScraperJobItemService } from './scraper-job-item.interface';
 import {
   AllJobItemsResponseDto,
@@ -40,26 +41,119 @@ import {
   ScrapingStatusResponseDto,
 } from './scraper.dto';
 
-@ApiTags('Expedia Scraper')
-@Controller('/expedia')
+@ApiTags('Unified Scraper')
+@Controller('/scraper')
 export class ScraperController {
-  private readonly scraperBaseUrl: string;
-
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     @Inject('IScraperJobItemService')
     private readonly jobItemService: IScraperJobItemService,
-    @Inject('IJobQueueUrlService')
-    private readonly jobQueueUrlService: IJobQueueUrlService,
+    @Inject('IJobService')
+    private readonly jobService: IJobService,
   ) {
-    const baseUrl = this.configService.get<string>('SCRAPER_BASE_URL');
+    // No need for base URL anymore - using OTA-specific URLs
+  }
+
+  /**
+   * Get primary scraper URL (defaults to Expedia server for general endpoints)
+   */
+  private getPrimaryScraperUrl(): string {
+    const expediadUrl = this.configService.get<string>('EXPEDIA_SERVER_URL');
+    if (expediadUrl) {
+      return expediadUrl.startsWith('http://') ||
+        expediadUrl.startsWith('https://')
+        ? expediadUrl
+        : `http://${expediadUrl}`;
+    }
+
+    // Fallback to other OTA URLs if Expedia is not configured
+    const agodaUrl = this.configService.get<string>('AGODA_SERVER_URL');
+    if (agodaUrl) {
+      return agodaUrl.startsWith('http://') || agodaUrl.startsWith('https://')
+        ? agodaUrl
+        : `http://${agodaUrl}`;
+    }
+
+    const bookingUrl = this.configService.get<string>('BOOKING_SERVER_URL');
+    if (bookingUrl) {
+      return bookingUrl.startsWith('http://') ||
+        bookingUrl.startsWith('https://')
+        ? bookingUrl
+        : `http://${bookingUrl}`;
+    }
+
+    // Final fallback
+    return 'http://localhost:3001';
+  }
+
+  /**
+   * Get scraper URL based on OTA provider
+   */
+  private getUrlByOtaProvider(otaProvider: string): string | null {
+    let envKey: string;
+
+    switch (otaProvider) {
+      case 'Expedia':
+        envKey = 'EXPEDIA_SERVER_URL';
+        break;
+      case 'Agoda':
+        envKey = 'AGODA_SERVER_URL';
+        break;
+      case 'Booking':
+        envKey = 'BOOKING_SERVER_URL';
+        break;
+      default:
+        return null;
+    }
+
+    const url = this.configService.get<string>(envKey);
+    if (!url) {
+      return null;
+    }
 
     // Add http:// protocol if missing
-    this.scraperBaseUrl =
-      baseUrl.startsWith('http://') || baseUrl.startsWith('https://')
-        ? baseUrl
-        : `http://${baseUrl}`;
+    return url.startsWith('http://') || url.startsWith('https://')
+      ? url
+      : `http://${url}`;
+  }
+
+  /**
+   * Get API path based on OTA provider and job type
+   */
+  private getApiPathByOtaProvider(
+    otaProvider: string,
+    jobType: string = 'property-run-job',
+  ): string {
+    const baseApiPath = this.getBaseApiPath(otaProvider);
+
+    // Special handling for Expedia based on EXPEDIA_MODE
+    if (otaProvider === 'Expedia' && jobType === 'property-run-job') {
+      const expediadMode = this.configService.get<string>('EXPEDIA_MODE');
+      if (expediadMode === 'graphql') {
+        return `${baseApiPath}/graphql-run-job`;
+      }
+      // Default to scraper mode for Expedia
+      return `${baseApiPath}/property-run-job`;
+    }
+
+    return `${baseApiPath}/${jobType}`;
+  }
+
+  /**
+   * Get base API path for OTA provider
+   */
+  private getBaseApiPath(otaProvider: string): string {
+    switch (otaProvider) {
+      case 'Expedia':
+        return '/api/expedia';
+      case 'Agoda':
+        return '/api/agoda';
+      case 'Booking':
+        return '/api/booking';
+      default:
+        return '/api/expedia'; // Default to Expedia
+    }
   }
 
   @Get('/')
@@ -80,7 +174,7 @@ export class ScraperController {
   async health(@Req() req: Request, @Res() res: Response) {
     try {
       const response = await firstValueFrom(
-        this.httpService.get(`${this.scraperBaseUrl}/`, {
+        this.httpService.get(`${this.getPrimaryScraperUrl()}/`, {
           headers: req.headers,
           params: req.query,
         }),
@@ -110,7 +204,7 @@ export class ScraperController {
   async auth(@Req() req: Request, @Res() res: Response) {
     try {
       const response = await firstValueFrom(
-        this.httpService.get(`${this.scraperBaseUrl}/auth`, {
+        this.httpService.get(`${this.getPrimaryScraperUrl()}/auth`, {
           headers: req.headers,
           params: req.query,
         }),
@@ -154,7 +248,7 @@ export class ScraperController {
   async oauth2callback(@Req() req: Request, @Res() res: Response) {
     try {
       const response = await firstValueFrom(
-        this.httpService.get(`${this.scraperBaseUrl}/oauth2callback`, {
+        this.httpService.get(`${this.getPrimaryScraperUrl()}/oauth2callback`, {
           headers: req.headers,
           params: req.query,
         }),
@@ -188,10 +282,13 @@ export class ScraperController {
   async scrapingStatus(@Req() req: Request, @Res() res: Response) {
     try {
       const response = await firstValueFrom(
-        this.httpService.get(`${this.scraperBaseUrl}/api/scraping/status`, {
-          headers: req.headers,
-          params: req.query,
-        }),
+        this.httpService.get(
+          `${this.getPrimaryScraperUrl()}/api/scraping/status`,
+          {
+            headers: req.headers,
+            params: req.query,
+          },
+        ),
       );
       return res.status(response.status).json(response.data);
     } catch (error: any) {
@@ -231,7 +328,7 @@ export class ScraperController {
     try {
       const response = await firstValueFrom(
         this.httpService.post(
-          `${this.scraperBaseUrl}/api/scraping/pause`,
+          `${this.getPrimaryScraperUrl()}/api/scraping/pause`,
           body,
           {
             headers: {
@@ -282,7 +379,7 @@ export class ScraperController {
     try {
       const response = await firstValueFrom(
         this.httpService.post(
-          `${this.scraperBaseUrl}/api/scraping/resume`,
+          `${this.getPrimaryScraperUrl()}/api/scraping/resume`,
           body,
           {
             headers: {
@@ -327,7 +424,7 @@ export class ScraperController {
     try {
       const response = await firstValueFrom(
         this.httpService.post(
-          `${this.scraperBaseUrl}/api/scraping/stop`,
+          `${this.getPrimaryScraperUrl()}/api/scraping/stop`,
           body,
           {
             headers: {
@@ -349,11 +446,11 @@ export class ScraperController {
     }
   }
 
-  @Post('/api/expedia/property-run-job')
+  @Post('/api/property-run-job')
   @ApiOperation({
-    summary: 'Start property scraping job',
+    summary: 'Start unified property scraping job',
     description:
-      'Start a new property scraping job for the specified property ID, date range, and job ID. Automatically assigns an available URL from the job queue.',
+      'Start a new property scraping job for any OTA provider (Expedia, Agoda, Booking). The system automatically determines the OTA provider from the job record and routes to the appropriate scraper server. For Expedia, the EXPEDIA_MODE environment variable determines whether to use GraphQL (graphql-run-job) or regular scraper (property-run-job) endpoint.',
   })
   @ApiBody({ type: PropertyRunJobRequestDto })
   @ApiResponse({
@@ -373,7 +470,7 @@ export class ScraperController {
   })
   @ApiResponse({
     status: 503,
-    description: 'All servers are busy - no available URLs',
+    description: 'Scraper URL not configured for OTA provider',
     type: ErrorResponseDto,
   })
   @ApiResponse({
@@ -386,98 +483,76 @@ export class ScraperController {
     @Res() res: Response,
     @Body() body: PropertyRunJobRequestDto,
   ) {
-    let bookedUrl: any = null;
-
-    let scrapeUrl: any = null;
+    let selectedUrl: string | null = null;
 
     try {
-      // Book an available URL for this job
-      const urlBookingResult = await this.jobQueueUrlService.bookAvailableUrl(
-        body.jobId,
-      );
+      // Fetch job details to get OTA provider
+      const job = await this.jobService.getJobById(body.jobId);
+      const otaProvider = job.ota_provider || 'Expedia'; // Default to Expedia
+      selectedUrl = this.getUrlByOtaProvider(otaProvider);
 
-      if (!urlBookingResult.success) {
+      if (!selectedUrl) {
         return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
           success: false,
-          message: urlBookingResult.message,
-          error: 'All servers are busy',
+          message: `No scraper URL configured for OTA provider: ${otaProvider}`,
+          error: 'Scraper URL not configured',
         });
       }
 
-      bookedUrl = urlBookingResult.url;
-
-      scrapeUrl = bookedUrl.url;
-
-      // Add the booked URL to the request body
+      // Add the selected URL to the request body
       const enhancedBody = {
         ...body,
-        scraperUrl: bookedUrl.url,
-        urlId: bookedUrl.id,
+        scraperUrl: selectedUrl,
       };
 
-      // INSERT_YOUR_CODE
+      // Update job current URL
       setTimeout(async () => {
-        if (scrapeUrl) {
-          await this.jobItemService.updateJobCurrentUrl(body.jobId, scrapeUrl);
+        if (selectedUrl) {
+          await this.jobItemService.updateJobCurrentUrl(
+            body.jobId,
+            selectedUrl,
+          );
         }
       }, 1000);
 
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${bookedUrl.url}/api/expedia/property-run-job`,
-          enhancedBody,
-          {
-            // ...req.headers,
-            headers: {
-              'Content-Type': 'application/json',
-              Accept: 'application/json',
-            },
-            timeout: 300000, // 5 minute timeout for long-running scraping jobs
-          },
-        ),
+      // Get the correct API path based on OTA provider and mode
+      const apiPath = this.getApiPathByOtaProvider(
+        otaProvider,
+        'property-run-job',
       );
 
-      // Job completed successfully - release the URL
-      // if (bookedUrl) {
-      //   try {
-      //     await this.jobQueueUrlService.releaseUrl(bookedUrl.id);
-      //   } catch (releaseError: any) {
-      //     console.error(
-      //       'Failed to release URL after successful job:',
-      //       releaseError,
-      //     );
-      //   }
-      // }
+      // Log which endpoint is being used for Expedia
+      if (otaProvider === 'Expedia') {
+        const expediadMode =
+          this.configService.get<string>('EXPEDIA_MODE') || 'scraper';
+        console.log(`Using Expedia ${expediadMode} mode: ${apiPath}`);
+      }
+
+      const response = await firstValueFrom(
+        this.httpService.post(`${selectedUrl}${apiPath}`, enhancedBody, {
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          timeout: 300000, // 5 minute timeout for long-running scraping jobs
+        }),
+      );
 
       return res.status(response.status).json(response.data);
     } catch (error: any) {
-      scrapeUrl = null;
-
-      // Job failed - release the URL if it was booked
-      // if (bookedUrl) {
-      //   try {
-      //     await this.jobQueueUrlService.releaseUrl(bookedUrl.id);
-      //   } catch (releaseError: any) {
-      //     console.error(
-      //       'Failed to release URL after failed job:',
-      //       releaseError,
-      //     );
-      //   }
-      // }
-
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
       const data = error.response?.data || {
-        message: 'Expedia Job server is down',
+        message: 'Job server is down',
       };
       return res.status(status).json(data);
     }
   }
 
-  @Post('/api/expedia/reservation-run-job')
+  @Post('/api/reservation-run-job')
   @ApiOperation({
-    summary: 'Start reservation scraping job',
+    summary: 'Start unified reservation scraping job',
     description:
-      'Start a new reservation scraping job for the specified reservations. Automatically assigns an available URL from the job queue.',
+      'Start a new reservation scraping job for any OTA provider (Expedia, Agoda, Booking). The system automatically determines the OTA provider from the job record and routes to the appropriate scraper server.',
   })
   @ApiBody({ type: ReservationRunJobRequestDto })
   @ApiResponse({
@@ -497,7 +572,7 @@ export class ScraperController {
   })
   @ApiResponse({
     status: 503,
-    description: 'All servers are busy - no available URLs',
+    description: 'Scraper URL not configured for OTA provider',
     type: ErrorResponseDto,
   })
   @ApiResponse({
@@ -510,98 +585,69 @@ export class ScraperController {
     @Res() res: Response,
     @Body() body: ReservationRunJobRequestDto,
   ) {
-    let bookedUrl: any = null;
-    let scrapeUrl: any = null;
+    let selectedUrl: string | null = null;
 
     try {
       // Check if jobId exists in the request body
       const jobId = (body as any).jobId || `reservation_${Date.now()}`;
 
-      // Book an available URL for this job
-      const urlBookingResult =
-        await this.jobQueueUrlService.bookAvailableUrl(jobId);
+      // Fetch job details to get OTA provider
+      const job = await this.jobService.getJobById(jobId);
+      const otaProvider = job.ota_provider || 'Expedia'; // Default to Expedia
+      selectedUrl = this.getUrlByOtaProvider(otaProvider);
 
-      if (!urlBookingResult.success) {
+      if (!selectedUrl) {
         return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
           success: false,
-          message: urlBookingResult.message,
-          error: 'All servers are busy',
+          message: `No scraper URL configured for OTA provider: ${otaProvider}`,
+          error: 'Scraper URL not configured',
         });
       }
 
-      bookedUrl = urlBookingResult.url;
-
-      scrapeUrl = this.scraperBaseUrl;
-
-      // Add the booked URL to the request body
+      // Add the selected URL to the request body
       const enhancedBody = {
         ...body,
-        scraperUrl: bookedUrl.url,
-        urlId: bookedUrl.id,
+        scraperUrl: selectedUrl,
       };
 
-      // INSERT_YOUR_CODE
+      // Update job current URL
       setTimeout(async () => {
-        if (scrapeUrl) {
-          await this.jobItemService.updateJobCurrentUrl(jobId, scrapeUrl);
+        if (selectedUrl) {
+          await this.jobItemService.updateJobCurrentUrl(jobId, selectedUrl);
         }
       }, 1000);
 
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.scraperBaseUrl}/api/expedia/reservation-run-job`,
-          enhancedBody,
-          {
-            // ...req.headers,
-            headers: {
-              'Content-Type': 'application/json',
-              Accept: 'application/json',
-            },
-            timeout: 300000, // 5 minute timeout for long-running scraping jobs
-          },
-        ),
+      // Get the correct API path based on OTA provider
+      const apiPath = this.getApiPathByOtaProvider(
+        otaProvider,
+        'reservation-run-job',
       );
 
-      // Job completed successfully - release the URL
-      if (bookedUrl) {
-        try {
-          await this.jobQueueUrlService.releaseUrl(bookedUrl.id);
-        } catch (releaseError: any) {
-          console.error(
-            'Failed to release URL after successful job:',
-            releaseError,
-          );
-        }
-      }
+      const response = await firstValueFrom(
+        this.httpService.post(`${selectedUrl}${apiPath}`, enhancedBody, {
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          timeout: 300000, // 5 minute timeout for long-running scraping jobs
+        }),
+      );
 
       return res.status(response.status).json(response.data);
     } catch (error: any) {
-      // Job failed - release the URL if it was booked
-      scrapeUrl = null;
-      if (bookedUrl) {
-        try {
-          await this.jobQueueUrlService.releaseUrl(bookedUrl.id);
-        } catch (releaseError: any) {
-          console.error(
-            'Failed to release URL after failed job:',
-            releaseError,
-          );
-        }
-      }
-
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
       const data = error.response?.data || {
-        message: 'Expedia Job server is down',
+        message: 'Job server is down',
       };
       return res.status(status).json(data);
     }
   }
 
-  @Post('/api/expedia/rerun-failed-job')
+  @Post('/api/rerun-failed-job')
   @ApiOperation({
-    summary: 'Rerun failed or partial failed job',
+    summary: 'Rerun failed or partial failed job (unified)',
     description:
-      'Rerun a job that has failed or partially completed. This endpoint specifically handles jobs with Failed or Partial status and resets them to run again. Automatically assigns an available URL from the job queue.',
+      'Rerun a job that has failed or partially completed for any OTA provider (Expedia, Agoda, Booking). The system automatically determines the OTA provider from the job record and routes to the appropriate scraper server.',
   })
   @ApiBody({ type: RerunFailedJobRequestDto })
   @ApiResponse({
@@ -621,7 +667,7 @@ export class ScraperController {
   })
   @ApiResponse({
     status: 503,
-    description: 'All servers are busy - no available URLs',
+    description: 'Scraper URL not configured for OTA provider',
     type: ErrorResponseDto,
   })
   @ApiResponse({
@@ -634,75 +680,49 @@ export class ScraperController {
     @Res() res: Response,
     @Body() body: RerunFailedJobRequestDto,
   ) {
-    let bookedUrl: any = null;
+    let selectedUrl: string | null = null;
 
     try {
-      // Book an available URL for this job
-      const urlBookingResult = await this.jobQueueUrlService.bookAvailableUrl(
-        body.jobId,
-      );
+      // Fetch job details to get OTA provider
+      const job = await this.jobService.getJobById(body.jobId);
+      const otaProvider = job.ota_provider || 'Expedia'; // Default to Expedia
+      selectedUrl = this.getUrlByOtaProvider(otaProvider);
 
-      if (!urlBookingResult.success) {
+      if (!selectedUrl) {
         return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
           success: false,
-          message: urlBookingResult.message,
-          error: 'All servers are busy',
+          message: `No scraper URL configured for OTA provider: ${otaProvider}`,
+          error: 'Scraper URL not configured',
         });
       }
 
-      bookedUrl = urlBookingResult.url;
-
-      // Add the booked URL to the request body
+      // Add the selected URL to the request body
       const enhancedBody = {
         ...body,
-        scraperUrl: bookedUrl.url,
-        urlId: bookedUrl.id,
+        scraperUrl: selectedUrl,
       };
 
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${bookedUrl.url}/api/expedia/rerun-failed-job`,
-          enhancedBody,
-          {
-            // ...req.headers,
-            headers: {
-              'Content-Type': 'application/json',
-              Accept: 'application/json',
-            },
-            timeout: 300000, // 5 minute timeout for long-running scraping jobs
-          },
-        ),
+      // Get the correct API path based on OTA provider
+      const apiPath = this.getApiPathByOtaProvider(
+        otaProvider,
+        'rerun-failed-job',
       );
 
-      // Job completed successfully - release the URL
-      // if (bookedUrl) {
-      //   try {
-      //     await this.jobQueueUrlService.releaseUrl(bookedUrl.id);
-      //   } catch (releaseError: any) {
-      //     console.error(
-      //       'Failed to release URL after successful job:',
-      //       releaseError,
-      //     );
-      //   }
-      // }
+      const response = await firstValueFrom(
+        this.httpService.post(`${selectedUrl}${apiPath}`, enhancedBody, {
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          timeout: 300000, // 5 minute timeout for long-running scraping jobs
+        }),
+      );
 
       return res.status(response.status).json(response.data);
     } catch (error: any) {
-      // Job failed - release the URL if it was booked
-      // if (bookedUrl) {
-      //   try {
-      //     await this.jobQueueUrlService.releaseUrl(bookedUrl.id);
-      //   } catch (releaseError: any) {
-      //     console.error(
-      //       'Failed to release URL after failed job:',
-      //       releaseError,
-      //     );
-      //   }
-      // }
-
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
       const data = error.response?.data || {
-        message: 'Expedia Job server is down',
+        message: 'Job server is down',
       };
       return res.status(status).json(data);
     }
@@ -734,7 +754,7 @@ export class ScraperController {
     try {
       const response = await firstValueFrom(
         this.httpService.get(
-          `${this.scraperBaseUrl}/api/jobs/${jobId}/progress`,
+          `${this.getPrimaryScraperUrl()}/api/jobs/${jobId}/progress`,
           { headers: req.headers, params: req.query },
         ),
       );
@@ -887,11 +907,11 @@ export class ScraperController {
     }
   }
 
-  @Post('/api/expedia/graphql-run-job')
+  @Post('/api/graphql-run-job')
   @ApiOperation({
-    summary: 'Start property scraping job',
+    summary: 'Start unified GraphQL property scraping job',
     description:
-      'Start a new property scraping job for the specified property ID, date range, and job ID. Automatically assigns an available URL from the job queue.',
+      'Start a new GraphQL property scraping job for any OTA provider (Expedia, Agoda, Booking). The system automatically determines the OTA provider from the job record and routes to the appropriate scraper server.',
   })
   @ApiBody({ type: PropertyRunJobRequestDto })
   @ApiResponse({
@@ -911,7 +931,7 @@ export class ScraperController {
   })
   @ApiResponse({
     status: 503,
-    description: 'All servers are busy - no available URLs',
+    description: 'Scraper URL not configured for OTA provider',
     type: ErrorResponseDto,
   })
   @ApiResponse({
@@ -924,77 +944,49 @@ export class ScraperController {
     @Res() res: Response,
     @Body() body: PropertyRunJobRequestDto,
   ) {
-    let bookedUrl: any = null;
+    let selectedUrl: string | null = null;
 
     try {
-      // Book an available URL for this job
-      const urlBookingResult = await this.jobQueueUrlService.bookAvailableUrl(
-        body.jobId,
-      );
+      // Fetch job details to get OTA provider
+      const job = await this.jobService.getJobById(body.jobId);
+      const otaProvider = job.ota_provider || 'Expedia'; // Default to Expedia
+      selectedUrl = this.getUrlByOtaProvider(otaProvider);
 
-      if (!urlBookingResult.success) {
+      if (!selectedUrl) {
         return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
           success: false,
-          message: urlBookingResult.message,
-          error: 'All servers are busy',
+          message: `No scraper URL configured for OTA provider: ${otaProvider}`,
+          error: 'Scraper URL not configured',
         });
       }
 
-      bookedUrl = urlBookingResult.url;
-
-      // Add the booked URL to the request body
+      // Add the selected URL to the request body
       const enhancedBody = {
         ...body,
-        scraperUrl: bookedUrl.url,
-        urlId: bookedUrl.id,
+        scraperUrl: selectedUrl,
       };
 
-      // console.log('enhancedBody', enhancedBody);
-
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${bookedUrl.url}/api/expedia/graphql-run-job`,
-          enhancedBody,
-          {
-            // ...req.headers,
-            headers: {
-              'Content-Type': 'application/json',
-              Accept: 'application/json',
-            },
-            timeout: 300000, // 5 minute timeout for long-running scraping jobs
-          },
-        ),
+      // Get the correct API path based on OTA provider
+      const apiPath = this.getApiPathByOtaProvider(
+        otaProvider,
+        'graphql-run-job',
       );
 
-      // Job completed successfully - release the URL
-      if (bookedUrl) {
-        try {
-          await this.jobQueueUrlService.releaseUrl(bookedUrl.id);
-        } catch (releaseError: any) {
-          console.error(
-            'Failed to release URL after successful job:',
-            releaseError,
-          );
-        }
-      }
+      const response = await firstValueFrom(
+        this.httpService.post(`${selectedUrl}${apiPath}`, enhancedBody, {
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          timeout: 300000, // 5 minute timeout for long-running scraping jobs
+        }),
+      );
 
       return res.status(response.status).json(response.data);
     } catch (error: any) {
-      // Job failed - release the URL if it was booked
-      if (bookedUrl) {
-        try {
-          await this.jobQueueUrlService.releaseUrl(bookedUrl.id);
-        } catch (releaseError: any) {
-          console.error(
-            'Failed to release URL after failed job:',
-            releaseError,
-          );
-        }
-      }
-
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
       const data = error.response?.data || {
-        message: 'Expedia Job server is down',
+        message: 'Job server is down',
       };
       return res.status(status).json(data);
     }
