@@ -65,7 +65,7 @@ export class BookingController extends BaseScraperController {
 
   async runJob(body: BookingRunJobRequestDto): Promise<BookingRunJobResponseDto> {
     
-    const response = await this.forwardRequest(this.getRunJobEndpoint());
+    const response = await this.forwardRequest(this.getRunJobEndpoint(), body);
     return response.data;
   }
 
@@ -113,8 +113,8 @@ export class BookingController extends BaseScraperController {
   }
 
   async rerunFailedJob(body: RerunFailedJobRequestDto): Promise<RerunFailedJobResponseDto> {
-    if (!body.jobId || !body.startDate || !body.endDate) {
-      throw new Error('Job ID, start date, and end date are required');
+    if (!body.jobId) {
+      throw new Error('Job ID is required');
     }
     
     const response = await this.forwardRequest(this.getRerunFailedJobEndpoint(), body);
