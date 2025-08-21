@@ -61,30 +61,45 @@ export class ScraperController {
   private getPrimaryScraperUrl(): string {
     const expediadUrl = this.configService.get<string>('EXPEDIA_SERVER_URL');
     if (expediadUrl) {
-      return expediadUrl.startsWith('http://') ||
-        expediadUrl.startsWith('https://')
-        ? expediadUrl
-        : `http://${expediadUrl}`;
+      const url = this.normalizeUrl(expediadUrl);
+      console.log(`Using Expedia URL: ${url}`);
+      return url;
     }
 
     // Fallback to other OTA URLs if Expedia is not configured
     const agodaUrl = this.configService.get<string>('AGODA_SERVER_URL');
     if (agodaUrl) {
-      return agodaUrl.startsWith('http://') || agodaUrl.startsWith('https://')
-        ? agodaUrl
-        : `http://${agodaUrl}`;
+      const url = this.normalizeUrl(agodaUrl);
+      console.log(`Using Agoda URL: ${url}`);
+      return url;
     }
 
     const bookingUrl = this.configService.get<string>('BOOKING_SERVER_URL');
     if (bookingUrl) {
-      return bookingUrl.startsWith('http://') ||
-        bookingUrl.startsWith('https://')
-        ? bookingUrl
-        : `http://${bookingUrl}`;
+      const url = this.normalizeUrl(bookingUrl);
+      console.log(`Using Booking URL: ${url}`);
+      return url;
     }
 
     // Final fallback
+    console.log('Using fallback URL: http://localhost:3001');
     return 'http://localhost:3001';
+  }
+
+  /**
+   * Normalize URL by adding protocol if missing
+   * Prefers HTTPS in production, HTTP in development
+   */
+  private normalizeUrl(url: string): string {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+
+    // Check if we're in production to prefer HTTPS
+    const isProduction = this.configService.get('NODE_ENV') === 'production';
+    const defaultProtocol = isProduction ? 'https' : 'http';
+
+    return `${defaultProtocol}://${url}`;
   }
 
   /**
@@ -104,18 +119,19 @@ export class ScraperController {
         envKey = 'BOOKING_SERVER_URL';
         break;
       default:
+        console.log(`Unknown OTA provider: ${otaProvider}`);
         return null;
     }
 
     const url = this.configService.get<string>(envKey);
     if (!url) {
+      console.log(`No URL configured for ${otaProvider} (${envKey})`);
       return null;
     }
 
-    // Add http:// protocol if missing
-    return url.startsWith('http://') || url.startsWith('https://')
-      ? url
-      : `http://${url}`;
+    const normalizedUrl = this.normalizeUrl(url);
+    console.log(`${otaProvider} URL: ${normalizedUrl}`);
+    return normalizedUrl;
   }
 
   /**
@@ -156,6 +172,52 @@ export class ScraperController {
     }
   }
 
+  @Get('/debug-urls')
+  @ApiOperation({
+    summary: 'Debug URL configuration',
+    description:
+      'Show all configured URLs and their status for debugging HTTPS issues',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'URL configuration retrieved',
+  })
+  async debugUrls(@Res() res: Response) {
+    const urls = {
+      EXPEDIA_SERVER_URL: this.configService.get<string>('EXPEDIA_SERVER_URL'),
+      AGODA_SERVER_URL: this.configService.get<string>('AGODA_SERVER_URL'),
+      BOOKING_SERVER_URL: this.configService.get<string>('BOOKING_SERVER_URL'),
+      NODE_ENV: this.configService.get<string>('NODE_ENV'),
+    };
+
+    const normalizedUrls = {
+      expedia: urls.EXPEDIA_SERVER_URL
+        ? this.normalizeUrl(urls.EXPEDIA_SERVER_URL)
+        : null,
+      agoda: urls.AGODA_SERVER_URL
+        ? this.normalizeUrl(urls.AGODA_SERVER_URL)
+        : null,
+      booking: urls.BOOKING_SERVER_URL
+        ? this.normalizeUrl(urls.BOOKING_SERVER_URL)
+        : null,
+      primary: this.getPrimaryScraperUrl(),
+    };
+
+    return res.status(HttpStatus.OK).json({
+      success: true,
+      message: 'URL configuration debug info',
+      data: {
+        rawUrls: urls,
+        normalizedUrls,
+        httpsAgentConfig: {
+          rejectUnauthorized:
+            this.configService.get('NODE_ENV') === 'production',
+          timeout: 300000,
+        },
+      },
+    });
+  }
+
   @Get('/')
   @ApiOperation({
     summary: 'Health check endpoint',
@@ -172,18 +234,37 @@ export class ScraperController {
     type: ErrorResponseDto,
   })
   async health(@Req() req: Request, @Res() res: Response) {
+    const targetUrl = `${this.getPrimaryScraperUrl()}/`;
+    console.log(`Health check - attempting connection to: ${targetUrl}`);
+
     try {
       const response = await firstValueFrom(
-        this.httpService.get(`${this.getPrimaryScraperUrl()}/`, {
+        this.httpService.get(targetUrl, {
           headers: req.headers,
           params: req.query,
         }),
       );
+      console.log(`Health check successful - status: ${response.status}`);
       return res.status(response.status).json(response.data);
     } catch (error: any) {
+      console.error(`Health check failed for ${targetUrl}:`, {
+        message: error.message,
+        code: error.code,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        isHttpsError:
+          error.code === 'CERT_HAS_EXPIRED' ||
+          error.code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' ||
+          error.code === 'SELF_SIGNED_CERT_IN_CHAIN' ||
+          error.code === 'DEPTH_ZERO_SELF_SIGNED_CERT',
+      });
+
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
       const data = error.response?.data || {
-        message: 'Expedia Job server is down',
+        message: 'Job server is down',
+        error: error.message,
+        code: error.code,
+        url: targetUrl,
       };
       return res.status(status).json(data);
     }
