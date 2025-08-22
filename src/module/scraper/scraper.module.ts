@@ -2,14 +2,14 @@ import { HttpModule } from '@nestjs/axios';
 import { Logger, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { DatabaseService } from '../database/database.service';
-import { JobQueueUrlModule } from '../job-queue-url/job-queue-url.module';
+import { BookingController } from './booking/booking.controller';
+import { ExpediaController } from './expedia/expedia.controller';
 import { ScraperJobItemRepository } from './scraper-job-item.repository';
 import { ScraperJobItemService } from './scraper-job-item.service';
-import { ScraperController } from './scraper.controller';
 
 @Module({
-  imports: [HttpModule, ConfigModule, JobQueueUrlModule],
-  controllers: [ScraperController],
+  imports: [HttpModule, ConfigModule],
+  controllers: [ExpediaController, BookingController],
   providers: [
     {
       provide: 'IScraperJobItemService',
