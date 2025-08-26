@@ -2,7 +2,11 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Job, OTAProvider, PostingType } from '@prisma/client';
 import * as XLSX from 'xlsx';
 import { IPropertyRepository } from '../property/property.interface';
-import { CreateJobDto, UpdateJobDto } from './job.dto';
+import {
+  CreateJobDto,
+  JobStatisticsResponseDto,
+  UpdateJobDto,
+} from './job.dto';
 import { IJobRepository, IJobService } from './job.interface';
 
 @Injectable()
@@ -317,6 +321,30 @@ export class JobService implements IJobService {
     } catch (error) {
       this.logger.error(
         `Error getting latest checkout date for job ${jobId}: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async getJobStatistics(
+    userId: string,
+    userRole: string,
+  ): Promise<JobStatisticsResponseDto> {
+    try {
+      const isAdmin = userRole === 'admin';
+      const result = await this.repository.getJobStatisticsByUserId(
+        userId,
+        isAdmin,
+      );
+
+      this.logger.log(
+        `Job statistics retrieved successfully for user ${userId} (role: ${userRole})`,
+      );
+      return result;
+    } catch (error) {
+      this.logger.error(
+        `Error getting job statistics for user ${userId}: ${error.message}`,
         error.stack,
       );
       throw error;

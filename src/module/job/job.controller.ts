@@ -29,7 +29,12 @@ import { ValidateBody } from 'src/common/decorators/validate.decorator';
 import { ExcelFileInterceptor } from 'src/common/interceptors/excel-file.interceptor';
 import { ResponseHandler } from 'src/common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CreateJobDto, ImportJobsResponseDto, UpdateJobDto } from './job.dto';
+import {
+  CreateJobDto,
+  ImportJobsResponseDto,
+  JobStatisticsResponseDto,
+  UpdateJobDto,
+} from './job.dto';
 import { IJobService } from './job.interface';
 import { createJobSchema } from './job.validation';
 
@@ -128,6 +133,89 @@ export class JobController {
           message: 'Jobs retrieved successfully',
           data: result.data,
           metadata: result.metadata,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Get('/statistics')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Get job statistics',
+    description:
+      'Get job statistics including current counts and last 12 months data. Admin users get all jobs statistics, regular users get only their own jobs statistics.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Job statistics retrieved successfully',
+    type: JobStatisticsResponseDto,
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 200 },
+        message: {
+          type: 'string',
+          example: 'Job statistics retrieved successfully',
+        },
+        data: {
+          type: 'object',
+          properties: {
+            currentCounts: {
+              type: 'object',
+              properties: {
+                pending: { type: 'number', example: 15 },
+                failed: { type: 'number', example: 3 },
+                running: { type: 'number', example: 8 },
+                completed: { type: 'number', example: 45 },
+              },
+            },
+            monthlyStats: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  month: { type: 'string', example: '2024-01' },
+                  pending: { type: 'number', example: 12 },
+                  failed: { type: 'number', example: 2 },
+                  running: { type: 'number', example: 5 },
+                  completed: { type: 'number', example: 35 },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Valid JWT token required',
+  })
+  async getJobStatistics(@Req() request: any, @Res() response: Response) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const userId = request.user?.userId;
+        const userRole = request.user?.role;
+
+        if (!userId) {
+          return {
+            statusCode: 401,
+            message: 'User not authenticated',
+            data: null,
+          };
+        }
+
+        const statistics = await this.jobService.getJobStatistics(
+          userId,
+          userRole,
+        );
+
+        return {
+          statusCode: 200,
+          message: 'Job statistics retrieved successfully',
+          data: statistics,
         };
       },
       this.logger,

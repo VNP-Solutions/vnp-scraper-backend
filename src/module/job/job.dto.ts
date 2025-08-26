@@ -179,3 +179,64 @@ export class ImportJobsResponseDto {
   })
   jobs: any[];
 }
+
+export class JobStatusCountDto {
+  @ApiProperty({ description: 'Number of pending jobs', example: 15 })
+  pending: number;
+
+  @ApiProperty({ description: 'Number of failed jobs', example: 3 })
+  failed: number;
+
+  @ApiProperty({ description: 'Number of running jobs', example: 8 })
+  running: number;
+
+  @ApiProperty({ description: 'Number of completed jobs', example: 45 })
+  completed: number;
+}
+
+export class MonthlyJobStatsDto {
+  @ApiProperty({ description: 'Month and year', example: '2024-01' })
+  month: string;
+
+  @ApiProperty({
+    description: 'Number of pending jobs in this month',
+    example: 12,
+  })
+  pending: number;
+
+  @ApiProperty({
+    description: 'Number of failed jobs in this month',
+    example: 2,
+  })
+  failed: number;
+
+  @ApiProperty({
+    description: 'Number of running jobs in this month',
+    example: 5,
+  })
+  running: number;
+
+  @ApiProperty({
+    description: 'Number of completed jobs in this month',
+    example: 35,
+  })
+  completed: number;
+}
+
+export class JobStatisticsResponseDto {
+  @ApiProperty({
+    description: 'Current job status counts',
+    type: JobStatusCountDto,
+  })
+  currentCounts: JobStatusCountDto;
+
+  @ApiProperty({
+    description: 'Monthly job statistics for the last 12 months',
+    type: [MonthlyJobStatsDto],
+    example: [
+      { month: '2024-01', pending: 12, failed: 2, running: 5, completed: 35 },
+      { month: '2024-02', pending: 8, failed: 1, running: 3, completed: 42 },
+    ],
+  })
+  monthlyStats: MonthlyJobStatsDto[];
+}
