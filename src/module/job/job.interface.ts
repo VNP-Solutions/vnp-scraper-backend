@@ -1,5 +1,9 @@
 import { Job } from '@prisma/client';
-import { CreateJobDto, UpdateJobDto } from './job.dto';
+import {
+  CreateJobDto,
+  JobStatisticsResponseDto,
+  UpdateJobDto,
+} from './job.dto';
 
 export interface IJobRepository {
   create(data: CreateJobDto): Promise<Job>;
@@ -20,6 +24,25 @@ export interface IJobRepository {
   findLatestCheckoutDateByJobId(
     jobId: string,
   ): Promise<{ check_out_date: Date } | null>;
+  getJobStatisticsByUserId(
+    userId: string,
+    isAdmin: boolean,
+  ): Promise<JobStatisticsResponseDto>;
+  getJobStatusCounts(userId?: string): Promise<{
+    pending: number;
+    failed: number;
+    running: number;
+    completed: number;
+  }>;
+  getMonthlyJobStats(userId?: string): Promise<
+    Array<{
+      month: string;
+      pending: number;
+      failed: number;
+      running: number;
+      completed: number;
+    }>
+  >;
 }
 
 export interface IJobService {
@@ -40,4 +63,8 @@ export interface IJobService {
   getLatestCheckoutDateByJobId(
     jobId: string,
   ): Promise<{ check_out_date: Date } | null>;
+  getJobStatistics(
+    userId: string,
+    userRole: string,
+  ): Promise<JobStatisticsResponseDto>;
 }

@@ -1,7 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Job, Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
-import { CreateJobDto, UpdateJobDto } from './job.dto';
+import {
+  CreateJobDto,
+  JobStatisticsResponseDto,
+  UpdateJobDto,
+} from './job.dto';
 import { IJobRepository } from './job.interface';
 
 @Injectable()
@@ -293,6 +297,160 @@ export class JobRepository implements IJobRepository {
         `Error finding latest checkout date for job ${jobId}:`,
         error,
       );
+      throw error;
+    }
+  }
+
+  async getJobStatisticsByUserId(
+    userId: string,
+    isAdmin: boolean,
+  ): Promise<JobStatisticsResponseDto> {
+    try {
+      const currentCounts = await this.getJobStatusCounts(
+        isAdmin ? undefined : userId,
+      );
+      const monthlyStats = await this.getMonthlyJobStats(
+        isAdmin ? undefined : userId,
+      );
+
+      return {
+        currentCounts,
+        monthlyStats,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error getting job statistics for user ${userId}:`,
+        error,
+      );
+      throw error;
+    }
+  }
+
+  async getJobStatusCounts(userId?: string): Promise<{
+    pending: number;
+    failed: number;
+    running: number;
+    completed: number;
+  }> {
+    try {
+      const whereClause: any = userId ? { user_id: userId } : {};
+
+      const [pendingCount, failedCount, runningCount, completedCount] =
+        await Promise.all([
+          this.db.job.count({
+            where: { ...whereClause, job_status: 'Pending' },
+          }),
+          this.db.job.count({
+            where: { ...whereClause, job_status: 'Failed' },
+          }),
+          this.db.job.count({
+            where: { ...whereClause, job_status: 'Running' },
+          }),
+          this.db.job.count({
+            where: { ...whereClause, job_status: 'Completed' },
+          }),
+        ]);
+
+      return {
+        pending: pendingCount,
+        failed: failedCount,
+        running: runningCount,
+        completed: completedCount,
+      };
+    } catch (error) {
+      this.logger.error('Error getting job status counts:', error);
+      throw error;
+    }
+  }
+
+  async getMonthlyJobStats(userId?: string): Promise<
+    Array<{
+      month: string;
+      pending: number;
+      failed: number;
+      running: number;
+      completed: number;
+    }>
+  > {
+    try {
+      const now = new Date();
+      const twelveMonthsAgo = new Date(
+        now.getFullYear(),
+        now.getMonth() - 11,
+        1,
+      );
+
+      const whereClause: any = {
+        createdAt: {
+          gte: twelveMonthsAgo,
+        },
+      };
+
+      if (userId) {
+        whereClause.user_id = userId;
+      }
+
+      // Get all jobs from the last 12 months
+      const jobs = await this.db.job.findMany({
+        where: whereClause,
+        select: {
+          job_status: true,
+          createdAt: true,
+        },
+      });
+
+      // Create a map for the last 12 months
+      const monthlyStats = new Map<
+        string,
+        {
+          month: string;
+          pending: number;
+          failed: number;
+          running: number;
+          completed: number;
+        }
+      >();
+
+      // Initialize all months with zero counts
+      for (let i = 11; i >= 0; i--) {
+        const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const monthKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+        monthlyStats.set(monthKey, {
+          month: monthKey,
+          pending: 0,
+          failed: 0,
+          running: 0,
+          completed: 0,
+        });
+      }
+
+      // Count jobs by month and status
+      jobs.forEach((job) => {
+        const jobDate = new Date(job.createdAt);
+        const monthKey = `${jobDate.getFullYear()}-${(jobDate.getMonth() + 1).toString().padStart(2, '0')}`;
+
+        const monthData = monthlyStats.get(monthKey);
+        if (monthData) {
+          switch (job.job_status) {
+            case 'Pending':
+              monthData.pending++;
+              break;
+            case 'Failed':
+              monthData.failed++;
+              break;
+            case 'Running':
+              monthData.running++;
+              break;
+            case 'Completed':
+              monthData.completed++;
+              break;
+          }
+        }
+      });
+
+      return Array.from(monthlyStats.values());
+    } catch (error) {
+      this.logger.error('Error getting monthly job statistics:', error);
       throw error;
     }
   }
