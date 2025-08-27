@@ -208,6 +208,9 @@ model Property {
   portfolio    Portfolio?    @relation(fields: [portfolio_id], references: [id])
   subPortfolio SubPortfolio? @relation(fields: [sub_portfolio_id], references: [id])
 
+  booking_trusted_status       String? @default("not_trusted")
+  booking_last_login           DateTime?
+
   jobs                         Job[]
   files                        File[]
   credentials                  PropertyCredentials[]
