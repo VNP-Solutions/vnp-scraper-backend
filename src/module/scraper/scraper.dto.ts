@@ -127,6 +127,34 @@ export class AllJobItemsResponseDto {
   };
 }
 
+export class ResumeScrapingRequestDto {
+  @ApiProperty({
+    example: '01/01/2024',
+    description: 'Start date for scraping (MM/DD/YYYY format)',
+  })
+  startDate: string;
+
+  @ApiProperty({
+    example: '01/31/2024',
+    description: 'End date for scraping (MM/DD/YYYY format)',
+  })
+  endDate: string;
+
+  @ApiProperty({
+    example: '507f1f77bcf86cd799439011',
+    description: 'MongoDB ObjectId of the job to resume',
+  })
+  jobId: string;
+}
+
+export class StopScrapingRequestDto {
+  @ApiProperty({
+    example: '507f1f77bcf86cd799439011',
+    description: 'MongoDB ObjectId of the job to stop',
+  })
+  jobId: string;
+}
+
 export class RerunFailedJobRequestDto {
   @ApiProperty({
     example: '01/01/2024',
