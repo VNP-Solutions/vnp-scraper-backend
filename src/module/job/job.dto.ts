@@ -180,18 +180,47 @@ export class ImportJobsResponseDto {
   jobs: any[];
 }
 
+export class JobStatusItemDto {
+  @ApiProperty({ description: 'Count of jobs', example: 15 })
+  count: number;
+
+  @ApiProperty({ description: 'Percentage of total jobs', example: 25.5 })
+  percentage: number;
+}
+
 export class JobStatusCountDto {
-  @ApiProperty({ description: 'Number of pending jobs', example: 15 })
-  pending: number;
+  @ApiProperty({
+    description: 'Pending jobs count and percentage',
+    type: JobStatusItemDto,
+  })
+  pending: JobStatusItemDto;
 
-  @ApiProperty({ description: 'Number of failed jobs', example: 3 })
-  failed: number;
+  @ApiProperty({
+    description: 'Failed jobs count and percentage',
+    type: JobStatusItemDto,
+  })
+  failed: JobStatusItemDto;
 
-  @ApiProperty({ description: 'Number of running jobs', example: 8 })
-  running: number;
+  @ApiProperty({
+    description: 'Running jobs count and percentage',
+    type: JobStatusItemDto,
+  })
+  running: JobStatusItemDto;
 
-  @ApiProperty({ description: 'Number of completed jobs', example: 45 })
-  completed: number;
+  @ApiProperty({
+    description: 'Completed jobs count and percentage',
+    type: JobStatusItemDto,
+  })
+  completed: JobStatusItemDto;
+
+  @ApiProperty({
+    description: 'Stopped jobs count and percentage',
+    type: JobStatusItemDto,
+  })
+  stopped: JobStatusItemDto;
+
+  @ApiProperty({ description: 'Total number of jobs', example: 73 })
+  total: number;
 }
 
 export class MonthlyJobStatsDto {
@@ -199,28 +228,40 @@ export class MonthlyJobStatsDto {
   month: string;
 
   @ApiProperty({
-    description: 'Number of pending jobs in this month',
-    example: 12,
+    description: 'Pending jobs count and percentage in this month',
+    type: JobStatusItemDto,
   })
-  pending: number;
+  pending: JobStatusItemDto;
 
   @ApiProperty({
-    description: 'Number of failed jobs in this month',
-    example: 2,
+    description: 'Failed jobs count and percentage in this month',
+    type: JobStatusItemDto,
   })
-  failed: number;
+  failed: JobStatusItemDto;
 
   @ApiProperty({
-    description: 'Number of running jobs in this month',
-    example: 5,
+    description: 'Running jobs count and percentage in this month',
+    type: JobStatusItemDto,
   })
-  running: number;
+  running: JobStatusItemDto;
 
   @ApiProperty({
-    description: 'Number of completed jobs in this month',
-    example: 35,
+    description: 'Completed jobs count and percentage in this month',
+    type: JobStatusItemDto,
   })
-  completed: number;
+  completed: JobStatusItemDto;
+
+  @ApiProperty({
+    description: 'Stopped jobs count and percentage in this month',
+    type: JobStatusItemDto,
+  })
+  stopped: JobStatusItemDto;
+
+  @ApiProperty({
+    description: 'Total number of jobs in this month',
+    example: 54,
+  })
+  total: number;
 }
 
 export class JobStatisticsResponseDto {

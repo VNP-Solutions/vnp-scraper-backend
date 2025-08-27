@@ -164,10 +164,42 @@ export class JobController {
             currentCounts: {
               type: 'object',
               properties: {
-                pending: { type: 'number', example: 15 },
-                failed: { type: 'number', example: 3 },
-                running: { type: 'number', example: 8 },
-                completed: { type: 'number', example: 45 },
+                pending: {
+                  type: 'object',
+                  properties: {
+                    count: { type: 'number', example: 15 },
+                    percentage: { type: 'number', example: 25.5 },
+                  },
+                },
+                failed: {
+                  type: 'object',
+                  properties: {
+                    count: { type: 'number', example: 3 },
+                    percentage: { type: 'number', example: 5.1 },
+                  },
+                },
+                running: {
+                  type: 'object',
+                  properties: {
+                    count: { type: 'number', example: 8 },
+                    percentage: { type: 'number', example: 13.6 },
+                  },
+                },
+                completed: {
+                  type: 'object',
+                  properties: {
+                    count: { type: 'number', example: 45 },
+                    percentage: { type: 'number', example: 76.3 },
+                  },
+                },
+                stopped: {
+                  type: 'object',
+                  properties: {
+                    count: { type: 'number', example: 2 },
+                    percentage: { type: 'number', example: 3.4 },
+                  },
+                },
+                total: { type: 'number', example: 73 },
               },
             },
             monthlyStats: {
@@ -176,10 +208,42 @@ export class JobController {
                 type: 'object',
                 properties: {
                   month: { type: 'string', example: '2024-01' },
-                  pending: { type: 'number', example: 12 },
-                  failed: { type: 'number', example: 2 },
-                  running: { type: 'number', example: 5 },
-                  completed: { type: 'number', example: 35 },
+                  pending: {
+                    type: 'object',
+                    properties: {
+                      count: { type: 'number', example: 12 },
+                      percentage: { type: 'number', example: 22.2 },
+                    },
+                  },
+                  failed: {
+                    type: 'object',
+                    properties: {
+                      count: { type: 'number', example: 2 },
+                      percentage: { type: 'number', example: 3.7 },
+                    },
+                  },
+                  running: {
+                    type: 'object',
+                    properties: {
+                      count: { type: 'number', example: 5 },
+                      percentage: { type: 'number', example: 9.3 },
+                    },
+                  },
+                  completed: {
+                    type: 'object',
+                    properties: {
+                      count: { type: 'number', example: 35 },
+                      percentage: { type: 'number', example: 64.8 },
+                    },
+                  },
+                  stopped: {
+                    type: 'object',
+                    properties: {
+                      count: { type: 'number', example: 0 },
+                      percentage: { type: 'number', example: 0.0 },
+                    },
+                  },
+                  total: { type: 'number', example: 54 },
                 },
               },
             },

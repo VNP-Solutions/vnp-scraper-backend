@@ -327,35 +327,68 @@ export class JobRepository implements IJobRepository {
   }
 
   async getJobStatusCounts(userId?: string): Promise<{
-    pending: number;
-    failed: number;
-    running: number;
-    completed: number;
+    pending: { count: number; percentage: number };
+    failed: { count: number; percentage: number };
+    running: { count: number; percentage: number };
+    completed: { count: number; percentage: number };
+    stopped: { count: number; percentage: number };
+    total: number;
   }> {
     try {
       const whereClause: any = userId ? { user_id: userId } : {};
 
-      const [pendingCount, failedCount, runningCount, completedCount] =
-        await Promise.all([
-          this.db.job.count({
-            where: { ...whereClause, job_status: 'Pending' },
-          }),
-          this.db.job.count({
-            where: { ...whereClause, job_status: 'Failed' },
-          }),
-          this.db.job.count({
-            where: { ...whereClause, job_status: 'Running' },
-          }),
-          this.db.job.count({
-            where: { ...whereClause, job_status: 'Completed' },
-          }),
-        ]);
+      const [
+        pendingCount,
+        failedCount,
+        runningCount,
+        completedCount,
+        stoppedCount,
+        totalCount,
+      ] = await Promise.all([
+        this.db.job.count({
+          where: { ...whereClause, job_status: 'Pending' },
+        }),
+        this.db.job.count({
+          where: { ...whereClause, job_status: 'Failed' },
+        }),
+        this.db.job.count({
+          where: { ...whereClause, job_status: 'Running' },
+        }),
+        this.db.job.count({
+          where: { ...whereClause, job_status: 'Completed' },
+        }),
+        this.db.job.count({
+          where: { ...whereClause, job_status: 'Stopped' },
+        }),
+        this.db.job.count({ where: whereClause }),
+      ]);
+
+      const calculatePercentage = (count: number, total: number): number => {
+        return total > 0 ? Math.round((count / total) * 10000) / 100 : 0;
+      };
 
       return {
-        pending: pendingCount,
-        failed: failedCount,
-        running: runningCount,
-        completed: completedCount,
+        pending: {
+          count: pendingCount,
+          percentage: calculatePercentage(pendingCount, totalCount),
+        },
+        failed: {
+          count: failedCount,
+          percentage: calculatePercentage(failedCount, totalCount),
+        },
+        running: {
+          count: runningCount,
+          percentage: calculatePercentage(runningCount, totalCount),
+        },
+        completed: {
+          count: completedCount,
+          percentage: calculatePercentage(completedCount, totalCount),
+        },
+        stopped: {
+          count: stoppedCount,
+          percentage: calculatePercentage(stoppedCount, totalCount),
+        },
+        total: totalCount,
       };
     } catch (error) {
       this.logger.error('Error getting job status counts:', error);
@@ -366,10 +399,12 @@ export class JobRepository implements IJobRepository {
   async getMonthlyJobStats(userId?: string): Promise<
     Array<{
       month: string;
-      pending: number;
-      failed: number;
-      running: number;
-      completed: number;
+      pending: { count: number; percentage: number };
+      failed: { count: number; percentage: number };
+      running: { count: number; percentage: number };
+      completed: { count: number; percentage: number };
+      stopped: { count: number; percentage: number };
+      total: number;
     }>
   > {
     try {
@@ -408,6 +443,8 @@ export class JobRepository implements IJobRepository {
           failed: number;
           running: number;
           completed: number;
+          stopped: number;
+          total: number;
         }
       >();
 
@@ -421,6 +458,8 @@ export class JobRepository implements IJobRepository {
           failed: 0,
           running: 0,
           completed: 0,
+          stopped: 0,
+          total: 0,
         });
       }
 
@@ -431,6 +470,7 @@ export class JobRepository implements IJobRepository {
 
         const monthData = monthlyStats.get(monthKey);
         if (monthData) {
+          monthData.total++;
           switch (job.job_status) {
             case 'Pending':
               monthData.pending++;
@@ -444,11 +484,41 @@ export class JobRepository implements IJobRepository {
             case 'Completed':
               monthData.completed++;
               break;
+            case 'Stopped':
+              monthData.stopped++;
+              break;
           }
         }
       });
 
-      return Array.from(monthlyStats.values());
+      const calculatePercentage = (count: number, total: number): number => {
+        return total > 0 ? Math.round((count / total) * 10000) / 100 : 0;
+      };
+
+      return Array.from(monthlyStats.values()).map((monthData) => ({
+        month: monthData.month,
+        pending: {
+          count: monthData.pending,
+          percentage: calculatePercentage(monthData.pending, monthData.total),
+        },
+        failed: {
+          count: monthData.failed,
+          percentage: calculatePercentage(monthData.failed, monthData.total),
+        },
+        running: {
+          count: monthData.running,
+          percentage: calculatePercentage(monthData.running, monthData.total),
+        },
+        completed: {
+          count: monthData.completed,
+          percentage: calculatePercentage(monthData.completed, monthData.total),
+        },
+        stopped: {
+          count: monthData.stopped,
+          percentage: calculatePercentage(monthData.stopped, monthData.total),
+        },
+        total: monthData.total,
+      }));
     } catch (error) {
       this.logger.error('Error getting monthly job statistics:', error);
       throw error;
