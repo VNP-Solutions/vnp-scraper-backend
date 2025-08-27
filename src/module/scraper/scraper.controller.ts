@@ -38,7 +38,9 @@ import {
   RerunFailedJobResponseDto,
   ReservationRunJobRequestDto,
   ReservationRunJobResponseDto,
+  ResumeScrapingRequestDto,
   ScrapingStatusResponseDto,
+  StopScrapingRequestDto,
 } from './scraper.dto';
 
 @ApiTags('Unified Scraper')
@@ -170,6 +172,18 @@ export class ScraperController {
       default:
         return '/api/expedia'; // Default to Expedia
     }
+  }
+
+  /**
+   * Determine scraping mode based on EXPEDIA_MODE environment variable
+   */
+  private getScrapingMode(): string {
+    const expediadMode = this.configService.get<string>('EXPEDIA_MODE');
+    if (expediadMode === 'graphql') {
+      return 'graphql';
+    }
+    // Default to 'expedia' if EXPEDIA_MODE is 'scraper' or undefined
+    return 'expedia';
   }
 
   @Get('/debug-urls')
@@ -435,8 +449,9 @@ export class ScraperController {
   @ApiOperation({
     summary: 'Resume paused scraping job',
     description:
-      'Resume a previously paused scraping job from where it left off',
+      'Resume a previously paused scraping job from where it left off. Requires startDate, endDate, and jobId. The OTA provider is automatically determined from the job record, and scraping mode is set based on EXPEDIA_MODE environment variable.',
   })
+  @ApiBody({ type: ResumeScrapingRequestDto })
   @ApiResponse({
     status: 200,
     description: 'Scraping resumed successfully',
@@ -458,10 +473,26 @@ export class ScraperController {
     @Body() body: any,
   ) {
     try {
+      // Fetch job details to get OTA provider
+      const job = await this.jobService.getJobById(body.jobId);
+      const otaProvider = job.ota_provider || 'Expedia'; // Default to Expedia
+
+      // Determine scraping_mode based on EXPEDIA_MODE environment variable
+      const scrapingMode = this.getScrapingMode();
+
+      // Create complete request body with all required fields
+      const completeRequestBody = {
+        startDate: body.startDate,
+        endDate: body.endDate,
+        jobId: body.jobId,
+        ota_provider: otaProvider, // Get from job record
+        scraping_mode: scrapingMode, // Get from environment variable
+      };
+
       const response = await firstValueFrom(
         this.httpService.post(
           `${this.getPrimaryScraperUrl()}/api/scraping/resume`,
-          body,
+          completeRequestBody,
           {
             headers: {
               ...req.headers,
@@ -485,8 +516,10 @@ export class ScraperController {
   @Post('/api/scraping/stop')
   @ApiOperation({
     summary: 'Stop current scraping job',
-    description: 'Completely stop the current scraping job.',
+    description:
+      'Completely stop the current scraping job. Requires jobId in request body.',
   })
+  @ApiBody({ type: StopScrapingRequestDto })
   @ApiResponse({
     status: 200,
     description: 'Scraping stopped successfully',
@@ -728,7 +761,7 @@ export class ScraperController {
   @ApiOperation({
     summary: 'Rerun failed or partial failed job (unified)',
     description:
-      'Rerun a job that has failed or partially completed for any OTA provider (Expedia, Agoda, Booking). The system automatically determines the OTA provider from the job record and routes to the appropriate scraper server.',
+      'Rerun a job that has failed or partially completed for any OTA provider (Expedia, Agoda, Booking). Requires startDate, endDate, and jobId in request body. The system automatically determines the OTA provider from the job record and routes to the appropriate scraper server. The scraping mode is set based on EXPEDIA_MODE environment variable.',
   })
   @ApiBody({ type: RerunFailedJobRequestDto })
   @ApiResponse({
@@ -777,10 +810,17 @@ export class ScraperController {
         });
       }
 
-      // Add the selected URL to the request body
-      const enhancedBody = {
-        ...body,
-        scraperUrl: selectedUrl,
+      // Determine scraping_mode based on EXPEDIA_MODE environment variable
+      const scrapingMode = this.getScrapingMode();
+
+      // Create complete request body with all required fields
+      const completeRequestBody = {
+        startDate: body.startDate,
+        endDate: body.endDate,
+        jobId: body.jobId,
+        ota_provider: otaProvider, // Get from job record
+        scraping_mode: scrapingMode, // Get from environment variable
+        scraperUrl: selectedUrl, // For internal routing
       };
 
       // Get the correct API path based on OTA provider
@@ -790,7 +830,7 @@ export class ScraperController {
       );
 
       const response = await firstValueFrom(
-        this.httpService.post(`${selectedUrl}${apiPath}`, enhancedBody, {
+        this.httpService.post(`${selectedUrl}${apiPath}`, completeRequestBody, {
           headers: {
             'Content-Type': 'application/json',
             Accept: 'application/json',
