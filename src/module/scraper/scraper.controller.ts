@@ -495,7 +495,7 @@ export class ScraperController {
           completeRequestBody,
           {
             headers: {
-              ...req.headers,
+              // ...req.headers,
               'Content-Type': 'application/json',
               Accept: 'application/json',
             },
