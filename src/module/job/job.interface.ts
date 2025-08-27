@@ -29,18 +29,22 @@ export interface IJobRepository {
     isAdmin: boolean,
   ): Promise<JobStatisticsResponseDto>;
   getJobStatusCounts(userId?: string): Promise<{
-    pending: number;
-    failed: number;
-    running: number;
-    completed: number;
+    pending: { count: number; percentage: number };
+    failed: { count: number; percentage: number };
+    running: { count: number; percentage: number };
+    completed: { count: number; percentage: number };
+    stopped: { count: number; percentage: number };
+    total: number;
   }>;
   getMonthlyJobStats(userId?: string): Promise<
     Array<{
       month: string;
-      pending: number;
-      failed: number;
-      running: number;
-      completed: number;
+      pending: { count: number; percentage: number };
+      failed: { count: number; percentage: number };
+      running: { count: number; percentage: number };
+      completed: { count: number; percentage: number };
+      stopped: { count: number; percentage: number };
+      total: number;
     }>
   >;
 }
