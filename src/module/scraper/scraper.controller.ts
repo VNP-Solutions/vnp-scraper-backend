@@ -145,7 +145,7 @@ export class ScraperController {
   ): string {
     const baseApiPath = this.getBaseApiPath(otaProvider);
 
-    // Special handling for Expedia based on EXPEDIA_MODE
+    // Special handling for Expedia based on EXPEDIA_MODE (only Expedia supports GraphQL mode)
     if (otaProvider === 'Expedia' && jobType === 'property-run-job') {
       const expediadMode = this.configService.get<string>('EXPEDIA_MODE');
       if (expediadMode === 'graphql') {
@@ -155,6 +155,7 @@ export class ScraperController {
       return `${baseApiPath}/property-run-job`;
     }
 
+    // For all other providers (Booking, Agoda) and job types, use standard path
     return `${baseApiPath}/${jobType}`;
   }
 
@@ -175,22 +176,37 @@ export class ScraperController {
   }
 
   /**
-   * Determine scraping mode based on EXPEDIA_MODE environment variable
+   * Determine scraping mode based on OTA provider. Only Expedia supports mode switching via EXPEDIA_MODE.
    */
-  private getScrapingMode(): string {
-    const expediadMode = this.configService.get<string>('EXPEDIA_MODE');
-    if (expediadMode === 'graphql') {
-      return 'graphql';
+  private getScrapingMode(otaProvider: string = 'Expedia'): string {
+    switch (otaProvider) {
+      case 'Expedia':
+        const expediadMode = this.configService.get<string>('EXPEDIA_MODE');
+        if (expediadMode === 'graphql') {
+          return 'graphql';
+        }
+        // Default to 'expedia' if EXPEDIA_MODE is 'scraper' or undefined
+        return 'expedia';
+
+      case 'Booking':
+        // Booking only has property-run-job endpoint
+        return 'booking';
+
+      case 'Agoda':
+        // Agoda only has property-run-job endpoint
+        return 'agoda';
+
+      default:
+        // Fallback to expedia mode for unknown providers
+        return 'expedia';
     }
-    // Default to 'expedia' if EXPEDIA_MODE is 'scraper' or undefined
-    return 'expedia';
   }
 
   @Get('/debug-urls')
   @ApiOperation({
-    summary: 'Debug URL configuration',
+    summary: 'Debug URL and mode configuration',
     description:
-      'Show all configured URLs and their status for debugging HTTPS issues',
+      'Show all configured URLs, Expedia mode configuration, and their status for debugging HTTPS issues and mode configurations',
   })
   @ApiResponse({
     status: 200,
@@ -202,6 +218,7 @@ export class ScraperController {
       AGODA_SERVER_URL: this.configService.get<string>('AGODA_SERVER_URL'),
       BOOKING_SERVER_URL: this.configService.get<string>('BOOKING_SERVER_URL'),
       NODE_ENV: this.configService.get<string>('NODE_ENV'),
+      EXPEDIA_MODE: this.configService.get<string>('EXPEDIA_MODE'),
     };
 
     const normalizedUrls = {
@@ -219,7 +236,7 @@ export class ScraperController {
 
     return res.status(HttpStatus.OK).json({
       success: true,
-      message: 'URL configuration debug info',
+      message: 'URL and Expedia mode configuration debug info',
       data: {
         rawUrls: urls,
         normalizedUrls,
@@ -449,7 +466,7 @@ export class ScraperController {
   @ApiOperation({
     summary: 'Resume paused scraping job',
     description:
-      'Resume a previously paused scraping job from where it left off. Requires startDate, endDate, and jobId. The OTA provider is automatically determined from the job record, and scraping mode is set based on EXPEDIA_MODE environment variable.',
+      'Resume a previously paused scraping job from where it left off. Requires startDate, endDate, and jobId. The OTA provider is automatically determined from the job record, and scraping mode is set based on EXPEDIA_MODE environment variable (Booking and Agoda use fixed endpoints).',
   })
   @ApiBody({ type: ResumeScrapingRequestDto })
   @ApiResponse({
@@ -477,8 +494,8 @@ export class ScraperController {
       const job = await this.jobService.getJobById(body.jobId);
       const otaProvider = job.ota_provider || 'Expedia'; // Default to Expedia
 
-      // Determine scraping_mode based on EXPEDIA_MODE environment variable
-      const scrapingMode = this.getScrapingMode();
+      // Determine scraping_mode based on OTA provider and environment variable
+      const scrapingMode = this.getScrapingMode(otaProvider);
 
       // Create complete request body with all required fields
       const completeRequestBody = {
@@ -564,7 +581,7 @@ export class ScraperController {
   @ApiOperation({
     summary: 'Start unified property scraping job',
     description:
-      'Start a new property scraping job for any OTA provider (Expedia, Agoda, Booking). The system automatically determines the OTA provider from the job record and routes to the appropriate scraper server. For Expedia, the EXPEDIA_MODE environment variable determines whether to use GraphQL (graphql-run-job) or regular scraper (property-run-job) endpoint.',
+      'Start a new property scraping job for any OTA provider (Expedia, Agoda, Booking). The system automatically determines the OTA provider from the job record and routes to the appropriate scraper server. For Expedia, EXPEDIA_MODE determines whether to use GraphQL (graphql-run-job) or regular scraper (property-run-job) endpoint. Booking and Agoda only use property-run-job.',
   })
   @ApiBody({ type: PropertyRunJobRequestDto })
   @ApiResponse({
@@ -635,11 +652,13 @@ export class ScraperController {
         'property-run-job',
       );
 
-      // Log which endpoint is being used for Expedia
+      // Log which endpoint is being used (only Expedia has modes)
       if (otaProvider === 'Expedia') {
         const expediadMode =
           this.configService.get<string>('EXPEDIA_MODE') || 'scraper';
         console.log(`Using Expedia ${expediadMode} mode: ${apiPath}`);
+      } else {
+        console.log(`Using ${otaProvider} endpoint: ${apiPath}`);
       }
 
       const response = await firstValueFrom(
@@ -761,7 +780,7 @@ export class ScraperController {
   @ApiOperation({
     summary: 'Rerun failed or partial failed job (unified)',
     description:
-      'Rerun a job that has failed or partially completed for any OTA provider (Expedia, Agoda, Booking). Requires startDate, endDate, and jobId in request body. The system automatically determines the OTA provider from the job record and routes to the appropriate scraper server. The scraping mode is set based on EXPEDIA_MODE environment variable.',
+      'Rerun a job that has failed or partially completed for any OTA provider (Expedia, Agoda, Booking). Requires startDate, endDate, and jobId in request body. The system automatically determines the OTA provider from the job record and routes to the appropriate scraper server. The scraping mode is set based on EXPEDIA_MODE environment variable (Booking and Agoda use fixed endpoints).',
   })
   @ApiBody({ type: RerunFailedJobRequestDto })
   @ApiResponse({
@@ -810,8 +829,8 @@ export class ScraperController {
         });
       }
 
-      // Determine scraping_mode based on EXPEDIA_MODE environment variable
-      const scrapingMode = this.getScrapingMode();
+      // Determine scraping_mode based on OTA provider and environment variable
+      const scrapingMode = this.getScrapingMode(otaProvider);
 
       // Create complete request body with all required fields
       const completeRequestBody = {
@@ -1032,7 +1051,7 @@ export class ScraperController {
   @ApiOperation({
     summary: 'Start unified GraphQL property scraping job',
     description:
-      'Start a new GraphQL property scraping job for any OTA provider (Expedia, Agoda, Booking). The system automatically determines the OTA provider from the job record and routes to the appropriate scraper server.',
+      'Start a new GraphQL property scraping job for any OTA provider (Expedia, Agoda, Booking). The system automatically determines the OTA provider from the job record and routes to the appropriate scraper server. This endpoint is primarily used when EXPEDIA_MODE is set to "graphql". Note: Booking and Agoda primarily use property-run-job endpoint.',
   })
   @ApiBody({ type: PropertyRunJobRequestDto })
   @ApiResponse({
