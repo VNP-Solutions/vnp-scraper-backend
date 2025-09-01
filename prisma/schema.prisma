@@ -54,6 +54,11 @@ enum OtpPurpose {
   MFA_SETUP
 }
 
+enum OtpStatusValue {
+  Occupied
+  Released
+}
+
 
 
 type CardInfo {
@@ -187,6 +192,7 @@ model Job {
   property     Property?     @relation(fields: [property_id], references: [id])
   user         User?         @relation(fields: [user_id], references: [id])
   jobItem      JobItem[]
+  OtpStatus OtpStatus[]
 
   @@map("jobs")
 }
@@ -377,4 +383,16 @@ model ActivityLog {
   timestamp    DateTime @default(now())
 
   @@map("activity_logs")
+}
+
+model OtpStatus {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  status      OtpStatusValue
+  job_id      String?   @db.ObjectId
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  job Job? @relation(fields: [job_id], references: [id])
+
+  @@map("otp_statuses")
 }
