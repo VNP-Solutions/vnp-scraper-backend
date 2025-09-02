@@ -84,7 +84,23 @@ export class PropertyCredentialsService implements IPropertyCredentialsService {
     data: UpdatePropertyCredentialsDto,
   ): Promise<PropertyCredentials> {
     try {
-      const credentials = await this.repository.update(id, data);
+      let encryptedData = { ...data };
+      if (data.expediaPassword) {
+        encryptedData.expediaPassword = this.encryptionUtil.encryptPassword(
+          data.expediaPassword,
+        );
+      }
+      if (data.agodaPassword) {
+        encryptedData.agodaPassword = this.encryptionUtil.encryptPassword(
+          data.agodaPassword,
+        );
+      }
+      if (data.bookingPassword) {
+        encryptedData.bookingPassword = this.encryptionUtil.encryptPassword(
+          data.bookingPassword,
+        );
+      }
+      const credentials = await this.repository.update(id, encryptedData);
       return credentials;
     } catch (error) {
       this.logger.error(
