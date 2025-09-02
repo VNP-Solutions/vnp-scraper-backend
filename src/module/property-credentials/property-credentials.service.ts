@@ -101,6 +101,13 @@ export class PropertyCredentialsService implements IPropertyCredentialsService {
           data.bookingPassword,
         );
       }
+
+      Object.keys(encryptedData).forEach((key) => {
+        if (!encryptedData[key]) {
+          delete encryptedData[key];
+        }
+      });
+
       const credentials = await this.repository.update(id, encryptedData);
       return credentials;
     } catch (error) {
