@@ -61,3 +61,18 @@ export class CreatePropertyCredentialsDto {
 export class UpdatePropertyCredentialsDto extends PartialType(
   CreatePropertyCredentialsDto,
 ) {}
+
+export class BulkUpdatePropertyCredentialsDto {
+  @ApiProperty({
+    description: 'Array of property IDs to apply credentials to',
+    type: [String],
+    example: ['property-1', 'property-2', 'property-3'],
+  })
+  propertyIds: string[];
+
+  @ApiProperty({
+    description: 'Credentials to apply to all properties',
+    type: UpdatePropertyCredentialsDto,
+  })
+  credentials: UpdatePropertyCredentialsDto;
+}

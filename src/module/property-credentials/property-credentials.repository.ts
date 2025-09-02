@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PropertyCredentials } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import {
+  BulkUpdatePropertyCredentialsDto,
   CreatePropertyCredentialsDto,
   UpdatePropertyCredentialsDto,
 } from './property-credentials.dto';
@@ -114,6 +115,83 @@ export class PropertyCredentialsRepository
     } catch (error) {
       this.logger.error(error);
       return null;
+    }
+  }
+
+  async bulkUpdate(
+    data: BulkUpdatePropertyCredentialsDto,
+  ): Promise<{ success: PropertyCredentials[]; failed: any[] }> {
+    const success: PropertyCredentials[] = [];
+    const failed: any[] = [];
+
+    try {
+      this.logger.log(
+        `Starting bulk update for ${data.propertyIds.length} properties`,
+      );
+      this.logger.log(`Credentials data: ${JSON.stringify(data.credentials)}`);
+
+      for (const propertyId of data.propertyIds) {
+        try {
+          this.logger.log(`Processing property: ${propertyId}`);
+
+          // Check if property credentials already exist for this property
+          const existingCredential =
+            await this.db.propertyCredentials.findFirst({
+              where: { property_id: propertyId },
+            });
+
+          let updatedCredential: PropertyCredentials;
+
+          if (existingCredential) {
+            this.logger.log(
+              `Updating existing credentials for property ${propertyId}`,
+            );
+            this.logger.log(`Update data: ${JSON.stringify(data.credentials)}`);
+            // Update existing credentials
+            updatedCredential = await this.db.propertyCredentials.update({
+              where: { id: existingCredential.id },
+              data: data.credentials,
+            });
+            this.logger.log(
+              `Successfully updated credentials for property ${propertyId}`,
+            );
+          } else {
+            this.logger.log(
+              `Creating new credentials for property ${propertyId}`,
+            );
+            // Create new credentials for this property
+            const createData = {
+              ...data.credentials,
+              property_id: propertyId,
+            };
+            this.logger.log(`Create data: ${JSON.stringify(createData)}`);
+            updatedCredential = await this.db.propertyCredentials.create({
+              data: createData,
+            });
+            this.logger.log(
+              `Successfully created credentials for property ${propertyId}`,
+            );
+          }
+
+          success.push(updatedCredential);
+        } catch (error) {
+          this.logger.error(
+            `Error processing property ${propertyId}: ${error.message}`,
+          );
+          failed.push({
+            propertyId,
+            error: error.message,
+          });
+        }
+      }
+
+      this.logger.log(
+        `Bulk update completed. Success: ${success.length}, Failed: ${failed.length}`,
+      );
+      return { success, failed };
+    } catch (error) {
+      this.logger.error(`Error in bulk update: ${error.message}`, error.stack);
+      throw error;
     }
   }
 }
