@@ -1,6 +1,8 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { PropertyCredentials } from '@prisma/client';
+import { EncryptionUtil } from 'src/common/utils/encryption.util';
 import {
+  BulkUpdatePropertyCredentialsDto,
   CreatePropertyCredentialsDto,
   UpdatePropertyCredentialsDto,
 } from './property-credentials.dto';
@@ -8,7 +10,6 @@ import {
   IPropertyCredentialsRepository,
   IPropertyCredentialsService,
 } from './property-credentials.interface';
-import { EncryptionUtil } from 'src/common/utils/encryption.util';
 
 @Injectable()
 export class PropertyCredentialsService implements IPropertyCredentialsService {
@@ -118,6 +119,89 @@ export class PropertyCredentialsService implements IPropertyCredentialsService {
     } catch (error) {
       this.logger.error(
         `Error deleting property credentials: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async bulkUpdatePropertyCredentials(
+    data: BulkUpdatePropertyCredentialsDto,
+  ): Promise<{ success: PropertyCredentials[]; failed: any[] }> {
+    try {
+      // Filter out empty strings and encrypt passwords before bulk update
+      const encryptedCredentials = { ...data.credentials };
+
+      // Only encrypt non-empty passwords
+      if (
+        data.credentials.expediaPassword &&
+        data.credentials.expediaPassword.trim() !== ''
+      ) {
+        encryptedCredentials.expediaPassword =
+          this.encryptionUtil.encryptPassword(data.credentials.expediaPassword);
+      } else {
+        // Remove empty password fields
+        delete encryptedCredentials.expediaPassword;
+      }
+
+      if (
+        data.credentials.agodaPassword &&
+        data.credentials.agodaPassword.trim() !== ''
+      ) {
+        encryptedCredentials.agodaPassword =
+          this.encryptionUtil.encryptPassword(data.credentials.agodaPassword);
+      } else {
+        delete encryptedCredentials.agodaPassword;
+      }
+
+      if (
+        data.credentials.bookingPassword &&
+        data.credentials.bookingPassword.trim() !== ''
+      ) {
+        encryptedCredentials.bookingPassword =
+          this.encryptionUtil.encryptPassword(data.credentials.bookingPassword);
+      } else {
+        delete encryptedCredentials.bookingPassword;
+      }
+
+      // Filter out empty string values
+      Object.keys(encryptedCredentials).forEach((key) => {
+        if (
+          encryptedCredentials[key] === '' ||
+          encryptedCredentials[key] === null ||
+          encryptedCredentials[key] === undefined
+        ) {
+          delete encryptedCredentials[key];
+        }
+      });
+
+      // Check if we have any credentials to update
+      if (Object.keys(encryptedCredentials).length === 0) {
+        throw new Error(
+          'No valid credentials provided. All fields are empty or null.',
+        );
+      }
+
+      this.logger.log(
+        `Filtered credentials: ${JSON.stringify(encryptedCredentials)}`,
+      );
+
+      // Pass only the necessary data to repository
+      const bulkUpdateData = {
+        propertyIds: data.propertyIds,
+        credentials: encryptedCredentials,
+      };
+
+      const result = await this.repository.bulkUpdate(bulkUpdateData);
+
+      this.logger.log(
+        `Bulk update completed. Success: ${result.success.length}, Failed: ${result.failed.length}`,
+      );
+
+      return result;
+    } catch (error) {
+      this.logger.error(
+        `Error in bulk update property credentials: ${error.message}`,
         error.stack,
       );
       throw error;
