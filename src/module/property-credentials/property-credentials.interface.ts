@@ -1,5 +1,6 @@
 import { PropertyCredentials } from '@prisma/client';
 import {
+  BulkUpdatePropertyCredentialsDto,
   CreatePropertyCredentialsDto,
   UpdatePropertyCredentialsDto,
 } from './property-credentials.dto';
@@ -14,6 +15,9 @@ export interface IPropertyCredentialsRepository {
   ): Promise<PropertyCredentials>;
   delete(id: string): Promise<PropertyCredentials>;
   updateProperty(id: string, data: any): Promise<any>;
+  bulkUpdate(
+    data: BulkUpdatePropertyCredentialsDto,
+  ): Promise<{ success: PropertyCredentials[]; failed: any[] }>;
 }
 
 export interface IPropertyCredentialsService {
@@ -27,4 +31,7 @@ export interface IPropertyCredentialsService {
     data: UpdatePropertyCredentialsDto,
   ): Promise<PropertyCredentials>;
   deletePropertyCredentials(id: string): Promise<PropertyCredentials>;
+  bulkUpdatePropertyCredentials(
+    data: BulkUpdatePropertyCredentialsDto,
+  ): Promise<{ success: PropertyCredentials[]; failed: any[] }>;
 }
