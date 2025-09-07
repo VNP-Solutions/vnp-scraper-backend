@@ -208,3 +208,75 @@ export class RerunFailedJobResponseDto {
   @ApiProperty({ type: JobProgressDto })
   progress: JobProgressDto;
 }
+
+export class BatchPropertyJobDto {
+  @ApiProperty({
+    example: '01/01/2024',
+    description: 'Start date for scraping (MM/DD/YYYY format)',
+  })
+  startDate: string;
+
+  @ApiProperty({
+    example: '01/31/2024',
+    description: 'End date for scraping (MM/DD/YYYY format)',
+  })
+  endDate: string;
+
+  @ApiProperty({
+    example: '507f1f77bcf86cd799439011',
+    description: 'MongoDB ObjectId of the job to run.',
+  })
+  jobId: string;
+}
+
+export class BatchPropertyRunJobRequestDto {
+  @ApiProperty({
+    type: [BatchPropertyJobDto],
+    description:
+      'List of jobs to execute. Each job will be routed to the appropriate scraper based on its OTA provider (Expedia, Agoda, Booking).',
+  })
+  jobs: BatchPropertyJobDto[];
+}
+
+export class BatchJobResultDto {
+  @ApiProperty({ example: '507f1f77bcf86cd799439011' })
+  jobId: string;
+
+  @ApiProperty({ example: 'Expedia' })
+  otaProvider: string;
+
+  @ApiProperty({ example: 200 })
+  status: number;
+
+  @ApiProperty({ example: 'Property search completed successfully' })
+  message: string;
+
+  @ApiProperty({ example: true })
+  success: boolean;
+
+  @ApiProperty({ required: false })
+  error?: string;
+
+  @ApiProperty({ required: false })
+  data?: any;
+}
+
+export class BatchPropertyRunJobResponseDto {
+  @ApiProperty({ example: 200 })
+  status: number;
+
+  @ApiProperty({ example: 'Batch property run completed' })
+  message: string;
+
+  @ApiProperty({ type: [BatchJobResultDto] })
+  results: BatchJobResultDto[];
+
+  @ApiProperty({ example: 5 })
+  totalJobs: number;
+
+  @ApiProperty({ example: 4 })
+  successfulJobs: number;
+
+  @ApiProperty({ example: 1 })
+  failedJobs: number;
+}

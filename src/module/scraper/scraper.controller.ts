@@ -29,6 +29,8 @@ import { IJobService } from '../job/job.interface';
 import { IScraperJobItemService } from './scraper-job-item.interface';
 import {
   AllJobItemsResponseDto,
+  BatchPropertyRunJobRequestDto,
+  BatchPropertyRunJobResponseDto,
   ErrorResponseDto,
   HealthResponseDto,
   PauseResumeStopResponseDto,
@@ -678,6 +680,168 @@ export class ScraperController {
         message: 'Job server is down',
       };
       return res.status(status).json(data);
+    }
+  }
+
+  @Post('/api/batch-property-run-job')
+  @ApiOperation({
+    summary: 'Start batch property scraping jobs',
+    description:
+      'Execute multiple property scraping jobs in batch. Each job is automatically routed to the appropriate scraper based on its OTA provider (Expedia, Agoda, Booking). Jobs are processed sequentially to ensure stability. For Expedia, EXPEDIA_MODE determines whether to use GraphQL or regular scraper endpoint.',
+  })
+  @ApiBody({ type: BatchPropertyRunJobRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Batch property scraping jobs completed',
+    type: BatchPropertyRunJobResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid request body or missing job data',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Error processing batch jobs',
+    type: ErrorResponseDto,
+  })
+  async batchPropertyRunJob(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Body() body: BatchPropertyRunJobRequestDto,
+  ) {
+    try {
+      if (!body.jobs || body.jobs.length === 0) {
+        return res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          message: 'No jobs provided in request',
+          error: 'Jobs array is required and cannot be empty',
+        });
+      }
+
+      const processedResults = [];
+
+      // Process jobs sequentially using for...of loop
+      for (const jobRequest of body.jobs) {
+        try {
+          // Fetch job details to get OTA provider
+          const job = await this.jobService.getJobById(jobRequest.jobId);
+          const otaProvider = job.ota_provider || 'Expedia';
+          const selectedUrl = this.getUrlByOtaProvider(otaProvider);
+
+          if (!selectedUrl) {
+            processedResults.push({
+              jobId: jobRequest.jobId,
+              otaProvider,
+              status: HttpStatus.SERVICE_UNAVAILABLE,
+              message: `No scraper URL configured for OTA provider: ${otaProvider}`,
+              success: false,
+              error: 'Scraper URL not configured',
+            });
+            continue;
+          }
+
+          // Add the selected URL to the request body
+          const enhancedBody = {
+            ...jobRequest,
+            scraperUrl: selectedUrl,
+          };
+
+          // Update job current URL (async, non-blocking)
+          setTimeout(async () => {
+            try {
+              await this.jobItemService.updateJobCurrentUrl(
+                jobRequest.jobId,
+                selectedUrl,
+              );
+            } catch (error) {
+              console.error(
+                `Failed to update job URL for ${jobRequest.jobId}:`,
+                error,
+              );
+            }
+          }, 1000);
+
+          // Get the correct API path based on OTA provider and mode
+          const apiPath = this.getApiPathByOtaProvider(
+            otaProvider,
+            'property-run-job',
+          );
+
+          // Log which endpoint is being used
+          if (otaProvider === 'Expedia') {
+            const expediadMode =
+              this.configService.get<string>('EXPEDIA_MODE') || 'scraper';
+            console.log(
+              `[Batch] Using Expedia ${expediadMode} mode for job ${jobRequest.jobId}: ${apiPath}`,
+            );
+          } else {
+            console.log(
+              `[Batch] Using ${otaProvider} endpoint for job ${jobRequest.jobId}: ${apiPath}`,
+            );
+          }
+
+          const response = await firstValueFrom(
+            this.httpService.post(`${selectedUrl}${apiPath}`, enhancedBody, {
+              headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+              },
+              timeout: 300000, // 5 minute timeout
+            }),
+          );
+
+          processedResults.push({
+            jobId: jobRequest.jobId,
+            otaProvider,
+            status: response.status,
+            message:
+              response.data?.message ||
+              'Property search completed successfully',
+            success: true,
+            data: response.data,
+          });
+        } catch (error: any) {
+          const status =
+            error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
+          const errorMessage =
+            error.response?.data?.message ||
+            error.message ||
+            'Unknown error occurred';
+
+          processedResults.push({
+            jobId: jobRequest.jobId,
+            otaProvider: 'Unknown',
+            status,
+            message: errorMessage,
+            success: false,
+            error: errorMessage,
+          });
+        }
+      }
+
+      const successfulJobs = processedResults.filter(
+        (result) => result.success,
+      ).length;
+      const failedJobs = processedResults.length - successfulJobs;
+
+      const responseData = {
+        status: HttpStatus.OK,
+        message: `Batch processing completed: ${successfulJobs} successful, ${failedJobs} failed`,
+        results: processedResults,
+        totalJobs: body.jobs.length,
+        successfulJobs,
+        failedJobs,
+      };
+
+      return res.status(HttpStatus.OK).json(responseData);
+    } catch (error: any) {
+      console.error('Batch property run job error:', error);
+      return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Error processing batch jobs',
+        error: error.message || 'Unknown error occurred',
+      });
     }
   }
 
