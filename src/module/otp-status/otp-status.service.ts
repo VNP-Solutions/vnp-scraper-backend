@@ -27,13 +27,27 @@ export class OtpStatusService implements IOtpStatusService {
     }
   }
 
-  async getOtpStatus(): Promise<OtpStatus> {
+  async getOtpStatus(): Promise<any> {
     try {
       const otpStatus = await this.repository.find();
       if (!otpStatus) {
         return null;
       }
-      return otpStatus;
+      // Build the return object with expedia, agoda, booking fields
+      const platforms = ['expedia', 'agoda', 'booking'];
+      const result = {
+        expedia: null,
+        agoda: null,
+        booking: null,
+      };
+
+      if (Array.isArray(otpStatus)) {
+        for (const platform of platforms) {
+          const found = otpStatus.find((item) => item.platform === platform);
+          result[platform] = found || null;
+        }
+      }
+      return result;
     } catch (error) {
       this.logger.error(
         `Error finding OTP status: ${error.message}`,

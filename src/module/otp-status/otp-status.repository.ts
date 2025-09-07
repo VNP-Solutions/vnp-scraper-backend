@@ -27,9 +27,9 @@ export class OtpStatusRepository implements IOtpStatusRepository {
     }
   }
 
-  async find(): Promise<OtpStatus> {
+  async find(): Promise<OtpStatus[]> {
     try {
-      const otpStatus = await this.db.otpStatus.findFirst();
+      const otpStatus = await this.db.otpStatus.findMany();
       return otpStatus;
     } catch (error) {
       this.logger.error(error);
