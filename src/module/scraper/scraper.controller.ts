@@ -748,19 +748,17 @@ export class ScraperController {
           };
 
           // Update job current URL (async, non-blocking)
-          setTimeout(async () => {
-            try {
-              await this.jobItemService.updateJobCurrentUrl(
-                jobRequest.jobId,
-                selectedUrl,
-              );
-            } catch (error) {
-              console.error(
-                `Failed to update job URL for ${jobRequest.jobId}:`,
-                error,
-              );
-            }
-          }, 1000);
+          try {
+            await this.jobItemService.updateJobCurrentUrl(
+              jobRequest.jobId,
+              selectedUrl,
+            );
+          } catch (error) {
+            console.error(
+              `Failed to update job URL for ${jobRequest.jobId}:`,
+              error,
+            );
+          }
 
           // Get the correct API path based on OTA provider and mode
           const apiPath = this.getApiPathByOtaProvider(
@@ -787,7 +785,7 @@ export class ScraperController {
                 'Content-Type': 'application/json',
                 Accept: 'application/json',
               },
-              timeout: 300000, // 5 minute timeout
+              timeout: 100, // 5 minute timeout
             }),
           );
 
@@ -797,7 +795,7 @@ export class ScraperController {
             status: response.status,
             message:
               response.data?.message ||
-              'Property search completed successfully',
+              'Property search running successfully',
             success: true,
             data: response.data,
           });
