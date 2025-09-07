@@ -59,6 +59,12 @@ enum OtpStatusValue {
   Released
 }
 
+enum OtpPlatform {
+  expedia
+  agoda
+  booking
+}
+
 
 
 type CardInfo {
@@ -271,7 +277,7 @@ model File {
   thumbnile_url String?
   originalName  String
   size          Int
-  property_id   String?  @db.ObjectId
+  property_id   String? @db.ObjectId
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -388,6 +394,7 @@ model ActivityLog {
 model OtpStatus {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
   status      OtpStatusValue
+  platform    OtpPlatform?
   job_id      String?   @db.ObjectId
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

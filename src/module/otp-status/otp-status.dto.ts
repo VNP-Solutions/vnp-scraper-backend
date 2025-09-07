@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { OtpStatusValue } from '@prisma/client';
+import { OtpPlatform, OtpStatusValue } from '@prisma/client';
 
 export class CreateOtpStatusDto {
   @ApiProperty({
@@ -9,7 +9,14 @@ export class CreateOtpStatusDto {
   })
   status: OtpStatusValue;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
+    example: 'expedia',
+    description: 'Platform for the OTP status',
+    enum: OtpPlatform,
+  })
+  platform?: OtpPlatform;
+
+  @ApiPropertyOptional({
     example: '60d5ec49f8d2d0001f5a2b8c',
     description: 'Job ID associated with the OTP status',
   })
@@ -23,6 +30,13 @@ export class UpdateOtpStatusDto {
     enum: OtpStatusValue,
   })
   status?: OtpStatusValue;
+
+  @ApiPropertyOptional({
+    example: 'expedia',
+    description: 'Platform for the OTP status',
+    enum: OtpPlatform,
+  })
+  platform?: OtpPlatform;
 
   @ApiPropertyOptional({
     example: '60d5ec49f8d2d0001f5a2b8c',
