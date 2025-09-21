@@ -90,23 +90,23 @@ export class PropertyCredentialsService implements IPropertyCredentialsService {
         encryptedData.expediaPassword = this.encryptionUtil.encryptPassword(
           data.expediaPassword,
         );
+      } else {
+        delete encryptedData.expediaPassword;
       }
       if (data.agodaPassword) {
         encryptedData.agodaPassword = this.encryptionUtil.encryptPassword(
           data.agodaPassword,
         );
+      } else {
+        delete encryptedData.agodaPassword;
       }
       if (data.bookingPassword) {
         encryptedData.bookingPassword = this.encryptionUtil.encryptPassword(
           data.bookingPassword,
         );
+      } else {
+        delete encryptedData.bookingPassword;
       }
-
-      Object.keys(encryptedData).forEach((key) => {
-        if (!encryptedData[key]) {
-          delete encryptedData[key];
-        }
-      });
 
       const credentials = await this.repository.update(id, encryptedData);
       return credentials;
