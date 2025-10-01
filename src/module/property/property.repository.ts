@@ -911,6 +911,108 @@ export class PropertyRepository implements IPropertyRepository {
     }
   }
 
+  async mergePropertyCredentials(
+    propertyId: string,
+    credentialsData: any,
+  ): Promise<any> {
+    try {
+      // Get existing credentials first
+      const existingCredentials = await this.db.propertyCredentials.findFirst({
+        where: { property_id: propertyId },
+      });
+
+      const updatePayload: any = {};
+
+      // Only add fields that don't already exist (preserve existing credentials)
+      if (
+        credentialsData.expediaUsername &&
+        (!existingCredentials || !existingCredentials.expediaUsername)
+      )
+        updatePayload.expediaUsername = credentialsData.expediaUsername;
+      if (
+        credentialsData.expediaPassword &&
+        (!existingCredentials || !existingCredentials.expediaPassword)
+      )
+        updatePayload.expediaPassword = credentialsData.expediaPassword; // Already encrypted from import
+      if (
+        credentialsData.agodaUsername &&
+        (!existingCredentials || !existingCredentials.agodaUsername)
+      )
+        updatePayload.agodaUsername = credentialsData.agodaUsername;
+      if (
+        credentialsData.agodaPassword &&
+        (!existingCredentials || !existingCredentials.agodaPassword)
+      )
+        updatePayload.agodaPassword = credentialsData.agodaPassword; // Already encrypted from import
+      if (
+        credentialsData.bookingUsername &&
+        (!existingCredentials || !existingCredentials.bookingUsername)
+      )
+        updatePayload.bookingUsername = credentialsData.bookingUsername;
+      if (
+        credentialsData.bookingPassword &&
+        (!existingCredentials || !existingCredentials.bookingPassword)
+      )
+        updatePayload.bookingPassword = credentialsData.bookingPassword; // Already encrypted from import
+      if (
+        credentialsData.expediaEmailAssociated &&
+        (!existingCredentials || !existingCredentials.expediaEmailAssociated)
+      )
+        updatePayload.expediaEmailAssociated =
+          credentialsData.expediaEmailAssociated;
+      if (
+        credentialsData.propertyContactEmail &&
+        (!existingCredentials || !existingCredentials.propertyContactEmail)
+      )
+        updatePayload.propertyContactEmail =
+          credentialsData.propertyContactEmail;
+      if (
+        credentialsData.portfolioContactEmail &&
+        (!existingCredentials || !existingCredentials.portfolioContactEmail)
+      )
+        updatePayload.portfolioContactEmail =
+          credentialsData.portfolioContactEmail;
+      if (
+        credentialsData.multiplePortfolioEmails &&
+        (!existingCredentials ||
+          !existingCredentials.multiplePortfolioEmails ||
+          existingCredentials.multiplePortfolioEmails.length === 0)
+      )
+        updatePayload.multiplePortfolioEmails =
+          credentialsData.multiplePortfolioEmails;
+
+      // If no new fields to add, skip update
+      if (Object.keys(updatePayload).length === 0) {
+        this.logger.log(
+          `No new credentials to merge for property: ${propertyId}`,
+        );
+        return existingCredentials;
+      }
+
+      if (existingCredentials) {
+        // Update existing credentials with only new fields
+        return await this.db.propertyCredentials.update({
+          where: { id: existingCredentials.id },
+          data: updatePayload,
+        });
+      } else {
+        // Create new credentials if none exist
+        return await this.db.propertyCredentials.create({
+          data: {
+            property_id: propertyId,
+            ...updatePayload,
+          },
+        });
+      }
+    } catch (error) {
+      this.logger.error(
+        `Error merging property credentials: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
   async findPropertyCredentialsByPropertyId(propertyId: string): Promise<any> {
     try {
       return await this.db.propertyCredentials.findFirst({
@@ -1280,8 +1382,106 @@ export class PropertyRepository implements IPropertyRepository {
             }
           } else {
             this.logger.log(
-              `Property '${rowData['Property Name']}' already exists, skipping`,
+              `Property '${rowData['Property Name']}' already exists, checking for new credentials to merge`,
             );
+
+            // Process credentials for existing property
+            const credentialsData: any = {};
+            let hasCredentials = false;
+
+            // Check for credential columns and extract data
+            if (rowData['Expedia Username']) {
+              credentialsData.expediaUsername = rowData['Expedia Username']
+                .toString()
+                .trim();
+              hasCredentials = true;
+            }
+            if (rowData['Expedia Password']) {
+              credentialsData.expediaPassword =
+                this.encryptionUtil.encryptPassword(
+                  rowData['Expedia Password'],
+                );
+              hasCredentials = true;
+            }
+            if (rowData['Agoda Username']) {
+              credentialsData.agodaUsername = rowData['Agoda Username']
+                .toString()
+                .trim();
+              hasCredentials = true;
+            }
+            if (rowData['Agoda Password']) {
+              credentialsData.agodaPassword =
+                this.encryptionUtil.encryptPassword(rowData['Agoda Password']);
+              hasCredentials = true;
+            }
+            if (rowData['Booking Username']) {
+              credentialsData.bookingUsername = rowData['Booking Username']
+                .toString()
+                .trim();
+              hasCredentials = true;
+            }
+            if (rowData['Booking Password']) {
+              credentialsData.bookingPassword =
+                this.encryptionUtil.encryptPassword(
+                  rowData['Booking Password'],
+                );
+              hasCredentials = true;
+            }
+            if (rowData['Expedia Email Associated']) {
+              credentialsData.expediaEmailAssociated = rowData[
+                'Expedia Email Associated'
+              ]
+                .toString()
+                .trim();
+              hasCredentials = true;
+            }
+            if (rowData['Property Contact Email']) {
+              credentialsData.propertyContactEmail = rowData[
+                'Property Contact Email'
+              ]
+                .toString()
+                .trim();
+              hasCredentials = true;
+            }
+            if (rowData['Portfolio Contact Email']) {
+              credentialsData.portfolioContactEmail = rowData[
+                'Portfolio Contact Email'
+              ]
+                .toString()
+                .trim();
+              hasCredentials = true;
+            }
+            if (rowData['Multiple Portfolio Emails']) {
+              // Handle comma-separated emails
+              const emails = rowData['Multiple Portfolio Emails']
+                .toString()
+                .split(',')
+                .map((email: string) => email.trim())
+                .filter((email: string) => email);
+              if (emails.length > 0) {
+                credentialsData.multiplePortfolioEmails = emails;
+                hasCredentials = true;
+              }
+            }
+
+            // Merge credentials if any credential data exists
+            if (hasCredentials) {
+              try {
+                await this.mergePropertyCredentials(
+                  existingProperty.id,
+                  credentialsData,
+                );
+                credentialsCreated++;
+                this.logger.log(
+                  `Merged credentials for existing property: ${existingProperty.name}`,
+                );
+              } catch (credentialError) {
+                this.logger.error(
+                  `Error merging credentials for property ${existingProperty.name}: ${credentialError.message}`,
+                );
+                // Don't fail the entire import if credentials merge fails
+              }
+            }
           }
         } catch (error) {
           this.logger.error(
