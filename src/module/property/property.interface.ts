@@ -50,6 +50,10 @@ export interface IPropertyRepository {
     propertyId: string,
     credentialsData: any,
   ): Promise<any>;
+  mergePropertyCredentials(
+    propertyId: string,
+    credentialsData: any,
+  ): Promise<any>;
   findPropertyCredentialsByPropertyId(propertyId: string): Promise<any>;
   // Excel import operations
   importPropertiesFromExcel(file: Express.Multer.File): Promise<{
