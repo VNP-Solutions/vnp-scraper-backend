@@ -78,7 +78,8 @@ type PaymentInfo {
   total_guest_payment        Float?
   cancellation_fee           Float?
   total_payout               Float?
-  amount_to_charge_or_refund Float // Required field for calculations
+  amount_to_charge_or_refund Float
+  charge_before              String?
 }
 
 model User {
