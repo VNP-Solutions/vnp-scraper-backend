@@ -72,6 +72,7 @@ type CardInfo {
   expiry_date       String
   cvv               String? // Optional or encrypted
   reason_for_charge String?
+  card_holder_name  String?
 }
 
 type PaymentInfo {
