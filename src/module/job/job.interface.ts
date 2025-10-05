@@ -53,6 +53,7 @@ export interface IJobRepository {
   // Batch repository methods
   createBatch(data: CreateBatchDto): Promise<Batch>;
   findBatchById(id: string): Promise<Batch>;
+  findBatchByName(name: string): Promise<Batch | null>;
   findAllBatches(query: Record<string, any>): Promise<Batch[]>;
   updateBatch(id: string, data: UpdateBatchDto): Promise<Batch>;
   deleteBatch(id: string): Promise<Batch>;
@@ -85,6 +86,7 @@ export interface IJobService {
   createBatch(data: CreateBatchDto): Promise<Batch>;
   getAllBatches(query: Record<string, any>): Promise<Batch[]>;
   getBatchById(id: string): Promise<Batch>;
+  findBatchByName(name: string): Promise<Batch | null>;
   updateBatch(id: string, data: UpdateBatchDto): Promise<Batch>;
   deleteBatch(id: string): Promise<Batch>;
 }

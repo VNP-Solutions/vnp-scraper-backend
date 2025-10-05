@@ -236,6 +236,29 @@ export class JobService implements IJobService {
             propertyId = existingProperty.id;
           }
 
+          // Handle Batch - create if doesn't exist (optional field)
+          let batchId = null;
+          const batchColumn =
+            rowData['Batch Name'] || rowData['Batch'] || rowData['Batch name'];
+          if (batchColumn && batchColumn.trim() !== '') {
+            const batchName = batchColumn.toString().trim();
+
+            // Try to find existing batch by name
+            let existingBatch = await this.findBatchByName(batchName);
+
+            if (existingBatch) {
+              batchId = existingBatch.id;
+              this.logger.log(
+                `Using existing batch: ${batchName} (${batchId})`,
+              );
+            } else {
+              // Create new batch if it doesn't exist
+              const newBatch = await this.createBatch({ name: batchName });
+              batchId = newBatch.id;
+              this.logger.log(`Created new batch: ${batchName} (${batchId})`);
+            }
+          }
+
           // Create job data
           const jobData: CreateJobDto = {
             name: rowData['Job Name'] || `Job ${jobsCreated + 1}`,
@@ -244,6 +267,7 @@ export class JobService implements IJobService {
             sub_portfolio_id: subPortfolioId,
             property_id: propertyId,
             user_id: userId,
+            batch_id: batchId,
             posting_type: this.convertToPostingType(rowData['Posting Type']),
             portfolio_name: portfolioName,
             sub_portfolio_name: subPortfolioName,
@@ -383,6 +407,19 @@ export class JobService implements IJobService {
       return batch;
     } catch (error) {
       this.logger.error(`Error finding batch: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  async findBatchByName(name: string): Promise<Batch | null> {
+    try {
+      const batch = await this.repository.findBatchByName(name);
+      return batch;
+    } catch (error) {
+      this.logger.error(
+        `Error finding batch by name: ${error.message}`,
+        error.stack,
+      );
       throw error;
     }
   }
