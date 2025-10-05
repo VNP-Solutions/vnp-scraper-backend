@@ -150,6 +150,9 @@ export class UpdateJobDto implements Partial<CreateJobDto> {
 
   @ApiProperty({ required: false })
   live_url?: string;
+
+  @ApiProperty({ required: false })
+  batch_id?: string;
 }
 
 export class ImportJobsResponseDto {
