@@ -19,7 +19,7 @@ export class JobRepository implements IJobRepository {
 
   async create(data: CreateJobDto): Promise<Job> {
     try {
-      const { property_id, user_id, portfolio_id, sub_portfolio_id, ...rest } =
+      const { property_id, user_id, portfolio_id, sub_portfolio_id, batch_id, ...rest } =
         data;
 
       const propertyData = await this.db.property.findFirst({
@@ -57,6 +57,7 @@ export class JobRepository implements IJobRepository {
                 },
               }
             : undefined,
+        batch: data.batch_id ? { connect: { id: data.batch_id } } : null,
       };
 
       const job = await this.db.job.create({
