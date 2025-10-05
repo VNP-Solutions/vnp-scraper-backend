@@ -88,7 +88,7 @@ export class JobController {
     name: 'search',
     required: false,
     description:
-      'Search jobs by job ID, job name, portfolio name, sub-portfolio name, property name, Expedia ID, Booking ID, or Agoda ID',
+      'Search jobs by job ID, job name, portfolio name, sub-portfolio name, property name, batch name, Expedia ID, Booking ID, or Agoda ID',
   })
   @ApiQuery({
     name: 'page',

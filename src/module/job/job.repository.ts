@@ -118,6 +118,9 @@ export class JobRepository implements IJobRepository {
           { sub_portfolio_name: { contains: searchTerm, mode: 'insensitive' } },
           { property_name: { contains: searchTerm, mode: 'insensitive' } },
 
+          // Batch name search through relationship
+          { batch: { name: { contains: searchTerm, mode: 'insensitive' } } },
+
           // Property IDs through relationship (only search if numeric)
           ...(isNumeric
             ? [
