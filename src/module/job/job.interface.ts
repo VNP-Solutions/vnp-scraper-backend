@@ -1,7 +1,9 @@
-import { Job } from '@prisma/client';
+import { Batch, Job } from '@prisma/client';
 import {
+  CreateBatchDto,
   CreateJobDto,
   JobStatisticsResponseDto,
+  UpdateBatchDto,
   UpdateJobDto,
 } from './job.dto';
 
@@ -47,6 +49,13 @@ export interface IJobRepository {
       total: number;
     }>
   >;
+
+  // Batch repository methods
+  createBatch(data: CreateBatchDto): Promise<Batch>;
+  findBatchById(id: string): Promise<Batch>;
+  findAllBatches(query: Record<string, any>): Promise<Batch[]>;
+  updateBatch(id: string, data: UpdateBatchDto): Promise<Batch>;
+  deleteBatch(id: string): Promise<Batch>;
 }
 
 export interface IJobService {
@@ -71,4 +80,11 @@ export interface IJobService {
     userId: string,
     userRole: string,
   ): Promise<JobStatisticsResponseDto>;
+
+  // Batch service methods
+  createBatch(data: CreateBatchDto): Promise<Batch>;
+  getAllBatches(query: Record<string, any>): Promise<Batch[]>;
+  getBatchById(id: string): Promise<Batch>;
+  updateBatch(id: string, data: UpdateBatchDto): Promise<Batch>;
+  deleteBatch(id: string): Promise<Batch>;
 }

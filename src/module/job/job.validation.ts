@@ -48,9 +48,21 @@ export const createJobSchema = z.object({
   end_date: z.string().optional().nullable(),
   log_link: z.string().optional().nullable(),
   live_url: z.string().optional().nullable(),
+  batch_id: objectIdSchema.optional().nullable(),
 });
 
 export const updateJobSchema = createJobSchema.partial();
 
+export const createBatchSchema = z.object({
+  name: z
+    .string()
+    .min(1, 'Batch name is required')
+    .max(100, 'Batch name must be less than 100 characters'),
+});
+
+export const updateBatchSchema = createBatchSchema.partial();
+
 export type CreateJobType = z.infer<typeof createJobSchema>;
 export type UpdateJobType = z.infer<typeof updateJobSchema>;
+export type CreateBatchType = z.infer<typeof createBatchSchema>;
+export type UpdateBatchType = z.infer<typeof updateBatchSchema>;

@@ -1,10 +1,12 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { Job, OTAProvider, PostingType } from '@prisma/client';
+import { Batch, Job, OTAProvider, PostingType } from '@prisma/client';
 import * as XLSX from 'xlsx';
 import { IPropertyRepository } from '../property/property.interface';
 import {
+  CreateBatchDto,
   CreateJobDto,
   JobStatisticsResponseDto,
+  UpdateBatchDto,
   UpdateJobDto,
 } from './job.dto';
 import { IJobRepository, IJobService } from './job.interface';
@@ -347,6 +349,60 @@ export class JobService implements IJobService {
         `Error getting job statistics for user ${userId}: ${error.message}`,
         error.stack,
       );
+      throw error;
+    }
+  }
+
+  // Batch service methods
+  async createBatch(data: CreateBatchDto): Promise<Batch> {
+    try {
+      const batch = await this.repository.createBatch(data);
+      return batch;
+    } catch (error) {
+      this.logger.error(`Error creating batch: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  async getAllBatches(query: Record<string, any>): Promise<Batch[]> {
+    try {
+      const batches = await this.repository.findAllBatches(query);
+      return batches;
+    } catch (error) {
+      this.logger.error(`Error getting batches: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  async getBatchById(id: string): Promise<Batch> {
+    try {
+      const batch = await this.repository.findBatchById(id);
+      if (!batch) {
+        throw new Error(`Batch with ID ${id} not found`);
+      }
+      return batch;
+    } catch (error) {
+      this.logger.error(`Error finding batch: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  async updateBatch(id: string, data: UpdateBatchDto): Promise<Batch> {
+    try {
+      const batch = await this.repository.updateBatch(id, data);
+      return batch;
+    } catch (error) {
+      this.logger.error(`Error updating batch: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  async deleteBatch(id: string): Promise<Batch> {
+    try {
+      const batch = await this.repository.deleteBatch(id);
+      return batch;
+    } catch (error) {
+      this.logger.error(`Error deleting batch: ${error.message}`, error.stack);
       throw error;
     }
   }

@@ -30,13 +30,16 @@ import { ExcelFileInterceptor } from 'src/common/interceptors/excel-file.interce
 import { ResponseHandler } from 'src/common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
+  BatchResponseDto,
+  CreateBatchDto,
   CreateJobDto,
   ImportJobsResponseDto,
   JobStatisticsResponseDto,
+  UpdateBatchDto,
   UpdateJobDto,
 } from './job.dto';
 import { IJobService } from './job.interface';
-import { createJobSchema } from './job.validation';
+import { createBatchSchema, createJobSchema } from './job.validation';
 
 @ApiTags('Jobs')
 @ApiBearerAuth('JWT-auth')
@@ -119,6 +122,16 @@ export class JobController {
     name: 'end_date',
     required: false,
     description: 'End date for filtering',
+  })
+  @ApiQuery({
+    name: 'batch_id',
+    required: false,
+    description: 'Filter jobs by batch ID',
+  })
+  @ApiQuery({
+    name: 'batch_name',
+    required: false,
+    description: 'Filter jobs by batch name (partial match)',
   })
   async getAllJobs(
     @ParseQuery() query: Record<string, any>,
@@ -280,6 +293,37 @@ export class JobController {
           statusCode: 200,
           message: 'Job statistics retrieved successfully',
           data: statistics,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Get('/batches')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get all batches' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns list of batches',
+    type: [BatchResponseDto],
+  })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    description: 'Search batches by name or ID',
+  })
+  async getAllBatches(
+    @ParseQuery() query: Record<string, any>,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const batches = await this.jobService.getAllBatches(query);
+        return {
+          statusCode: 200,
+          message: 'Batches retrieved successfully',
+          data: batches,
         };
       },
       this.logger,
@@ -495,6 +539,106 @@ export class JobController {
           statusCode: 200,
           message: `Import completed successfully: ${result.jobsCreated} jobs created`,
           data: result,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Post('/batches')
+  @UseGuards(JwtAuthGuard)
+  @ValidateBody(createBatchSchema)
+  @ApiOperation({ summary: 'Create new batch' })
+  @ApiResponse({
+    status: 201,
+    description: 'Batch created successfully',
+    type: BatchResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  async createBatch(
+    @Body() createBatchDto: CreateBatchDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const batch = await this.jobService.createBatch(createBatchDto);
+        return {
+          statusCode: 201,
+          message: 'Batch created successfully',
+          data: batch,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Get('/batches/:id')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get batch by ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns batch',
+    type: BatchResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Batch not found' })
+  async getBatchById(@Param('id') id: string, @Res() response: Response) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const batch = await this.jobService.getBatchById(id);
+        return {
+          statusCode: 200,
+          message: 'Batch retrieved successfully',
+          data: batch,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Put('/batches/:id')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Update batch by ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Batch updated successfully',
+    type: BatchResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Batch not found' })
+  async updateBatch(
+    @Param('id') id: string,
+    @Body() updateBatchDto: UpdateBatchDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const batch = await this.jobService.updateBatch(id, updateBatchDto);
+        return {
+          statusCode: 200,
+          message: 'Batch updated successfully',
+          data: batch,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Delete('/batches/:id')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Delete batch by ID' })
+  @ApiResponse({ status: 200, description: 'Batch deleted successfully' })
+  @ApiResponse({ status: 404, description: 'Batch not found' })
+  async deleteBatch(@Param('id') id: string, @Res() response: Response) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        await this.jobService.deleteBatch(id);
+        return {
+          statusCode: 200,
+          message: 'Batch deleted successfully',
+          data: null,
         };
       },
       this.logger,

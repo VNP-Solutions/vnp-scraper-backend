@@ -94,6 +94,9 @@ export class CreateJobDto {
 
   @ApiProperty({ required: false })
   watcher_emails?: string[];
+
+  @ApiProperty({ required: false })
+  batch_id?: string;
 }
 
 export class UpdateJobDto implements Partial<CreateJobDto> {
@@ -280,4 +283,42 @@ export class JobStatisticsResponseDto {
     ],
   })
   monthlyStats: MonthlyJobStatsDto[];
+}
+
+export class CreateBatchDto {
+  @ApiProperty({
+    description: 'Name of the batch',
+    example: 'December Processing Batch',
+  })
+  name: string;
+}
+
+export class UpdateBatchDto {
+  @ApiProperty({
+    required: false,
+    description: 'Name of the batch',
+    example: 'December Processing Batch Updated',
+  })
+  name?: string;
+}
+
+export class BatchResponseDto {
+  @ApiProperty({ description: 'Unique identifier of the batch' })
+  id: string;
+
+  @ApiProperty({ description: 'Name of the batch' })
+  name: string;
+
+  @ApiProperty({ description: 'When the batch was created', type: Date })
+  createdAt?: Date;
+
+  @ApiProperty({ description: 'When the batch was last updated', type: Date })
+  updatedAt?: Date;
+
+  @ApiProperty({
+    description: 'Jobs associated with this batch',
+    type: 'array',
+    required: false,
+  })
+  jobs?: any[];
 }

@@ -1,9 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Job, Prisma } from '@prisma/client';
+import { Batch, Job, Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import {
+  CreateBatchDto,
   CreateJobDto,
   JobStatisticsResponseDto,
+  UpdateBatchDto,
   UpdateJobDto,
 } from './job.dto';
 import { IJobRepository } from './job.interface';
@@ -91,6 +93,8 @@ export class JobRepository implements IJobRepository {
         search,
         start_date,
         end_date,
+        batch_id,
+        batch_name,
         ...filters
       } = query || {};
       let allFilters: any = { ...filters };
@@ -131,6 +135,16 @@ export class JobRepository implements IJobRepository {
         };
       }
 
+      if (batch_id) {
+        allFilters.batch_id = batch_id;
+      }
+
+      if (batch_name) {
+        allFilters.batch = {
+          name: { contains: batch_name.toString().trim(), mode: 'insensitive' },
+        };
+      }
+
       const skip = page
         ? (parseInt(page || '1') - 1) * parseInt(limit || '10')
         : 0;
@@ -160,6 +174,12 @@ export class JobRepository implements IJobRepository {
           },
         },
         subPortfolio: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        batch: {
           select: {
             id: true,
             name: true,
@@ -521,6 +541,177 @@ export class JobRepository implements IJobRepository {
       }));
     } catch (error) {
       this.logger.error('Error getting monthly job statistics:', error);
+      throw error;
+    }
+  }
+
+  // Batch repository methods
+  async createBatch(data: CreateBatchDto): Promise<Batch> {
+    try {
+      const batch = await this.db.batch.create({
+        data: {
+          name: data.name,
+        },
+        include: {
+          jobs: {
+            select: {
+              id: true,
+              name: true,
+              job_status: true,
+              property_name: true,
+              ota_provider: true,
+              createdAt: true,
+            },
+          },
+        },
+      });
+      return batch as Batch;
+    } catch (error) {
+      this.logger.error('Error creating batch:', error);
+      throw error;
+    }
+  }
+
+  async findBatchById(id: string): Promise<Batch> {
+    try {
+      const batch = await this.db.batch.findUnique({
+        where: { id },
+        include: {
+          jobs: {
+            select: {
+              id: true,
+              name: true,
+              job_status: true,
+              property_name: true,
+              ota_provider: true,
+              createdAt: true,
+            },
+          },
+        },
+      });
+
+      if (!batch) {
+        throw new Error(`Batch with ID ${id} not found`);
+      }
+
+      return batch as Batch;
+    } catch (error) {
+      this.logger.error('Error finding batch by ID:', error);
+      throw error;
+    }
+  }
+
+  async findAllBatches(query: Record<string, any>): Promise<Batch[]> {
+    try {
+      const { search } = query || {};
+
+      let whereClause: any = {};
+
+      if (search) {
+        const searchTerm = search.toString().trim();
+        const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(searchTerm);
+
+        if (isValidObjectId) {
+          whereClause.OR = [
+            { id: searchTerm },
+            { name: { contains: searchTerm, mode: 'insensitive' } },
+          ];
+        } else {
+          whereClause.name = { contains: searchTerm, mode: 'insensitive' };
+        }
+      }
+
+      const batches = await this.db.batch.findMany({
+        where: whereClause,
+        include: {
+          jobs: {
+            select: {
+              id: true,
+              name: true,
+              job_status: true,
+              property_name: true,
+              ota_provider: true,
+              createdAt: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      return batches;
+    } catch (error) {
+      this.logger.error('Error finding all batches:', error);
+      throw error;
+    }
+  }
+
+  async updateBatch(id: string, data: UpdateBatchDto): Promise<Batch> {
+    try {
+      const batch = await this.db.batch.update({
+        where: { id },
+        data: {
+          name: data.name,
+        },
+        include: {
+          jobs: {
+            select: {
+              id: true,
+              name: true,
+              job_status: true,
+              property_name: true,
+              ota_provider: true,
+              createdAt: true,
+            },
+          },
+        },
+      });
+
+      return batch as Batch;
+    } catch (error) {
+      this.logger.error('Error updating batch:', error);
+      throw error;
+    }
+  }
+
+  async deleteBatch(id: string): Promise<Batch> {
+    try {
+      // First get the batch to return it after deletion
+      const batchToDelete = await this.db.batch.findUnique({
+        where: { id },
+        include: {
+          jobs: {
+            select: {
+              id: true,
+              name: true,
+              job_status: true,
+              property_name: true,
+              ota_provider: true,
+              createdAt: true,
+            },
+          },
+        },
+      });
+
+      if (!batchToDelete) {
+        throw new Error(`Batch with ID ${id} not found`);
+      }
+
+      // First, update all jobs to remove the batch_id reference
+      await this.db.job.updateMany({
+        where: { batch_id: id },
+        data: { batch_id: null },
+      });
+
+      // Then delete the batch
+      await this.db.batch.delete({
+        where: { id },
+      });
+
+      return batchToDelete as Batch;
+    } catch (error) {
+      this.logger.error('Error deleting batch:', error);
       throw error;
     }
   }
