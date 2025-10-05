@@ -19,8 +19,14 @@ export class JobRepository implements IJobRepository {
 
   async create(data: CreateJobDto): Promise<Job> {
     try {
-      const { property_id, user_id, portfolio_id, sub_portfolio_id, batch_id, ...rest } =
-        data;
+      const {
+        property_id,
+        user_id,
+        portfolio_id,
+        sub_portfolio_id,
+        batch_id,
+        ...rest
+      } = data;
 
       const propertyData = await this.db.property.findFirst({
         where: {
@@ -601,6 +607,19 @@ export class JobRepository implements IJobRepository {
       return batch as Batch;
     } catch (error) {
       this.logger.error('Error finding batch by ID:', error);
+      throw error;
+    }
+  }
+
+  async findBatchByName(name: string): Promise<Batch | null> {
+    try {
+      const batch = await this.db.batch.findUnique({
+        where: { name },
+      });
+
+      return batch;
+    } catch (error) {
+      this.logger.error('Error finding batch by name:', error);
       throw error;
     }
   }
