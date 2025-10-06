@@ -48,7 +48,7 @@ export const createJobSchema = z.object({
   end_date: z.string().optional().nullable(),
   log_link: z.string().optional().nullable(),
   live_url: z.string().optional().nullable(),
-  batch_id: objectIdSchema.optional().nullable(),
+  batch_id: z.union([objectIdSchema, z.null(), z.undefined()]).optional(),
 });
 
 export const updateJobSchema = createJobSchema.partial();
