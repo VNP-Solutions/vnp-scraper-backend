@@ -63,7 +63,7 @@ export class JobRepository implements IJobRepository {
                 },
               }
             : undefined,
-        batch: data.batch_id ? { connect: { id: data.batch_id } } : null,
+        batch: data.batch_id ? { connect: { id: data.batch_id } } : undefined,
       };
 
       const job = await this.db.job.create({
@@ -613,7 +613,7 @@ export class JobRepository implements IJobRepository {
 
   async findBatchByName(name: string): Promise<Batch | null> {
     try {
-      const batch = await this.db.batch.findUnique({
+      const batch = await this.db.batch.findFirst({
         where: { name },
       });
 
