@@ -923,61 +923,29 @@ export class PropertyRepository implements IPropertyRepository {
 
       const updatePayload: any = {};
 
-      // Only add fields that don't already exist (preserve existing credentials)
-      if (
-        credentialsData.expediaUsername &&
-        (!existingCredentials || !existingCredentials.expediaUsername)
-      )
+      // Update credentials with new values from Excel import
+      if (credentialsData.expediaUsername)
         updatePayload.expediaUsername = credentialsData.expediaUsername;
-      if (
-        credentialsData.expediaPassword &&
-        (!existingCredentials || !existingCredentials.expediaPassword)
-      )
+      if (credentialsData.expediaPassword)
         updatePayload.expediaPassword = credentialsData.expediaPassword; // Already encrypted from import
-      if (
-        credentialsData.agodaUsername &&
-        (!existingCredentials || !existingCredentials.agodaUsername)
-      )
+      if (credentialsData.agodaUsername)
         updatePayload.agodaUsername = credentialsData.agodaUsername;
-      if (
-        credentialsData.agodaPassword &&
-        (!existingCredentials || !existingCredentials.agodaPassword)
-      )
+      if (credentialsData.agodaPassword)
         updatePayload.agodaPassword = credentialsData.agodaPassword; // Already encrypted from import
-      if (
-        credentialsData.bookingUsername &&
-        (!existingCredentials || !existingCredentials.bookingUsername)
-      )
+      if (credentialsData.bookingUsername)
         updatePayload.bookingUsername = credentialsData.bookingUsername;
-      if (
-        credentialsData.bookingPassword &&
-        (!existingCredentials || !existingCredentials.bookingPassword)
-      )
+      if (credentialsData.bookingPassword)
         updatePayload.bookingPassword = credentialsData.bookingPassword; // Already encrypted from import
-      if (
-        credentialsData.expediaEmailAssociated &&
-        (!existingCredentials || !existingCredentials.expediaEmailAssociated)
-      )
+      if (credentialsData.expediaEmailAssociated)
         updatePayload.expediaEmailAssociated =
           credentialsData.expediaEmailAssociated;
-      if (
-        credentialsData.propertyContactEmail &&
-        (!existingCredentials || !existingCredentials.propertyContactEmail)
-      )
+      if (credentialsData.propertyContactEmail)
         updatePayload.propertyContactEmail =
           credentialsData.propertyContactEmail;
-      if (
-        credentialsData.portfolioContactEmail &&
-        (!existingCredentials || !existingCredentials.portfolioContactEmail)
-      )
+      if (credentialsData.portfolioContactEmail)
         updatePayload.portfolioContactEmail =
           credentialsData.portfolioContactEmail;
-      if (
-        credentialsData.multiplePortfolioEmails &&
-        (!existingCredentials ||
-          !existingCredentials.multiplePortfolioEmails ||
-          existingCredentials.multiplePortfolioEmails.length === 0)
-      )
+      if (credentialsData.multiplePortfolioEmails)
         updatePayload.multiplePortfolioEmails =
           credentialsData.multiplePortfolioEmails;
 
@@ -990,7 +958,7 @@ export class PropertyRepository implements IPropertyRepository {
       }
 
       if (existingCredentials) {
-        // Update existing credentials with only new fields
+        // Update existing credentials with new values
         return await this.db.propertyCredentials.update({
           where: { id: existingCredentials.id },
           data: updatePayload,
