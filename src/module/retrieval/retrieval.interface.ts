@@ -1,0 +1,50 @@
+import { ParentRetrieval, Retrieval, RetrievalItem } from '@prisma/client';
+import {
+  CreateParentRetrievalDto,
+  CreateRetrievalDto,
+  CreateRetrievalItemDto,
+  UpdateRetrievalDto,
+} from './retrieval.dto';
+
+export interface IRetrievalService {
+  uploadRetrievalExcel(
+    file: Express.Multer.File,
+    userId: string,
+  ): Promise<{
+    parentRetrieval: ParentRetrieval;
+    retrievals: Retrieval[];
+    successCount: number;
+    failedCount: number;
+    failedHotelIds: string[];
+  }>;
+  createParentRetrieval(
+    data: CreateParentRetrievalDto,
+  ): Promise<ParentRetrieval>;
+  createRetrieval(data: CreateRetrievalDto): Promise<Retrieval>;
+  createRetrievalItem(data: CreateRetrievalItemDto): Promise<RetrievalItem>;
+  getAllRetrievals(
+    query: Record<string, any>,
+  ): Promise<{ data: Retrieval[]; metadata: any }>;
+  getRetrievalById(id: string): Promise<Retrieval>;
+  getParentRetrievalById(id: string): Promise<ParentRetrieval>;
+  updateRetrieval(id: string, data: UpdateRetrievalDto): Promise<Retrieval>;
+  deleteRetrieval(id: string): Promise<void>;
+  deleteParentRetrieval(id: string): Promise<void>;
+}
+
+export interface IRetrievalRepository {
+  createParentRetrieval(
+    data: CreateParentRetrievalDto,
+  ): Promise<ParentRetrieval>;
+  createRetrieval(data: CreateRetrievalDto): Promise<Retrieval>;
+  createRetrievalItem(data: CreateRetrievalItemDto): Promise<RetrievalItem>;
+  findAllRetrievals(
+    query: Record<string, any>,
+  ): Promise<{ data: Retrieval[]; metadata: any }>;
+  findRetrievalById(id: string): Promise<Retrieval | null>;
+  findParentRetrievalById(id: string): Promise<ParentRetrieval | null>;
+  updateRetrieval(id: string, data: UpdateRetrievalDto): Promise<Retrieval>;
+  deleteRetrieval(id: string): Promise<void>;
+  deleteParentRetrieval(id: string): Promise<void>;
+  createManyRetrievalItems(data: CreateRetrievalItemDto[]): Promise<void>;
+}
