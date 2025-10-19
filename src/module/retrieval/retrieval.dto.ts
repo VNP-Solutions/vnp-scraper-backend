@@ -1,0 +1,259 @@
+import { ApiProperty } from '@nestjs/swagger';
+import { JobStatus, OTAProvider, PostingType } from '@prisma/client';
+
+export class CreateParentRetrievalDto {
+  @ApiProperty({
+    description: 'Name of the parent retrieval',
+    example: 'Batch 2025-01-15',
+  })
+  name: string;
+}
+
+export class CreateRetrievalDto {
+  @ApiProperty({ required: false })
+  name?: string;
+
+  @ApiProperty({ enum: JobStatus, default: JobStatus.Pending })
+  job_status?: JobStatus;
+
+  @ApiProperty({ required: false })
+  portfolio_id?: string;
+
+  @ApiProperty({ required: false })
+  sub_portfolio_id?: string;
+
+  @ApiProperty({ required: false })
+  property_id?: string;
+
+  @ApiProperty()
+  user_id: string;
+
+  @ApiProperty({ required: false })
+  batch_id?: string;
+
+  @ApiProperty()
+  parent_retrieval_id: string;
+
+  @ApiProperty({ enum: PostingType })
+  posting_type: PostingType;
+
+  @ApiProperty({ required: false })
+  portfolio_name?: string;
+
+  @ApiProperty({ required: false })
+  sub_portfolio_name?: string;
+
+  @ApiProperty()
+  property_name: string;
+
+  @ApiProperty({ required: false })
+  billing_type?: string;
+
+  @ApiProperty({ required: false })
+  next_due_date?: Date;
+
+  @ApiProperty({ enum: OTAProvider })
+  ota_provider: OTAProvider;
+
+  @ApiProperty()
+  remaining_direct_billed: number;
+
+  @ApiProperty()
+  total_collectable: number;
+
+  @ApiProperty()
+  total_amount_confirmed: number;
+
+  @ApiProperty()
+  execution_type: string;
+
+  @ApiProperty({ default: 0 })
+  retries_attempted?: number;
+
+  @ApiProperty({ default: 3 })
+  max_retries?: number;
+
+  @ApiProperty({ required: false })
+  retry_delay_ms?: number;
+
+  @ApiProperty({ default: 0 })
+  priority?: number;
+
+  @ApiProperty()
+  job_backoff_length_loading: number;
+
+  @ApiProperty()
+  job_backoff_length_selector: number;
+
+  @ApiProperty({ required: false })
+  queue_name?: string;
+
+  @ApiProperty({ required: false })
+  worker_assigned?: string;
+
+  @ApiProperty({ required: false })
+  batch_execution_id?: string;
+
+  @ApiProperty({ required: false })
+  start_date?: string;
+
+  @ApiProperty({ required: false })
+  end_date?: string;
+
+  @ApiProperty({ required: false })
+  log_link?: string;
+
+  @ApiProperty({ required: false })
+  live_url?: string;
+
+  @ApiProperty({ required: false })
+  current_url?: string;
+
+  @ApiProperty({ required: false, default: false })
+  case_open?: boolean;
+
+  @ApiProperty({ required: false, type: [String] })
+  watcher_emails?: string[];
+
+  @ApiProperty({
+    required: false,
+    type: [String],
+    description: 'List of reservation IDs',
+  })
+  reservations?: string[];
+}
+
+export class UpdateRetrievalDto implements Partial<CreateRetrievalDto> {
+  @ApiProperty({ required: false })
+  name?: string;
+
+  @ApiProperty({ required: false })
+  job_status?: JobStatus;
+
+  @ApiProperty({ required: false })
+  portfolio_name?: string;
+
+  @ApiProperty({ required: false })
+  sub_portfolio_name?: string;
+
+  @ApiProperty({ required: false })
+  property_name?: string;
+
+  @ApiProperty({ required: false })
+  billing_type?: string;
+
+  @ApiProperty({ required: false })
+  next_due_date?: Date;
+
+  @ApiProperty({ required: false })
+  ota_provider?: OTAProvider;
+
+  @ApiProperty({ required: false })
+  remaining_direct_billed?: number;
+
+  @ApiProperty({ required: false })
+  total_collectable?: number;
+
+  @ApiProperty({ required: false })
+  total_amount_confirmed?: number;
+
+  @ApiProperty({ required: false })
+  execution_type?: string;
+
+  @ApiProperty({ required: false })
+  start_date?: string;
+
+  @ApiProperty({ required: false })
+  end_date?: string;
+
+  @ApiProperty({ required: false })
+  log_link?: string;
+
+  @ApiProperty({ required: false })
+  live_url?: string;
+
+  @ApiProperty({ required: false, type: [String] })
+  reservations?: string[];
+}
+
+export class CreateRetrievalItemDto {
+  @ApiProperty()
+  retrieval_id: string;
+
+  @ApiProperty()
+  parent_retrieval_id: string;
+
+  @ApiProperty()
+  property_id: string;
+
+  @ApiProperty()
+  guest_name: string;
+
+  @ApiProperty({ required: false })
+  reservation_id?: string;
+
+  @ApiProperty({ required: false })
+  confirmation_number?: string;
+
+  @ApiProperty()
+  check_in_date: Date;
+
+  @ApiProperty()
+  check_out_date: Date;
+
+  @ApiProperty()
+  room_type: string;
+
+  @ApiProperty({ required: false })
+  booking_amount?: number;
+
+  @ApiProperty()
+  booked_date: Date;
+
+  @ApiProperty({ default: false })
+  has_card_info?: boolean;
+
+  @ApiProperty({ required: false })
+  card_info?: {
+    card_number: string;
+    expiry_date: string;
+    cvv?: string;
+    reason_for_charge?: string;
+    card_holder_name?: string;
+  };
+
+  @ApiProperty({ default: false })
+  has_payment_info?: boolean;
+
+  @ApiProperty({ required: false })
+  payment_info?: {
+    total_guest_payment?: number;
+    cancellation_fee?: number;
+    total_payout?: number;
+    amount_to_charge_or_refund: number;
+    charge_before?: string;
+  };
+
+  @ApiProperty()
+  reservation_status: string;
+
+  @ApiProperty({ required: false })
+  additional_text?: string;
+}
+
+export class UploadRetrievalResponseDto {
+  @ApiProperty({ description: 'Created parent retrieval' })
+  parentRetrieval: any;
+
+  @ApiProperty({ description: 'Number of retrievals created successfully' })
+  retrievalsCreated: number;
+
+  @ApiProperty({ description: 'Number of retrievals that failed to create' })
+  retrievalsFailed: number;
+
+  @ApiProperty({ description: 'List of failed hotel IDs', type: [String] })
+  failedHotelIds: string[];
+
+  @ApiProperty({ description: 'List of created retrievals' })
+  retrievals: any[];
+}

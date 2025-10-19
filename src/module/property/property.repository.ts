@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Property, RoleEnum } from '@prisma/client';
 import { EncryptionUtil } from 'src/common/utils/encryption.util';
+import * as XLSX from 'xlsx';
 import { DatabaseService } from '../database/database.service';
 import { CreatePropertyDto, UpdatePropertyDto } from './property.dto';
 import { IPropertyRepository } from './property.interface';
-import * as XLSX from 'xlsx';
 
 @Injectable()
 export class PropertyRepository implements IPropertyRepository {
@@ -165,6 +165,23 @@ export class PropertyRepository implements IPropertyRepository {
       const property = await this.db.property.findUnique({
         where: {
           id,
+        },
+        include: {
+          credentials: true,
+        },
+      });
+      return property;
+    } catch (error) {
+      this.logger.error(error);
+      return null;
+    }
+  }
+
+  async findByExpediaId(expediaId: number): Promise<Property | null> {
+    try {
+      const property = await this.db.property.findFirst({
+        where: {
+          expedia_id: expediaId,
         },
         include: {
           credentials: true,
