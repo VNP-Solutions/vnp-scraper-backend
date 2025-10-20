@@ -73,6 +73,22 @@ export class PropertyCredentialsRepository
     }
   }
 
+  async findByPropertyId(
+    propertyId: string,
+  ): Promise<PropertyCredentials | null> {
+    try {
+      const credentials = await this.db.propertyCredentials.findFirst({
+        where: {
+          property_id: propertyId,
+        },
+      });
+      return credentials;
+    } catch (error) {
+      this.logger.error(error);
+      return null;
+    }
+  }
+
   async update(
     id: string,
     data: UpdatePropertyCredentialsDto,

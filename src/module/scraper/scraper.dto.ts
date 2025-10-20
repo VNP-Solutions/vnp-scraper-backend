@@ -66,6 +66,14 @@ export class PropertyRunJobRequestDto {
   jobId: string;
 }
 
+export class RetrievalRunJobRequestDto {
+  @ApiProperty({
+    example: '507f1f77bcf86cd799439011',
+    description: 'MongoDB ObjectId of the retrieval to run.',
+  })
+  retrieval_id: string;
+}
+
 export class PropertyRunJobResponseDto {
   @ApiProperty({ example: 200 })
   status: number;

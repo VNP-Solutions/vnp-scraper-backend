@@ -1,12 +1,13 @@
 import { Logger, Module } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
+import { PropertyCredentialsModule } from '../property-credentials/property-credentials.module';
 import { PropertyModule } from '../property/property.module';
 import { RetrievalController } from './retrieval.controller';
 import { RetrievalRepository } from './retrieval.repository';
 import { RetrievalService } from './retrieval.service';
 
 @Module({
-  imports: [PropertyModule],
+  imports: [PropertyModule, PropertyCredentialsModule],
   controllers: [RetrievalController],
   providers: [
     {

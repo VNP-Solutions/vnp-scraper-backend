@@ -9,6 +9,7 @@ export interface IPropertyCredentialsRepository {
   create(data: CreatePropertyCredentialsDto): Promise<PropertyCredentials>;
   findAll(): Promise<PropertyCredentials[]>;
   findById(id: string): Promise<PropertyCredentials>;
+  findByPropertyId(propertyId: string): Promise<PropertyCredentials | null>;
   update(
     id: string,
     data: UpdatePropertyCredentialsDto,
@@ -26,6 +27,9 @@ export interface IPropertyCredentialsService {
   ): Promise<PropertyCredentials>;
   getAllPropertyCredentials(): Promise<PropertyCredentials[]>;
   getPropertyCredentialsById(id: string): Promise<PropertyCredentials>;
+  getPropertyCredentialsByPropertyId(
+    propertyId: string,
+  ): Promise<PropertyCredentials | null>;
   updatePropertyCredentials(
     id: string,
     data: UpdatePropertyCredentialsDto,
@@ -34,4 +38,5 @@ export interface IPropertyCredentialsService {
   bulkUpdatePropertyCredentials(
     data: BulkUpdatePropertyCredentialsDto,
   ): Promise<{ success: PropertyCredentials[]; failed: any[] }>;
+  decryptPassword(encryptedPassword: string): string;
 }
