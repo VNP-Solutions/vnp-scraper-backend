@@ -18,7 +18,7 @@ export class OtpStatusRepository implements IOtpStatusRepository {
   async create(data: CreateOtpStatusDto): Promise<OtpStatus> {
     try {
       const otpStatus = await this.db.otpStatus.create({
-        data
+        data,
       });
       return otpStatus;
     } catch (error) {
