@@ -41,6 +41,7 @@ import {
   ReservationRunJobRequestDto,
   ReservationRunJobResponseDto,
   ResumeScrapingRequestDto,
+  RetrievalRunJobRequestDto,
   ScrapingStatusResponseDto,
   StopScrapingRequestDto,
 } from './scraper.dto';
@@ -139,6 +140,21 @@ export class ScraperController {
   }
 
   /**
+   * Get Expedia retrieval server URL
+   */
+  private getExpediaRetrievalUrl(): string | null {
+    const url = this.configService.get<string>('EXPEDIA_RETRIVAL_SERVER_URL');
+    if (!url) {
+      console.log('No EXPEDIA_RETRIVAL_SERVER_URL configured');
+      return null;
+    }
+
+    const normalizedUrl = this.normalizeUrl(url);
+    console.log(`Expedia Retrieval URL: ${normalizedUrl}`);
+    return normalizedUrl;
+  }
+
+  /**
    * Get API path based on OTA provider and job type
    */
   private getApiPathByOtaProvider(
@@ -217,6 +233,9 @@ export class ScraperController {
   async debugUrls(@Res() res: Response) {
     const urls = {
       EXPEDIA_SERVER_URL: this.configService.get<string>('EXPEDIA_SERVER_URL'),
+      EXPEDIA_RETRIVAL_SERVER_URL: this.configService.get<string>(
+        'EXPEDIA_RETRIVAL_SERVER_URL',
+      ),
       AGODA_SERVER_URL: this.configService.get<string>('AGODA_SERVER_URL'),
       BOOKING_SERVER_URL: this.configService.get<string>('BOOKING_SERVER_URL'),
       NODE_ENV: this.configService.get<string>('NODE_ENV'),
@@ -226,6 +245,9 @@ export class ScraperController {
     const normalizedUrls = {
       expedia: urls.EXPEDIA_SERVER_URL
         ? this.normalizeUrl(urls.EXPEDIA_SERVER_URL)
+        : null,
+      expediadRetrieval: urls.EXPEDIA_RETRIVAL_SERVER_URL
+        ? this.normalizeUrl(urls.EXPEDIA_RETRIVAL_SERVER_URL)
         : null,
       agoda: urls.AGODA_SERVER_URL
         ? this.normalizeUrl(urls.AGODA_SERVER_URL)
@@ -794,8 +816,7 @@ export class ScraperController {
             otaProvider,
             status: response.status,
             message:
-              response.data?.message ||
-              'Property search running successfully',
+              response.data?.message || 'Property search running successfully',
             success: true,
             data: response.data,
           });
@@ -1289,6 +1310,94 @@ export class ScraperController {
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
       const data = error.response?.data || {
         message: 'Job server is down',
+      };
+      return res.status(status).json(data);
+    }
+  }
+
+  @Post('/api/retrieval/property-run-job')
+  @ApiOperation({
+    summary: 'Start Expedia retrieval property scraping job',
+    description:
+      'Start a new property scraping job using the Expedia retrieval server. This endpoint uses EXPEDIA_RETRIVAL_SERVER_URL and follows the Expedia retrieval API pattern. Unlike regular scraper endpoints, this does not require startDate and endDate.',
+  })
+  @ApiBody({ type: RetrievalRunJobRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Property scraping job completed successfully',
+    type: PropertyRunJobResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Missing required parameters in request body',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Scraping job already running',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 503,
+    description: 'Expedia retrieval server URL not configured',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Error processing property search',
+    type: ErrorResponseDto,
+  })
+  async expediadRetrievalPropertyRunJob(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Body() body: RetrievalRunJobRequestDto,
+  ) {
+    let selectedUrl: string | null = null;
+
+    try {
+      selectedUrl = this.getExpediaRetrievalUrl();
+
+      if (!selectedUrl) {
+        return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message:
+            'No Expedia retrieval server URL configured (EXPEDIA_RETRIVAL_SERVER_URL)',
+          error: 'Expedia retrieval server URL not configured',
+        });
+      }
+
+      // Add the selected URL to the request body
+      const enhancedBody = {
+        ...body,
+        scraperUrl: selectedUrl,
+      };
+
+      // Determine the API path based on EXPEDIA_MODE
+      const expediadMode = this.configService.get<string>('EXPEDIA_MODE');
+      const apiPath =
+        expediadMode === 'graphql'
+          ? '/api/expedia/graphql-retrieval-run-job'
+          : '/api/expedia/retrieval-run-job';
+
+      console.log(
+        `Using Expedia retrieval server with ${expediadMode || 'scraper'} mode: ${apiPath}`,
+      );
+
+      const response = await firstValueFrom(
+        this.httpService.post(`${selectedUrl}${apiPath}`, enhancedBody, {
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          timeout: 300000, // 5 minute timeout for long-running scraping jobs
+        }),
+      );
+
+      return res.status(response.status).json(response.data);
+    } catch (error: any) {
+      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
+      const data = error.response?.data || {
+        message: 'Expedia retrieval server is down',
       };
       return res.status(status).json(data);
     }

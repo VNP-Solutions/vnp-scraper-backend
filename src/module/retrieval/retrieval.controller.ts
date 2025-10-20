@@ -97,6 +97,7 @@ export class RetrievalController {
           data: {
             parentRetrieval: result.parentRetrieval,
             retrievalsCreated: result.successCount,
+            retrievalItemsCreated: result.retrievalItemsCount,
             retrievalsFailed: result.failedCount,
             failedHotelIds: result.failedHotelIds,
             retrievals: result.retrievals,
@@ -127,6 +128,28 @@ export class RetrievalController {
           statusCode: 201,
           message: 'Parent retrieval created successfully',
           data: parentRetrieval,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Get('/parent')
+  @ApiOperation({ summary: 'Get all parent retrievals' })
+  @ApiResponse({
+    status: 200,
+    description: 'Parent retrievals retrieved successfully',
+  })
+  async getAllParentRetrievals(@Res() response: Response) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const parentRetrievals =
+          await this.retrievalService.getAllParentRetrievals();
+        return {
+          statusCode: 200,
+          message: 'Parent retrievals retrieved successfully',
+          data: parentRetrievals,
         };
       },
       this.logger,
@@ -204,6 +227,76 @@ export class RetrievalController {
       },
       this.logger,
     );
+  }
+
+  @Get('/parent/:parentRetrievalId/retrievals')
+  @ApiOperation({ summary: 'Get retrievals by parent retrieval ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Retrievals retrieved successfully',
+  })
+  @ApiResponse({ status: 404, description: 'Parent retrieval not found' })
+  async getRetrievalsByParentRetrievalId(
+    @Param('parentRetrievalId') parentRetrievalId: string,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const retrievals =
+          await this.retrievalService.getRetrievalsByParentRetrievalId(
+            parentRetrievalId,
+          );
+        return {
+          statusCode: 200,
+          message: 'Retrievals retrieved successfully',
+          data: retrievals,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Get('/export/:parentRetrievalId')
+  @ApiOperation({
+    summary: 'Export retrieval items to Excel by parent retrieval ID',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Excel file generated successfully',
+  })
+  @ApiResponse({ status: 404, description: 'Parent retrieval not found' })
+  async exportRetrievalItems(
+    @Param('parentRetrievalId') parentRetrievalId: string,
+    @Res() response: Response,
+  ) {
+    try {
+      const parentRetrieval =
+        await this.retrievalService.getParentRetrievalById(parentRetrievalId);
+
+      const buffer =
+        await this.retrievalService.exportRetrievalItemsToExcel(
+          parentRetrievalId,
+        );
+
+      const fileName = `${parentRetrieval.name}.xlsx`;
+
+      response.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      response.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${fileName}"`,
+      );
+      response.send(buffer);
+    } catch (error) {
+      this.logger.error(
+        `Error exporting retrieval items: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
   }
 
   @Get('/:id')

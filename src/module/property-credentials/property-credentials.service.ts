@@ -80,6 +80,36 @@ export class PropertyCredentialsService implements IPropertyCredentialsService {
     }
   }
 
+  async getPropertyCredentialsByPropertyId(
+    propertyId: string,
+  ): Promise<PropertyCredentials | null> {
+    try {
+      const credentials = await this.repository.findByPropertyId(propertyId);
+      return credentials;
+    } catch (error) {
+      this.logger.error(
+        `Error finding property credentials by property ID: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  decryptPassword(encryptedPassword: string): string {
+    try {
+      if (!encryptedPassword) {
+        return '';
+      }
+      return this.encryptionUtil.decryptPassword(encryptedPassword);
+    } catch (error) {
+      this.logger.error(
+        `Error decrypting password: ${error.message}`,
+        error.stack,
+      );
+      return '';
+    }
+  }
+
   async updatePropertyCredentials(
     id: string,
     data: UpdatePropertyCredentialsDto,

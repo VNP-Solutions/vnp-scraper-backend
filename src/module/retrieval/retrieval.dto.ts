@@ -248,6 +248,9 @@ export class UploadRetrievalResponseDto {
   @ApiProperty({ description: 'Number of retrievals created successfully' })
   retrievalsCreated: number;
 
+  @ApiProperty({ description: 'Number of retrieval items created' })
+  retrievalItemsCreated: number;
+
   @ApiProperty({ description: 'Number of retrievals that failed to create' })
   retrievalsFailed: number;
 

@@ -21,6 +21,18 @@ export class RetrievalRepository implements IRetrievalRepository {
     });
   }
 
+  async findAllParentRetrievals(): Promise<ParentRetrieval[]> {
+    return this.prisma.parentRetrieval.findMany({
+      select: {
+        id: true,
+        name: true,
+      },
+      orderBy: {
+        name: 'desc',
+      },
+    });
+  }
+
   async createRetrieval(data: CreateRetrievalDto): Promise<Retrieval> {
     return this.prisma.retrieval.create({
       data,
@@ -120,6 +132,33 @@ export class RetrievalRepository implements IRetrievalRepository {
       include: {
         retrievals: true,
         retrievalItems: true,
+      },
+    });
+  }
+
+  async findRetrievalItemsByParentRetrievalId(
+    parentRetrievalId: string,
+  ): Promise<RetrievalItem[]> {
+    return this.prisma.retrievalItem.findMany({
+      where: { parent_retrieval_id: parentRetrievalId },
+      include: {
+        retrieval: true,
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+    });
+  }
+
+  async findRetrievalsByParentRetrievalId(
+    parentRetrievalId: string,
+  ): Promise<Retrieval[]> {
+    return this.prisma.retrieval.findMany({
+      where: {
+        parent_retrieval_id: parentRetrievalId,
+      },
+      orderBy: {
+        createdAt: 'desc',
       },
     });
   }

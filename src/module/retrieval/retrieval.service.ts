@@ -12,7 +12,11 @@ import {
   RetrievalItem,
 } from '@prisma/client';
 import * as XLSX from 'xlsx';
-import { IPropertyRepository } from '../property/property.interface';
+import { IPropertyCredentialsService } from '../property-credentials/property-credentials.interface';
+import {
+  IPropertyRepository,
+  IPropertyService,
+} from '../property/property.interface';
 import {
   CreateParentRetrievalDto,
   CreateRetrievalDto,
@@ -28,6 +32,10 @@ export class RetrievalService implements IRetrievalService {
     private readonly repository: IRetrievalRepository,
     @Inject('IPropertyRepository')
     private readonly propertyRepository: IPropertyRepository,
+    @Inject('IPropertyService')
+    private readonly propertyService: IPropertyService,
+    @Inject('IPropertyCredentialsService')
+    private readonly propertyCredentialsService: IPropertyCredentialsService,
     private readonly logger: Logger,
   ) {}
 
@@ -94,6 +102,7 @@ export class RetrievalService implements IRetrievalService {
     successCount: number;
     failedCount: number;
     failedHotelIds: string[];
+    retrievalItemsCount: number;
   }> {
     try {
       if (!file) {
@@ -132,6 +141,7 @@ export class RetrievalService implements IRetrievalService {
       const failedHotelIds: string[] = [];
       let createdPropertiesCount = 0;
       let createdPortfoliosCount = 0;
+      let retrievalItemsCount = 0;
 
       this.logger.log(
         `Processing ${groupedByHotelId.size} unique hotels from Excel file`,
@@ -171,7 +181,7 @@ export class RetrievalService implements IRetrievalService {
               );
             }
 
-            // Create property
+            // Create property using service (handles business logic)
             const propertyData = {
               name: firstRow['Hotel Name'] || `Hotel ${hotelId}`,
               portfolio_id: portfolio.id,
@@ -179,11 +189,36 @@ export class RetrievalService implements IRetrievalService {
               expedia_status: 'Active',
             };
 
-            property = await this.propertyRepository.create(propertyData);
+            property = await this.propertyService.createProperty(propertyData);
             createdPropertiesCount++;
             this.logger.log(
               `Created new property: ${property.id} - ${property.name} (Hotel ID: ${hotelId})`,
             );
+
+            // Create property credentials if username and password are provided
+            const username = firstRow['User Name']?.toString()?.trim();
+            const password = firstRow['Password']?.toString()?.trim();
+
+            if (username || password) {
+              try {
+                await this.propertyCredentialsService.createPropertyCredentials(
+                  {
+                    property_id: property.id,
+                    expediaUsername: username || '',
+                    expediaPassword: password || '',
+                  },
+                );
+
+                this.logger.log(
+                  `Created property credentials for property: ${property.id}`,
+                );
+              } catch (credError) {
+                this.logger.error(
+                  `Failed to create credentials for property ${property.id}: ${credError.message}`,
+                );
+                // Don't fail the entire process if credentials creation fails
+              }
+            }
           }
 
           const reservationIds = rows
@@ -213,6 +248,64 @@ export class RetrievalService implements IRetrievalService {
             `Created Retrieval: ${retrieval.id} for Hotel ID: ${hotelId}`,
           );
           retrievals.push(retrieval);
+
+          // Create RetrievalItems for each row
+          const retrievalItems: CreateRetrievalItemDto[] = [];
+          for (const row of rows) {
+            const reservationId = row['Reservation ID']?.toString();
+            const checkInDate = this.parseExcelDate(row['Check In']);
+            const checkOutDate = this.parseExcelDate(row['Check Out']);
+
+            if (reservationId && checkInDate && checkOutDate) {
+              const retrievalItemData: CreateRetrievalItemDto = {
+                retrieval_id: retrieval.id,
+                parent_retrieval_id: parentRetrieval.id,
+                property_id: property.id,
+                guest_name: row['Name']?.toString() || 'Unknown',
+                reservation_id: reservationId,
+                confirmation_number:
+                  row['Hotel Confirmation Code']?.toString() || null,
+                check_in_date: checkInDate,
+                check_out_date: checkOutDate,
+                room_type: 'Standard',
+                booking_amount: parseFloat(row['Amount to charge']) || 0,
+                booked_date: new Date(),
+                has_card_info: !!(
+                  row['Card first 4'] ||
+                  row['Card last 12'] ||
+                  row['Card Expire'] ||
+                  row['Card CVV']
+                ),
+                card_info:
+                  row['Card first 4'] ||
+                  row['Card last 12'] ||
+                  row['Card Expire'] ||
+                  row['Card CVV']
+                    ? {
+                        card_number: `${row['Card first 4']}****${row['Card last 12']}`,
+                        cvv: row['Card CVV']?.toString() || null,
+                        expiry_date: row['Card Expire']?.toString() || null,
+                      }
+                    : null,
+                has_payment_info: false,
+                payment_info: null,
+                reservation_status:
+                  row['Charge status']?.toString() || 'Pending',
+                additional_text: row['isMissing']?.toString() || null,
+              };
+
+              retrievalItems.push(retrievalItemData);
+            }
+          }
+
+          if (retrievalItems.length > 0) {
+            await this.repository.createManyRetrievalItems(retrievalItems);
+            retrievalItemsCount += retrievalItems.length;
+            this.logger.log(
+              `Created ${retrievalItems.length} RetrievalItems for Retrieval: ${retrieval.id}`,
+            );
+          }
+
           successCount++;
         } catch (error) {
           this.logger.error(
@@ -225,7 +318,7 @@ export class RetrievalService implements IRetrievalService {
       }
 
       this.logger.log(
-        `Processing completed: 1 Parent Retrieval, ${successCount} Retrievals (Success), ${failedCount} Retrievals (Failed), ${createdPortfoliosCount} Portfolios Created, ${createdPropertiesCount} Properties Created`,
+        `Processing completed: 1 Parent Retrieval, ${successCount} Retrievals (Success), ${failedCount} Retrievals (Failed), ${retrievalItemsCount} Retrieval Items, ${createdPortfoliosCount} Portfolios Created, ${createdPropertiesCount} Properties Created`,
       );
 
       if (failedHotelIds.length > 0) {
@@ -238,10 +331,106 @@ export class RetrievalService implements IRetrievalService {
         successCount,
         failedCount,
         failedHotelIds,
+        retrievalItemsCount,
       };
     } catch (error) {
       this.logger.error(
         `Error uploading retrieval excel: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async exportRetrievalItemsToExcel(
+    parentRetrievalId: string,
+  ): Promise<Buffer> {
+    try {
+      // Get parent retrieval
+      const parentRetrieval =
+        await this.repository.findParentRetrievalById(parentRetrievalId);
+      if (!parentRetrieval) {
+        throw new BadRequestException('Parent retrieval not found');
+      }
+
+      // Get all retrieval items for this parent retrieval
+      const retrievalItems =
+        await this.repository.findRetrievalItemsByParentRetrievalId(
+          parentRetrievalId,
+        );
+
+      if (retrievalItems.length === 0) {
+        throw new BadRequestException(
+          'No retrieval items found for this parent retrieval',
+        );
+      }
+
+      // Get property details for each item
+      const excelData = [];
+      for (const item of retrievalItems) {
+        const property: any = await this.propertyRepository.findById(
+          item.property_id,
+        );
+        const retrieval: any = (item as any).retrieval;
+
+        // Fetch credentials and decrypt password
+        const credentials =
+          await this.propertyCredentialsService.getPropertyCredentialsByPropertyId(
+            item.property_id,
+          );
+
+        let username = '';
+        let password = '';
+        if (credentials) {
+          username = credentials.expediaUsername || '';
+          password = credentials.expediaPassword
+            ? this.propertyCredentialsService.decryptPassword(
+                credentials.expediaPassword,
+              )
+            : '';
+        }
+
+        const row = {
+          'Hotel ID': property?.expedia_id || '',
+          Batch: retrieval?.batch_id || '',
+          'Posting Type': retrieval?.posting_type || '',
+          Portfolio: retrieval?.portfolio_name || '',
+          'Hotel Name': property?.name || '',
+          'Reservation ID': item.reservation_id || '',
+          'Hotel Confirmation Code': item.confirmation_number || '',
+          Name: item.guest_name || '',
+          'Check In': item.check_in_date
+            ? new Date(item.check_in_date).toLocaleDateString()
+            : '',
+          'Check Out': item.check_out_date
+            ? new Date(item.check_out_date).toLocaleDateString()
+            : '',
+          Currency: 'USD',
+          'Amount to charge': item.booking_amount || 0,
+          'Charge status': item.reservation_status || '',
+          'Card first 4': item.card_info?.card_number?.substring(0, 4) || '',
+          'Card last 12': item.card_info?.card_number?.substring(8) || '',
+          'Card Expire': item.card_info?.expiry_date || '',
+          'Card CVV': item.card_info?.cvv || '',
+          'User Name': username,
+          Password: password,
+          isMissing: item.additional_text || 'Present',
+        };
+
+        excelData.push(row);
+      }
+
+      // Create Excel workbook
+      const worksheet = XLSX.utils.json_to_sheet(excelData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Retrieval Items');
+
+      // Generate buffer
+      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+      return buffer;
+    } catch (error) {
+      this.logger.error(
+        `Error exporting retrieval items to Excel: ${error.message}`,
         error.stack,
       );
       throw error;
@@ -256,6 +445,18 @@ export class RetrievalService implements IRetrievalService {
     } catch (error) {
       this.logger.error(
         `Error creating parent retrieval: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async getAllParentRetrievals(): Promise<ParentRetrieval[]> {
+    try {
+      return await this.repository.findAllParentRetrievals();
+    } catch (error) {
+      this.logger.error(
+        `Error getting all parent retrievals: ${error.message}`,
         error.stack,
       );
       throw error;
@@ -312,6 +513,22 @@ export class RetrievalService implements IRetrievalService {
     } catch (error) {
       this.logger.error(
         `Error finding retrieval: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async getRetrievalsByParentRetrievalId(
+    parentRetrievalId: string,
+  ): Promise<Retrieval[]> {
+    try {
+      return await this.repository.findRetrievalsByParentRetrievalId(
+        parentRetrievalId,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Error getting retrievals by parent retrieval ID: ${error.message}`,
         error.stack,
       );
       throw error;
