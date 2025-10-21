@@ -31,6 +31,8 @@ import {
   AllJobItemsResponseDto,
   BatchPropertyRunJobRequestDto,
   BatchPropertyRunJobResponseDto,
+  BatchRetrievalRunJobRequestDto,
+  BatchRetrievalRunJobResponseDto,
   ErrorResponseDto,
   HealthResponseDto,
   PauseResumeStopResponseDto,
@@ -1400,6 +1402,141 @@ export class ScraperController {
         message: 'Expedia retrieval server is down',
       };
       return res.status(status).json(data);
+    }
+  }
+
+  @Post('/api/batch-retrieval-run-job')
+  @ApiOperation({
+    summary: 'Start batch retrieval scraping jobs',
+    description:
+      'Execute multiple retrieval scraping jobs in batch. Each job is routed to the Expedia retrieval server. Jobs are processed sequentially to ensure stability. The EXPEDIA_MODE environment variable determines whether to use GraphQL or regular scraper endpoint.',
+  })
+  @ApiBody({ type: BatchRetrievalRunJobRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Batch retrieval scraping jobs completed',
+    type: BatchRetrievalRunJobResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid request body or missing job data',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Error processing batch retrieval jobs',
+    type: ErrorResponseDto,
+  })
+  async batchRetrievalRunJob(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Body() body: BatchRetrievalRunJobRequestDto,
+  ) {
+    try {
+      if (!body.jobs || body.jobs.length === 0) {
+        return res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          message: 'No jobs provided in request',
+          error: 'Jobs array is required and cannot be empty',
+        });
+      }
+
+      const selectedUrl = this.getExpediaRetrievalUrl();
+
+      if (!selectedUrl) {
+        return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message:
+            'No Expedia retrieval server URL configured (EXPEDIA_RETRIVAL_SERVER_URL)',
+          error: 'Expedia retrieval server URL not configured',
+        });
+      }
+
+      const processedResults = [];
+
+      // Determine the API path based on EXPEDIA_MODE
+      const expediadMode = this.configService.get<string>('EXPEDIA_MODE');
+      const apiPath =
+        expediadMode === 'graphql'
+          ? '/api/expedia/graphql-retrieval-run-job'
+          : '/api/expedia/retrieval-run-job';
+
+      console.log(
+        `Using Expedia retrieval server with ${expediadMode || 'scraper'} mode for batch processing: ${apiPath}`,
+      );
+
+      // Process jobs sequentially using for...of loop
+      for (const retrievalRequest of body.jobs) {
+        try {
+          // Add the selected URL to the request body
+          const enhancedBody = {
+            ...retrievalRequest,
+            scraperUrl: selectedUrl,
+          };
+
+          console.log(
+            `[Batch Retrieval] Processing retrieval ${retrievalRequest.retrieval_id}`,
+          );
+
+          const response = await firstValueFrom(
+            this.httpService.post(`${selectedUrl}${apiPath}`, enhancedBody, {
+              headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+              },
+              timeout: 100,
+            }),
+          );
+
+          processedResults.push({
+            jobId: retrievalRequest.retrieval_id,
+            otaProvider: 'Expedia',
+            status: response.status,
+            message: response.data?.message || 'Retrieval run successfully',
+            success: true,
+            data: response.data,
+          });
+        } catch (error: any) {
+          const status =
+            error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
+          const errorMessage =
+            error.response?.data?.message ||
+            error.message ||
+            'Unknown error occurred';
+
+          processedResults.push({
+            jobId: retrievalRequest.retrieval_id,
+            otaProvider: 'Expedia',
+            status,
+            message: errorMessage,
+            success: false,
+            error: errorMessage,
+          });
+        }
+      }
+
+      const successfulJobs = processedResults.filter(
+        (result) => result.success,
+      ).length;
+      const failedJobs = processedResults.length - successfulJobs;
+
+      const responseData = {
+        status: HttpStatus.OK,
+        message: `Batch retrieval processing completed: ${successfulJobs} successful, ${failedJobs} failed`,
+        results: processedResults,
+        totalJobs: body.jobs.length,
+        successfulJobs,
+        failedJobs,
+      };
+
+      return res.status(HttpStatus.OK).json(responseData);
+    } catch (error: any) {
+      console.error('Batch retrieval run job error:', error);
+      return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Error processing batch retrieval jobs',
+        error: error.message || 'Unknown error occurred',
+      });
     }
   }
 }
