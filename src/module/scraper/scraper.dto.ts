@@ -288,3 +288,40 @@ export class BatchPropertyRunJobResponseDto {
   @ApiProperty({ example: 1 })
   failedJobs: number;
 }
+
+export class BatchRetrievalJobDto {
+  @ApiProperty({
+    example: '507f1f77bcf86cd799439011',
+    description: 'MongoDB ObjectId of the retrieval to run.',
+  })
+  retrieval_id: string;
+}
+
+export class BatchRetrievalRunJobRequestDto {
+  @ApiProperty({
+    type: [BatchRetrievalJobDto],
+    description:
+      'List of retrieval jobs to execute. Each retrieval job will be routed to the Expedia retrieval server.',
+  })
+  jobs: BatchRetrievalJobDto[];
+}
+
+export class BatchRetrievalRunJobResponseDto {
+  @ApiProperty({ example: 200 })
+  status: number;
+
+  @ApiProperty({ example: 'Batch retrieval run completed' })
+  message: string;
+
+  @ApiProperty({ type: [BatchJobResultDto] })
+  results: BatchJobResultDto[];
+
+  @ApiProperty({ example: 5 })
+  totalJobs: number;
+
+  @ApiProperty({ example: 4 })
+  successfulJobs: number;
+
+  @ApiProperty({ example: 1 })
+  failedJobs: number;
+}
