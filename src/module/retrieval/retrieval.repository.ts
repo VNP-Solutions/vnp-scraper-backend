@@ -21,16 +21,73 @@ export class RetrievalRepository implements IRetrievalRepository {
     });
   }
 
-  async findAllParentRetrievals(): Promise<ParentRetrieval[]> {
-    return this.prisma.parentRetrieval.findMany({
-      select: {
-        id: true,
-        name: true,
+  async findAllParentRetrievals(
+    query: Record<string, any>,
+  ): Promise<{ data: ParentRetrieval[]; metadata: any }> {
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = 'name',
+      sortOrder = 'desc',
+      search,
+      start_date,
+      end_date,
+      ...filters
+    } = query;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const take = parseInt(limit);
+    const where: any = { ...filters };
+
+    // Search functionality
+    if (search) {
+      const searchTerm = search.toString().trim();
+      const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(searchTerm);
+
+      where.OR = [
+        ...(isValidObjectId ? [{ id: searchTerm }] : []),
+        { name: { contains: searchTerm, mode: 'insensitive' } },
+      ];
+    }
+
+    // Note: ParentRetrieval model doesn't have createdAt field
+    // Date filtering is not available for parent retrievals
+
+    const orderBy = {
+      [sortBy]: sortOrder.toLowerCase() === 'desc' ? 'desc' : 'asc',
+    };
+
+    const [data, total] = await Promise.all([
+      this.prisma.parentRetrieval.findMany({
+        where,
+        skip,
+        take,
+        orderBy,
+        include: {
+          retrievals: {
+            select: {
+              id: true,
+              name: true,
+              job_status: true,
+              property_name: true,
+              ota_provider: true,
+              createdAt: true,
+            },
+          },
+        },
+      }),
+      this.prisma.parentRetrieval.count({ where }),
+    ]);
+
+    return {
+      data,
+      metadata: {
+        totalDocuments: total,
+        currentPage: parseInt(page),
+        totalPage: Math.ceil(total / parseInt(limit)),
+        limit: parseInt(limit),
       },
-      orderBy: {
-        name: 'desc',
-      },
-    });
+    };
   }
 
   async createRetrieval(data: CreateRetrievalDto): Promise<Retrieval> {
@@ -152,15 +209,147 @@ export class RetrievalRepository implements IRetrievalRepository {
 
   async findRetrievalsByParentRetrievalId(
     parentRetrievalId: string,
-  ): Promise<Retrieval[]> {
-    return this.prisma.retrieval.findMany({
-      where: {
-        parent_retrieval_id: parentRetrievalId,
+    query: Record<string, any>,
+  ): Promise<{ data: Retrieval[]; metadata: any }> {
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+      search,
+      start_date,
+      end_date,
+      job_status,
+      ota_provider,
+      posting_type,
+      property_name,
+      portfolio_name,
+      sub_portfolio_name,
+      ...filters
+    } = query;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const take = parseInt(limit);
+    const where: any = {
+      parent_retrieval_id: parentRetrievalId,
+      ...filters,
+    };
+
+    // Search functionality
+    if (search) {
+      const searchTerm = search.toString().trim();
+      const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(searchTerm);
+
+      where.OR = [
+        // Retrieval fields - only search by ID if it's a valid ObjectId format
+        ...(isValidObjectId ? [{ id: searchTerm }] : []),
+        { name: { contains: searchTerm, mode: 'insensitive' } },
+
+        // Portfolio/Sub-portfolio/Property names (stored as plain fields, not relationships)
+        { portfolio_name: { contains: searchTerm, mode: 'insensitive' } },
+        { sub_portfolio_name: { contains: searchTerm, mode: 'insensitive' } },
+        { property_name: { contains: searchTerm, mode: 'insensitive' } },
+
+        // OTA provider search
+        ...(searchTerm.toLowerCase() === 'expedia' ||
+        searchTerm.toLowerCase() === 'booking' ||
+        searchTerm.toLowerCase() === 'agoda'
+          ? [
+              {
+                ota_provider: {
+                  equals:
+                    searchTerm.charAt(0).toUpperCase() +
+                    searchTerm.slice(1).toLowerCase(),
+                  mode: 'insensitive',
+                },
+              },
+            ]
+          : []),
+      ];
+    }
+
+    // Date filtering
+    if (start_date && end_date) {
+      where.createdAt = {
+        gte: new Date(start_date),
+        lte: new Date(end_date),
+      };
+    }
+
+    // Status filtering
+    if (job_status) {
+      where.job_status = job_status;
+    }
+
+    // OTA provider filtering
+    if (ota_provider) {
+      where.ota_provider = ota_provider;
+    }
+
+    // Posting type filtering
+    if (posting_type) {
+      where.posting_type = posting_type;
+    }
+
+    // Property name filtering (partial match)
+    if (property_name) {
+      where.property_name = {
+        contains: property_name.toString().trim(),
+        mode: 'insensitive',
+      };
+    }
+
+    // Portfolio name filtering (partial match)
+    if (portfolio_name) {
+      where.portfolio_name = {
+        contains: portfolio_name.toString().trim(),
+        mode: 'insensitive',
+      };
+    }
+
+    // Sub-portfolio name filtering (partial match)
+    if (sub_portfolio_name) {
+      where.sub_portfolio_name = {
+        contains: sub_portfolio_name.toString().trim(),
+        mode: 'insensitive',
+      };
+    }
+
+    const orderBy = {
+      [sortBy]: sortOrder.toLowerCase() === 'desc' ? 'desc' : 'asc',
+    };
+
+    // Include only available relationships
+    const include = {
+      parentRetrieval: {
+        select: {
+          id: true,
+          name: true,
+        },
       },
-      orderBy: {
-        createdAt: 'desc',
+      retrievalItems: true,
+    };
+
+    const [data, total] = await Promise.all([
+      this.prisma.retrieval.findMany({
+        where,
+        skip,
+        take,
+        orderBy,
+        include,
+      }),
+      this.prisma.retrieval.count({ where }),
+    ]);
+
+    return {
+      data,
+      metadata: {
+        totalDocuments: total,
+        currentPage: parseInt(page),
+        totalPage: Math.ceil(total / parseInt(limit)),
+        limit: parseInt(limit),
       },
-    });
+    };
   }
 
   async updateRetrieval(
