@@ -17,10 +17,12 @@ import {
   ApiBody,
   ApiConsumes,
   ApiOperation,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import { Response } from 'express';
+import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
 import { ExcelFileInterceptorOptions } from '../../common/interceptors/excel-file.interceptor';
 import { ResponseHandler } from '../../common/utils/response-handler';
@@ -140,16 +142,48 @@ export class RetrievalController {
     status: 200,
     description: 'Parent retrievals retrieved successfully',
   })
-  async getAllParentRetrievals(@Res() response: Response) {
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    description: 'Search parent retrievals by name or ID',
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: 'number',
+    description: 'Page number for pagination',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: 'number',
+    description: 'Number of items per page',
+  })
+  @ApiQuery({
+    name: 'sortBy',
+    required: false,
+    description: 'Field to sort by (available fields: id, name)',
+  })
+  @ApiQuery({
+    name: 'sortOrder',
+    required: false,
+    enum: ['asc', 'desc'],
+    description: 'Sort order (asc or desc)',
+  })
+  async getAllParentRetrievals(
+    @ParseQuery() query: Record<string, any>,
+    @Res() response: Response,
+  ) {
     return ResponseHandler.handler(
       response,
       async () => {
-        const parentRetrievals =
-          await this.retrievalService.getAllParentRetrievals();
+        const result =
+          await this.retrievalService.getAllParentRetrievals(query);
         return {
           statusCode: 200,
           message: 'Parent retrievals retrieved successfully',
-          data: parentRetrievals,
+          data: result.data,
+          metadata: result.metadata,
         };
       },
       this.logger,
@@ -236,21 +270,110 @@ export class RetrievalController {
     description: 'Retrievals retrieved successfully',
   })
   @ApiResponse({ status: 404, description: 'Parent retrieval not found' })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    description:
+      'Search retrievals by retrieval ID, name, portfolio name, sub-portfolio name, property name, or OTA provider',
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: 'number',
+    description: 'Page number for pagination',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: 'number',
+    description: 'Number of items per page',
+  })
+  @ApiQuery({
+    name: 'sortBy',
+    required: false,
+    description:
+      'Field to sort by (e.g., name, createdAt, updatedAt, job_status, property_name)',
+  })
+  @ApiQuery({
+    name: 'sortOrder',
+    required: false,
+    enum: ['asc', 'desc'],
+    description: 'Sort order (asc or desc)',
+  })
+  @ApiQuery({
+    name: 'start_date',
+    required: false,
+    description: 'Start date for filtering (YYYY-MM-DD)',
+  })
+  @ApiQuery({
+    name: 'end_date',
+    required: false,
+    description: 'End date for filtering (YYYY-MM-DD)',
+  })
+  @ApiQuery({
+    name: 'job_status',
+    required: false,
+    description:
+      'Filter by job status (e.g., Pending, Running, Completed, Failed, Stopped)',
+  })
+  @ApiQuery({
+    name: 'ota_provider',
+    required: false,
+    description: 'Filter by OTA provider (Expedia, Booking, Agoda)',
+  })
+  @ApiQuery({
+    name: 'posting_type',
+    required: false,
+    description: 'Filter by posting type (OTA, OTA_PLUS)',
+  })
+  @ApiQuery({
+    name: 'property_id',
+    required: false,
+    description: 'Filter by property ID',
+  })
+  @ApiQuery({
+    name: 'portfolio_id',
+    required: false,
+    description: 'Filter by portfolio ID',
+  })
+  @ApiQuery({
+    name: 'sub_portfolio_id',
+    required: false,
+    description: 'Filter by sub-portfolio ID',
+  })
+  @ApiQuery({
+    name: 'property_name',
+    required: false,
+    description: 'Filter by property name (partial match)',
+  })
+  @ApiQuery({
+    name: 'portfolio_name',
+    required: false,
+    description: 'Filter by portfolio name (partial match)',
+  })
+  @ApiQuery({
+    name: 'sub_portfolio_name',
+    required: false,
+    description: 'Filter by sub-portfolio name (partial match)',
+  })
   async getRetrievalsByParentRetrievalId(
     @Param('parentRetrievalId') parentRetrievalId: string,
+    @ParseQuery() query: Record<string, any>,
     @Res() response: Response,
   ) {
     return ResponseHandler.handler(
       response,
       async () => {
-        const retrievals =
+        const result =
           await this.retrievalService.getRetrievalsByParentRetrievalId(
             parentRetrievalId,
+            query,
           );
         return {
           statusCode: 200,
           message: 'Retrievals retrieved successfully',
-          data: retrievals,
+          data: result.data,
+          metadata: result.metadata,
         };
       },
       this.logger,

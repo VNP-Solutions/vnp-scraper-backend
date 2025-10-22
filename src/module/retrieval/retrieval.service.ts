@@ -451,9 +451,11 @@ export class RetrievalService implements IRetrievalService {
     }
   }
 
-  async getAllParentRetrievals(): Promise<ParentRetrieval[]> {
+  async getAllParentRetrievals(
+    query: Record<string, any>,
+  ): Promise<{ data: ParentRetrieval[]; metadata: any }> {
     try {
-      return await this.repository.findAllParentRetrievals();
+      return await this.repository.findAllParentRetrievals(query);
     } catch (error) {
       this.logger.error(
         `Error getting all parent retrievals: ${error.message}`,
@@ -521,10 +523,12 @@ export class RetrievalService implements IRetrievalService {
 
   async getRetrievalsByParentRetrievalId(
     parentRetrievalId: string,
-  ): Promise<Retrieval[]> {
+    query: Record<string, any>,
+  ): Promise<{ data: Retrieval[]; metadata: any }> {
     try {
       return await this.repository.findRetrievalsByParentRetrievalId(
         parentRetrievalId,
+        query,
       );
     } catch (error) {
       this.logger.error(

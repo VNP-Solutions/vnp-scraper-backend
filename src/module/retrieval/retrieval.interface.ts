@@ -22,7 +22,9 @@ export interface IRetrievalService {
   createParentRetrieval(
     data: CreateParentRetrievalDto,
   ): Promise<ParentRetrieval>;
-  getAllParentRetrievals(): Promise<ParentRetrieval[]>;
+  getAllParentRetrievals(
+    query: Record<string, any>,
+  ): Promise<{ data: ParentRetrieval[]; metadata: any }>;
   createRetrieval(data: CreateRetrievalDto): Promise<Retrieval>;
   createRetrievalItem(data: CreateRetrievalItemDto): Promise<RetrievalItem>;
   getAllRetrievals(
@@ -30,7 +32,8 @@ export interface IRetrievalService {
   ): Promise<{ data: Retrieval[]; metadata: any }>;
   getRetrievalsByParentRetrievalId(
     parentRetrievalId: string,
-  ): Promise<Retrieval[]>;
+    query: Record<string, any>,
+  ): Promise<{ data: Retrieval[]; metadata: any }>;
   getRetrievalById(id: string): Promise<Retrieval>;
   getParentRetrievalById(id: string): Promise<ParentRetrieval>;
   updateRetrieval(id: string, data: UpdateRetrievalDto): Promise<Retrieval>;
@@ -42,7 +45,9 @@ export interface IRetrievalRepository {
   createParentRetrieval(
     data: CreateParentRetrievalDto,
   ): Promise<ParentRetrieval>;
-  findAllParentRetrievals(): Promise<ParentRetrieval[]>;
+  findAllParentRetrievals(
+    query: Record<string, any>,
+  ): Promise<{ data: ParentRetrieval[]; metadata: any }>;
   createRetrieval(data: CreateRetrievalDto): Promise<Retrieval>;
   createRetrievalItem(data: CreateRetrievalItemDto): Promise<RetrievalItem>;
   findAllRetrievals(
@@ -50,7 +55,8 @@ export interface IRetrievalRepository {
   ): Promise<{ data: Retrieval[]; metadata: any }>;
   findRetrievalsByParentRetrievalId(
     parentRetrievalId: string,
-  ): Promise<Retrieval[]>;
+    query: Record<string, any>,
+  ): Promise<{ data: Retrieval[]; metadata: any }>;
   findRetrievalById(id: string): Promise<Retrieval | null>;
   findParentRetrievalById(id: string): Promise<ParentRetrieval | null>;
   findRetrievalItemsByParentRetrievalId(
