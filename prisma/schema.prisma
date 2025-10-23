@@ -423,6 +423,8 @@ model Batch {
 model ParentRetrieval {
   id   String @id @default(auto()) @map("_id") @db.ObjectId
   name String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   retrievals     Retrieval[]
   retrievalItems RetrievalItem[]

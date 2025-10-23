@@ -162,13 +162,24 @@ export class RetrievalController {
   @ApiQuery({
     name: 'sortBy',
     required: false,
-    description: 'Field to sort by (available fields: id, name)',
+    description:
+      'Field to sort by (available fields: id, name, createdAt, updatedAt)',
   })
   @ApiQuery({
     name: 'sortOrder',
     required: false,
     enum: ['asc', 'desc'],
     description: 'Sort order (asc or desc)',
+  })
+  @ApiQuery({
+    name: 'start_date',
+    required: false,
+    description: 'Start date for filtering (YYYY-MM-DD)',
+  })
+  @ApiQuery({
+    name: 'end_date',
+    required: false,
+    description: 'End date for filtering (YYYY-MM-DD)',
   })
   async getAllParentRetrievals(
     @ParseQuery() query: Record<string, any>,
