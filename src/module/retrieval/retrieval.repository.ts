@@ -50,8 +50,13 @@ export class RetrievalRepository implements IRetrievalRepository {
       ];
     }
 
-    // Note: ParentRetrieval model doesn't have createdAt field
-    // Date filtering is not available for parent retrievals
+    // Date filtering
+    if (start_date && end_date) {
+      where.createdAt = {
+        gte: new Date(start_date),
+        lte: new Date(end_date),
+      };
+    }
 
     const orderBy = {
       [sortBy]: sortOrder.toLowerCase() === 'desc' ? 'desc' : 'asc',
@@ -64,14 +69,9 @@ export class RetrievalRepository implements IRetrievalRepository {
         take,
         orderBy,
         include: {
-          retrievals: {
+          _count: {
             select: {
-              id: true,
-              name: true,
-              job_status: true,
-              property_name: true,
-              ota_provider: true,
-              createdAt: true,
+              retrievals: true,
             },
           },
         },
