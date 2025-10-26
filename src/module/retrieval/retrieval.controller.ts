@@ -455,6 +455,82 @@ export class RetrievalController {
     );
   }
 
+  @Get('/:retrievalId/items')
+  @ApiOperation({ summary: 'Get retrieval items by retrieval ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Retrieval items retrieved successfully',
+  })
+  @ApiResponse({ status: 404, description: 'Retrieval not found' })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    description:
+      'Search retrieval items by reservation ID, guest name, or confirmation number',
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: 'number',
+    description: 'Page number for pagination',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: 'number',
+    description: 'Number of items per page',
+  })
+  @ApiQuery({
+    name: 'sortBy',
+    required: false,
+    description:
+      'Field to sort by (e.g., createdAt, reservation_id, guest_name, check_in_date, booking_amount)',
+  })
+  @ApiQuery({
+    name: 'sortOrder',
+    required: false,
+    enum: ['asc', 'desc'],
+    description: 'Sort order (asc or desc)',
+  })
+  @ApiQuery({
+    name: 'start_date',
+    required: false,
+    description: 'Start date for check-in filtering (YYYY-MM-DD)',
+  })
+  @ApiQuery({
+    name: 'end_date',
+    required: false,
+    description: 'End date for check-in filtering (YYYY-MM-DD)',
+  })
+  @ApiQuery({
+    name: 'reservation_status',
+    required: false,
+    description: 'Filter by reservation status',
+  })
+  async getRetrievalItemsByRetrievalId(
+    @Param('retrievalId') retrievalId: string,
+    @ParseQuery() query: Record<string, any>,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result =
+          await this.retrievalService.getRetrievalItemsByRetrievalId(
+            retrievalId,
+            query,
+          );
+        return {
+          statusCode: 200,
+          message: 'Retrieval items retrieved successfully',
+          data: result.data,
+          metadata: result.metadata,
+        };
+      },
+      this.logger,
+    );
+  }
+
   @Put('/:id')
   @ApiOperation({ summary: 'Update retrieval by ID' })
   @ApiResponse({ status: 200, description: 'Retrieval updated successfully' })
