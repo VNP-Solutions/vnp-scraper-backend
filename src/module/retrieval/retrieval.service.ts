@@ -250,61 +250,61 @@ export class RetrievalService implements IRetrievalService {
           retrievals.push(retrieval);
 
           // Create RetrievalItems for each row
-          const retrievalItems: CreateRetrievalItemDto[] = [];
-          for (const row of rows) {
-            const reservationId = row['Reservation ID']?.toString();
-            const checkInDate = this.parseExcelDate(row['Check In']);
-            const checkOutDate = this.parseExcelDate(row['Check Out']);
+          // const retrievalItems: CreateRetrievalItemDto[] = [];
+          // for (const row of rows) {
+          //   const reservationId = row['Reservation ID']?.toString();
+          //   const checkInDate = this.parseExcelDate(row['Check In']);
+          //   const checkOutDate = this.parseExcelDate(row['Check Out']);
 
-            if (reservationId && checkInDate && checkOutDate) {
-              const retrievalItemData: CreateRetrievalItemDto = {
-                retrieval_id: retrieval.id,
-                parent_retrieval_id: parentRetrieval.id,
-                property_id: property.id,
-                guest_name: row['Name']?.toString() || 'Unknown',
-                reservation_id: reservationId,
-                confirmation_number:
-                  row['Hotel Confirmation Code']?.toString() || null,
-                check_in_date: checkInDate,
-                check_out_date: checkOutDate,
-                room_type: 'Standard',
-                booking_amount: parseFloat(row['Amount to charge']) || 0,
-                booked_date: new Date(),
-                has_card_info: !!(
-                  row['Card first 4'] ||
-                  row['Card last 12'] ||
-                  row['Card Expire'] ||
-                  row['Card CVV']
-                ),
-                card_info:
-                  row['Card first 4'] ||
-                  row['Card last 12'] ||
-                  row['Card Expire'] ||
-                  row['Card CVV']
-                    ? {
-                        card_number: `${row['Card first 4']}****${row['Card last 12']}`,
-                        cvv: row['Card CVV']?.toString() || null,
-                        expiry_date: row['Card Expire']?.toString() || null,
-                      }
-                    : null,
-                has_payment_info: false,
-                payment_info: null,
-                reservation_status:
-                  row['Charge status']?.toString() || 'Pending',
-                additional_text: row['isMissing']?.toString() || null,
-              };
+          //   if (reservationId && checkInDate && checkOutDate) {
+          //     const retrievalItemData: CreateRetrievalItemDto = {
+          //       retrieval_id: retrieval.id,
+          //       parent_retrieval_id: parentRetrieval.id,
+          //       property_id: property.id,
+          //       guest_name: row['Name']?.toString() || 'Unknown',
+          //       reservation_id: reservationId,
+          //       confirmation_number:
+          //         row['Hotel Confirmation Code']?.toString() || null,
+          //       check_in_date: checkInDate,
+          //       check_out_date: checkOutDate,
+          //       room_type: 'Standard',
+          //       booking_amount: parseFloat(row['Amount to charge']) || 0,
+          //       booked_date: new Date(),
+          //       has_card_info: !!(
+          //         row['Card first 4'] ||
+          //         row['Card last 12'] ||
+          //         row['Card Expire'] ||
+          //         row['Card CVV']
+          //       ),
+          //       card_info:
+          //         row['Card first 4'] ||
+          //         row['Card last 12'] ||
+          //         row['Card Expire'] ||
+          //         row['Card CVV']
+          //           ? {
+          //               card_number: `${row['Card first 4']}****${row['Card last 12']}`,
+          //               cvv: row['Card CVV']?.toString() || null,
+          //               expiry_date: row['Card Expire']?.toString() || null,
+          //             }
+          //           : null,
+          //       has_payment_info: false,
+          //       payment_info: null,
+          //       reservation_status:
+          //         row['Charge status']?.toString() || 'Pending',
+          //       additional_text: row['isMissing']?.toString() || null,
+          //     };
 
-              retrievalItems.push(retrievalItemData);
-            }
-          }
+          //     retrievalItems.push(retrievalItemData);
+          //   }
+          // }
 
-          if (retrievalItems.length > 0) {
-            await this.repository.createManyRetrievalItems(retrievalItems);
-            retrievalItemsCount += retrievalItems.length;
-            this.logger.log(
-              `Created ${retrievalItems.length} RetrievalItems for Retrieval: ${retrieval.id}`,
-            );
-          }
+          // if (retrievalItems.length > 0) {
+          //   await this.repository.createManyRetrievalItems(retrievalItems);
+          //   retrievalItemsCount += retrievalItems.length;
+          //   this.logger.log(
+          //     `Created ${retrievalItems.length} RetrievalItems for Retrieval: ${retrieval.id}`,
+          //   );
+          // }
 
           successCount++;
         } catch (error) {
