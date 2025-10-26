@@ -555,6 +555,24 @@ export class RetrievalService implements IRetrievalService {
     }
   }
 
+  async getRetrievalItemsByRetrievalId(
+    retrievalId: string,
+    query: Record<string, any>,
+  ): Promise<{ data: RetrievalItem[]; metadata: any }> {
+    try {
+      return await this.repository.findRetrievalItemsByRetrievalId(
+        retrievalId,
+        query,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Error getting retrieval items by retrieval ID: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
   async updateRetrieval(
     id: string,
     data: UpdateRetrievalDto,

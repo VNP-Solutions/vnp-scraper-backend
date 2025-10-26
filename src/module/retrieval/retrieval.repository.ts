@@ -207,6 +207,77 @@ export class RetrievalRepository implements IRetrievalRepository {
     });
   }
 
+  async findRetrievalItemsByRetrievalId(
+    retrievalId: string,
+    query: Record<string, any>,
+  ): Promise<{ data: RetrievalItem[]; metadata: any }> {
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+      search,
+      start_date,
+      end_date,
+      reservation_status,
+      ...filters
+    } = query;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const take = parseInt(limit);
+    const where: any = {
+      retrieval_id: retrievalId,
+      ...filters,
+    };
+
+    // Search functionality
+    if (search) {
+      const searchTerm = search.toString().trim();
+      where.OR = [
+        { reservation_id: { contains: searchTerm, mode: 'insensitive' } },
+        { guest_name: { contains: searchTerm, mode: 'insensitive' } },
+        { confirmation_number: { contains: searchTerm, mode: 'insensitive' } },
+      ];
+    }
+
+    // Date filtering
+    if (start_date && end_date) {
+      where.check_in_date = {
+        gte: new Date(start_date),
+        lte: new Date(end_date),
+      };
+    }
+
+    // Status filtering
+    if (reservation_status) {
+      where.reservation_status = reservation_status;
+    }
+
+    const orderBy = {
+      [sortBy]: sortOrder.toLowerCase() === 'desc' ? 'desc' : 'asc',
+    };
+
+    const [data, total] = await Promise.all([
+      this.prisma.retrievalItem.findMany({
+        where,
+        skip,
+        take,
+        orderBy,
+      }),
+      this.prisma.retrievalItem.count({ where }),
+    ]);
+
+    return {
+      data,
+      metadata: {
+        totalDocuments: total,
+        currentPage: parseInt(page),
+        totalPage: Math.ceil(total / parseInt(limit)),
+        limit: parseInt(limit),
+      },
+    };
+  }
+
   async findRetrievalsByParentRetrievalId(
     parentRetrievalId: string,
     query: Record<string, any>,

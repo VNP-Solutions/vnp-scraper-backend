@@ -36,6 +36,10 @@ export interface IRetrievalService {
   ): Promise<{ data: Retrieval[]; metadata: any }>;
   getRetrievalById(id: string): Promise<Retrieval>;
   getParentRetrievalById(id: string): Promise<ParentRetrieval>;
+  getRetrievalItemsByRetrievalId(
+    retrievalId: string,
+    query: Record<string, any>,
+  ): Promise<{ data: RetrievalItem[]; metadata: any }>;
   updateRetrieval(id: string, data: UpdateRetrievalDto): Promise<Retrieval>;
   deleteRetrieval(id: string): Promise<void>;
   deleteParentRetrieval(id: string): Promise<void>;
@@ -62,6 +66,10 @@ export interface IRetrievalRepository {
   findRetrievalItemsByParentRetrievalId(
     parentRetrievalId: string,
   ): Promise<RetrievalItem[]>;
+  findRetrievalItemsByRetrievalId(
+    retrievalId: string,
+    query: Record<string, any>,
+  ): Promise<{ data: RetrievalItem[]; metadata: any }>;
   updateRetrieval(id: string, data: UpdateRetrievalDto): Promise<Retrieval>;
   deleteRetrieval(id: string): Promise<void>;
   deleteParentRetrieval(id: string): Promise<void>;
