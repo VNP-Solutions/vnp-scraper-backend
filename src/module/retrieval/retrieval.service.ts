@@ -118,7 +118,7 @@ export class RetrievalService implements IRetrievalService {
         throw new BadRequestException('Excel file is empty');
       }
 
-      const parentRetrievalName = `Retrieval ${new Date().toISOString().split('T')[0]}`;
+      const parentRetrievalName = file.originalname;
       const parentRetrieval = await this.createParentRetrieval({
         name: parentRetrievalName,
       });
