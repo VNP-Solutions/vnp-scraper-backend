@@ -1449,6 +1449,32 @@ export class PropertyRepository implements IPropertyRepository {
               }
             }
 
+            // Update property with IDs if they exist
+            const propertyUpdateData: any = {};
+            if (rowData['Expedia ID']) {
+              propertyUpdateData.expedia_id = rowData['Expedia ID'];
+            }
+            if (rowData['Booking ID']) {
+              propertyUpdateData.booking_id = rowData['Booking ID'];
+            }
+            if (rowData['Agoda ID']) {
+              propertyUpdateData.agoda_id = rowData['Agoda ID'];
+            }
+
+            // Update property if there are IDs to update
+            if (Object.keys(propertyUpdateData).length > 0) {
+              try {
+                await this.update(existingProperty.id, propertyUpdateData);
+                this.logger.log(
+                  `Updated property IDs for: ${existingProperty.name}`,
+                );
+              } catch (updateError) {
+                this.logger.error(
+                  `Error updating property IDs for ${existingProperty.name}: ${updateError.message}`,
+                );
+              }
+            }
+
             // Merge credentials if any credential data exists
             if (hasCredentials) {
               try {
