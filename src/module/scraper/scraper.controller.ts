@@ -157,6 +157,21 @@ export class ScraperController {
   }
 
   /**
+   * Get Expedia DB server URL
+   */
+  private getExpediaDbUrl(): string | null {
+    const url = this.configService.get<string>('EXPEDIA_DB_SERVER_URL');
+    if (!url) {
+      console.log('No EXPEDIA_DB_SERVER_URL configured');
+      return null;
+    }
+
+    const normalizedUrl = this.normalizeUrl(url);
+    console.log(`Expedia DB URL: ${normalizedUrl}`);
+    return normalizedUrl;
+  }
+
+  /**
    * Get API path based on OTA provider and job type
    */
   private getApiPathByOtaProvider(
@@ -238,6 +253,9 @@ export class ScraperController {
       EXPEDIA_RETRIVAL_SERVER_URL: this.configService.get<string>(
         'EXPEDIA_RETRIVAL_SERVER_URL',
       ),
+      EXPEDIA_DB_SERVER_URL: this.configService.get<string>(
+        'EXPEDIA_DB_SERVER_URL',
+      ),
       AGODA_SERVER_URL: this.configService.get<string>('AGODA_SERVER_URL'),
       BOOKING_SERVER_URL: this.configService.get<string>('BOOKING_SERVER_URL'),
       NODE_ENV: this.configService.get<string>('NODE_ENV'),
@@ -250,6 +268,9 @@ export class ScraperController {
         : null,
       expediadRetrieval: urls.EXPEDIA_RETRIVAL_SERVER_URL
         ? this.normalizeUrl(urls.EXPEDIA_RETRIVAL_SERVER_URL)
+        : null,
+      expediadDb: urls.EXPEDIA_DB_SERVER_URL
+        ? this.normalizeUrl(urls.EXPEDIA_DB_SERVER_URL)
         : null,
       agoda: urls.AGODA_SERVER_URL
         ? this.normalizeUrl(urls.AGODA_SERVER_URL)
@@ -643,9 +664,50 @@ export class ScraperController {
     let selectedUrl: string | null = null;
 
     try {
-      // Fetch job details to get OTA provider
+      // Fetch job details to get OTA provider and billing_type
       const job = await this.jobService.getJobById(body.jobId);
       const otaProvider = job.ota_provider || 'Expedia'; // Default to Expedia
+      const billingType = job.billing_type;
+
+      // Check if billing_type is 'DB' and route to DB server
+      if (billingType === 'DB') {
+        selectedUrl = this.getExpediaDbUrl();
+
+        if (!selectedUrl) {
+          return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+            success: false,
+            message:
+              'No Expedia DB server URL configured (EXPEDIA_DB_SERVER_URL)',
+            error: 'Expedia DB server URL not configured',
+          });
+        }
+
+        // Add the selected URL to the request body
+        const enhancedBody = {
+          ...body,
+          scraperUrl: selectedUrl,
+        };
+
+        console.log(`Using Expedia DB server for billing_type=DB`);
+
+        const response = await firstValueFrom(
+          this.httpService.post(
+            `${selectedUrl}/api/expedia/db-run-job`,
+            enhancedBody,
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+              },
+              timeout: 300000, // 5 minute timeout for long-running scraping jobs
+            },
+          ),
+        );
+
+        return res.status(response.status).json(response.data);
+      }
+
+      // Regular flow for non-DB billing types
       selectedUrl = this.getUrlByOtaProvider(otaProvider);
 
       if (!selectedUrl) {
@@ -748,9 +810,68 @@ export class ScraperController {
       // Process jobs sequentially using for...of loop
       for (const jobRequest of body.jobs) {
         try {
-          // Fetch job details to get OTA provider
+          // Fetch job details to get OTA provider and billing_type
           const job = await this.jobService.getJobById(jobRequest.jobId);
           const otaProvider = job.ota_provider || 'Expedia';
+          const billingType = job.billing_type;
+
+          // Check if billing_type is 'DB' and route to DB server
+          if (billingType === 'DB') {
+            const dbUrl = this.getExpediaDbUrl();
+
+            if (!dbUrl) {
+              processedResults.push({
+                jobId: jobRequest.jobId,
+                otaProvider,
+                billingType: 'DB',
+                status: HttpStatus.SERVICE_UNAVAILABLE,
+                message:
+                  'No Expedia DB server URL configured (EXPEDIA_DB_SERVER_URL)',
+                success: false,
+                error: 'Expedia DB server URL not configured',
+              });
+              continue;
+            }
+
+            // Add the selected URL to the request body
+            const enhancedBody = {
+              ...jobRequest,
+              scraperUrl: dbUrl,
+            };
+
+            console.log(
+              `[Batch] Using Expedia DB server for job ${jobRequest.jobId} (billing_type=DB)`,
+            );
+
+            const response = await firstValueFrom(
+              this.httpService.post(
+                `${dbUrl}/api/expedia/db-run-job`,
+                enhancedBody,
+                {
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                  },
+                  timeout: 100, // 5 minute timeout
+                },
+              ),
+            );
+
+            processedResults.push({
+              jobId: jobRequest.jobId,
+              otaProvider,
+              billingType: 'DB',
+              status: response.status,
+              message:
+                response.data?.message ||
+                'Property search running successfully',
+              success: true,
+              data: response.data,
+            });
+            continue;
+          }
+
+          // Regular flow for non-DB billing types
           const selectedUrl = this.getUrlByOtaProvider(otaProvider);
 
           if (!selectedUrl) {
@@ -1272,9 +1393,50 @@ export class ScraperController {
     let selectedUrl: string | null = null;
 
     try {
-      // Fetch job details to get OTA provider
+      // Fetch job details to get OTA provider and billing_type
       const job = await this.jobService.getJobById(body.jobId);
       const otaProvider = job.ota_provider || 'Expedia'; // Default to Expedia
+      const billingType  = job.billing_type;
+
+      // Check if billing_type is 'DB' and route to DB server
+      if (billingType === 'DB') {
+        selectedUrl = this.getExpediaDbUrl();
+
+        if (!selectedUrl) {
+          return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+            success: false,
+            message:
+              'No Expedia DB server URL configured (EXPEDIA_DB_SERVER_URL)',
+            error: 'Expedia DB server URL not configured',
+          });
+        }
+
+        // Add the selected URL to the request body
+        const enhancedBody = {
+          ...body,
+          scraperUrl: selectedUrl,
+        };
+
+        console.log(`Using Expedia DB server for billing_type=DB`);
+
+        const response = await firstValueFrom(
+          this.httpService.post(
+            `${selectedUrl}/api/expedia/db-run-job`,
+            enhancedBody,
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+              },
+              timeout: 300000, // 5 minute timeout for long-running scraping jobs
+            },
+          ),
+        );
+
+        return res.status(response.status).json(response.data);
+      }
+
+      // Regular flow for non-DB billing types
       selectedUrl = this.getUrlByOtaProvider(otaProvider);
 
       if (!selectedUrl) {
