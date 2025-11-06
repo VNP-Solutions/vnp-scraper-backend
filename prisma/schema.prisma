@@ -85,6 +85,11 @@ type PaymentInfo {
   charge_before              String?
 }
 
+type DateRange {
+  start_date String
+  end_date   String
+}
+
 model User {
   id              String    @id @default(auto()) @map("_id") @db.ObjectId
   email           String    @unique
@@ -204,7 +209,8 @@ model Job {
   user         User?         @relation(fields: [user_id], references: [id])
   batch        Batch?        @relation(fields: [batch_id], references: [id])
   jobItem      JobItem[]
-  OtpStatus OtpStatus[]
+  OtpStatus    OtpStatus[]
+  dbData       DbData[]
 
   @@map("jobs")
 }
@@ -525,4 +531,23 @@ model RetrievalItem {
   @@index([check_in_date])
   @@index([reservation_status])
   @@map("retrieval_items")
+}
+
+model DbData {
+  id                String    @id @default(auto()) @map("_id") @db.ObjectId
+  job_id            String    @db.ObjectId
+  property_name     String
+  property_id       String
+  date_range        DateRange
+  gearbox_queue_ids String[]  @default([])
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+
+  job Job @relation(fields: [job_id], references: [id], onDelete: Cascade)
+
+  @@index([job_id])
+  @@index([property_id])
+  @@index([job_id, property_id])
+  @@index([created_at])
+  @@map("db_datas")
 }
