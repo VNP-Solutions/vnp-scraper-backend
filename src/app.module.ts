@@ -7,6 +7,7 @@ import { ActivityLogModule } from './module/activity-log/activity-log.module';
 import { AgodaModule } from './module/agoda/agoda.module';
 import { AuthModule } from './module/auth/auth.module';
 import { DatabaseModule } from './module/database/database.module';
+import { DbDataModule } from './module/db-data/db-data.module';
 import { JobModule } from './module/job/job.module';
 import { OtpLogModule } from './module/otp-log/otp-log.module';
 import { OtpStatusModule } from './module/otp-status/otp-status.module';
@@ -43,6 +44,7 @@ import { UserModule } from './module/user/user.module';
     AgodaModule,
     OtpStatusModule,
     RetrievalModule,
+    DbDataModule,
   ],
   controllers: [AppController],
   providers: [AppService],
