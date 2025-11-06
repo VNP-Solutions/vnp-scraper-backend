@@ -64,6 +64,7 @@ enum OtpPlatform {
   agoda
   booking
   expedia_retrival
+  expedia_db
 }
 
 
