@@ -219,6 +219,50 @@ export class RetrievalService implements IRetrievalService {
                 // Don't fail the entire process if credentials creation fails
               }
             }
+          } else {
+            // Update property credential with new username and password
+            const username = firstRow['User Name']?.toString()?.trim();
+            const password = firstRow['Password']?.toString()?.trim();
+
+            if (username || password) {
+              try {
+                const existingCredentials =
+                  await this.propertyCredentialsService.getPropertyCredentialsByPropertyId(
+                    property.id,
+                  );
+
+                if (existingCredentials) {
+                  await this.propertyCredentialsService.updatePropertyCredentials(
+                    existingCredentials.id,
+                    {
+                      expediaUsername: username || '',
+                      expediaPassword: password || '',
+                    },
+                  );
+
+                  this.logger.log(
+                    `Updated property credentials for property: ${property.id}`,
+                  );
+                } else {
+                  await this.propertyCredentialsService.createPropertyCredentials(
+                    {
+                      property_id: property.id,
+                      expediaUsername: username || '',
+                      expediaPassword: password || '',
+                    },
+                  );
+
+                  this.logger.log(
+                    `Created property credentials for property: ${property.id}`,
+                  );
+                }
+              } catch (credError) {
+                this.logger.error(
+                  `Failed to update credentials for property ${property.id}: ${credError.message}`,
+                );
+                // Don't fail the entire process if credentials update fails
+              }
+            }
           }
 
           const reservationIds = rows
@@ -406,7 +450,8 @@ export class RetrievalService implements IRetrievalService {
             ? new Date(item.check_out_date).toLocaleDateString()
             : '',
           Currency: 'USD',
-          'Amount to charge': item.payment_info?.amount_to_charge_or_refund || 0,
+          'Amount to charge':
+            item.payment_info?.amount_to_charge_or_refund || 0,
           'Charge status': item.reservation_status || '',
           'Card first 4': item.card_info?.card_number?.slice(0, 4) || '',
           'Card last 12': item.card_info?.card_number?.slice(-12) || '',

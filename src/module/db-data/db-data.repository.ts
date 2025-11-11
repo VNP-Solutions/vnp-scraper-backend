@@ -128,17 +128,17 @@ export class DbDataRepository implements IDbDataRepository {
         }),
       ]);
 
-      const totalPages = Math.ceil(totalDocuments / take);
+      const totalPage = Math.ceil(totalDocuments / take);
       const currentPage = page ? parseInt(page) : 1;
 
       return {
         data: dbData,
         metadata: {
           totalDocuments,
-          totalPages,
+          totalPage,
           currentPage,
-          pageSize: take,
-          hasNextPage: currentPage < totalPages,
+          limit: take,
+          hasNextPage: currentPage < totalPage,
           hasPreviousPage: currentPage > 1,
         },
       };
