@@ -1,4 +1,4 @@
-import { Notification, NotificationType } from '@prisma/client';
+import { Notification } from '@prisma/client';
 import {
   CreateNotificationDto,
   NotificationPayload,
@@ -11,7 +11,7 @@ export interface INotificationRepository {
   createNotification(data: CreateNotificationDto): Promise<Notification>;
   createNotificationsForUsers(
     userIds: string[],
-    payload: NotificationPayload & { type: NotificationType },
+    payload: NotificationPayload & { type: string },
   ): Promise<Notification[]>;
   getAllUserIds(): Promise<string[]>;
   getNotificationsByUser(
