@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { Notification, NotificationType } from '@prisma/client';
+import { Notification } from '@prisma/client';
 import {
   CreateNotificationDto,
   NotificationQueryDto,
@@ -41,7 +41,7 @@ export class NotificationService implements INotificationService {
       }
       return await this.repository.createNotificationsForUsers(userIds, {
         ...data,
-        type: NotificationType.public,
+        type: 'public',
       });
     } catch (error) {
       this.logger.error(
@@ -63,7 +63,7 @@ export class NotificationService implements INotificationService {
         title: data.title,
         message: data.message,
         metadata: data.metadata,
-        type: NotificationType.protected,
+        type: 'protected',
       });
     } catch (error) {
       this.logger.error(

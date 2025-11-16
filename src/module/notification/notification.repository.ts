@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Notification, NotificationType } from '@prisma/client';
+import { Notification } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import {
   CreateNotificationDto,
@@ -127,7 +127,7 @@ export class NotificationRepository implements INotificationRepository {
 
   async createNotificationsForUsers(
     userIds: string[],
-    payload: NotificationPayload & { type: NotificationType },
+    payload: NotificationPayload & { type: string },
   ): Promise<Notification[]> {
     const notifications: Notification[] = [];
     for (const userId of userIds) {
