@@ -250,7 +250,8 @@ export class JobRepository implements IJobRepository {
   async findPortfolioByName(name: string): Promise<any> {
     try {
       const portfolio = await this.db.portfolio.findFirst({
-        where: { name: { equals: name, mode: 'insensitive' } },
+        // where: { name: { equals: name, mode: 'insensitive' } },
+        where: { name: name },
       });
       return portfolio;
     } catch (error) {
@@ -266,7 +267,8 @@ export class JobRepository implements IJobRepository {
     try {
       const subPortfolio = await this.db.subPortfolio.findFirst({
         where: {
-          name: { equals: name, mode: 'insensitive' },
+          // name: { equals: name, mode: 'insensitive' },
+          name: name,
           portfolio_id: portfolioId,
         },
       });

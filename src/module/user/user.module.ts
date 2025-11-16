@@ -1,11 +1,12 @@
-import { DatabaseService } from './../database/database.service';
 import { Logger, Module } from '@nestjs/common';
+import { NotificationModule } from '../notification/notification.module';
+import { DatabaseService } from './../database/database.service';
 import { UserController } from './user.controller';
 import { UserRepository } from './user.repository';
 import { UserService } from './user.service';
 
 @Module({
-  imports: [],
+  imports: [NotificationModule],
   controllers: [UserController],
   providers: [
     {

@@ -9,6 +9,7 @@ import { AuthModule } from './module/auth/auth.module';
 import { DatabaseModule } from './module/database/database.module';
 import { DbDataModule } from './module/db-data/db-data.module';
 import { JobModule } from './module/job/job.module';
+import { NotificationModule } from './module/notification/notification.module';
 import { OtpLogModule } from './module/otp-log/otp-log.module';
 import { OtpStatusModule } from './module/otp-status/otp-status.module';
 import { PortfolioModule } from './module/portfolio/portfolio.module';
@@ -45,6 +46,7 @@ import { UserModule } from './module/user/user.module';
     OtpStatusModule,
     RetrievalModule,
     DbDataModule,
+    NotificationModule,
   ],
   controllers: [AppController],
   providers: [AppService],
