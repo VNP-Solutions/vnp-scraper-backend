@@ -117,6 +117,7 @@ model User {
   userFeatureAccessPermissions UserFeatureAccessPermission[]
   sentInvitations              UserInvitation[]              @relation("InvitedBy")
   receivedInvitations          UserInvitation[]              @relation("InvitedUser")
+  notifications                Notification[]
 
   @@map("users")
 }
@@ -550,4 +551,22 @@ model DbData {
   @@index([job_id, property_id])
   @@index([created_at])
   @@map("db_datas")
+}
+
+model Notification {
+  id        String            @id @default(auto()) @map("_id") @db.ObjectId
+  user_id   String            @db.ObjectId
+  title     String?
+  message   String
+  type      String?
+  metadata  Json?
+  is_read   Boolean           @default(false)
+  readAt    DateTime?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  user User? @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, is_read])
+  @@map("notifications")
 }

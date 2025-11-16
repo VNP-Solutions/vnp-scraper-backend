@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { User } from '@prisma/client';
+import { Notification, User } from '@prisma/client';
+import { INotificationService } from '../notification/notification.interface';
 import { CreateUserDto, UpdateUserDto } from './user.dto';
 import { IUserRepository, IUserService } from './user.interface';
 
@@ -8,6 +9,8 @@ export class UserService implements IUserService {
   constructor(
     @Inject('IUserRepository')
     private readonly repository: IUserRepository,
+    @Inject('INotificationService')
+    private readonly notificationService: INotificationService,
     private readonly logger: Logger,
   ) {}
 
@@ -33,13 +36,20 @@ export class UserService implements IUserService {
     }
   }
 
-  async getUserById(id: string): Promise<User> {
+  async getUserById(
+    id: string,
+  ): Promise<User & { notifications: Notification[] }> {
     try {
       const user = await this.repository.findById(id);
       if (!user) {
         throw new NotFoundException(`User with ID ${id} not found`);
       }
-      return user;
+      const notificationResult =
+        await this.notificationService.getUserNotifications(id);
+      return {
+        ...user,
+        notifications: notificationResult.notifications,
+      };
     } catch (error) {
       this.logger.error(`Error finding user: ${error.message}`, error.stack);
       throw error;
@@ -49,6 +59,21 @@ export class UserService implements IUserService {
   async updateUser(id: string, data: UpdateUserDto): Promise<User> {
     try {
       const user = await this.repository.update(id, data);
+      if (user) {
+        try {
+          await this.notificationService.sendNotification({
+            user_id: user.id,
+            title: 'Profile updated',
+            message: 'Your profile details were updated successfully.',
+            type: 'private',
+          });
+        } catch (notificationError) {
+          this.logger.warn(
+            `Notification not sent for user ${id}: ${notificationError.message}`,
+            notificationError.stack,
+          );
+        }
+      }
       return user;
     } catch (error) {
       this.logger.error(`Error updating user: ${error.message}`, error.stack);
