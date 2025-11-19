@@ -309,6 +309,7 @@ export class JobService implements IJobService {
             end_date: rowData['To (MM/DD/YYYY)'] || rowData['End Date'] || null,
             log_link: rowData['Log Link'] || null,
             live_url: rowData['Live URL'] || null,
+            db_billing_duration: rowData['Billing Duration'] ? parseInt(rowData['Billing Duration']) : null,
           };
 
           // Create job using existing method

@@ -97,6 +97,9 @@ export class CreateJobDto {
 
   @ApiProperty({ required: false })
   batch_id?: string;
+
+  @ApiProperty({ required: false })
+  db_billing_duration?: number;
 }
 
 export class UpdateJobDto implements Partial<CreateJobDto> {
@@ -153,6 +156,9 @@ export class UpdateJobDto implements Partial<CreateJobDto> {
 
   @ApiProperty({ required: false })
   batch_id?: string;
+
+  @ApiProperty({ required: false })
+  db_billing_duration?: number;
 }
 
 export class ImportJobsResponseDto {
@@ -180,6 +186,7 @@ export class ImportJobsResponseDto {
         user_id: { type: 'string' },
         createdAt: { type: 'string', format: 'date-time' },
         updatedAt: { type: 'string', format: 'date-time' },
+        db_billing_duration: { type: 'number' },
       },
     },
   })
