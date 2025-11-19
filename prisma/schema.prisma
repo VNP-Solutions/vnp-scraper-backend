@@ -201,6 +201,7 @@ model Job {
   current_url                 String?
   case_open                   Boolean?    @default(false)
   watcher_emails              String[]
+  db_billing_duration         Int?
   createdAt                   DateTime    @default(now())
   updatedAt                   DateTime    @updatedAt
 

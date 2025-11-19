@@ -49,6 +49,7 @@ export const createJobSchema = z.object({
   log_link: z.string().optional().nullable(),
   live_url: z.string().optional().nullable(),
   batch_id: z.union([objectIdSchema, z.null(), z.undefined()]).optional(),
+  db_billing_duration: z.number().int().optional().nullable(),
 });
 
 export const updateJobSchema = createJobSchema.partial();
