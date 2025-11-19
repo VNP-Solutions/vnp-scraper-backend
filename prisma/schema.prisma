@@ -542,6 +542,7 @@ model DbData {
   property_id       String
   date_range        DateRange
   gearbox_queue_ids String[]  @default([])
+  total_invoice_amount Float?
   created_at        DateTime  @default(now())
   updated_at        DateTime  @updatedAt
 
