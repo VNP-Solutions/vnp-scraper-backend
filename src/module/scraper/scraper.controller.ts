@@ -624,6 +624,193 @@ export class ScraperController {
     }
   }
 
+  @Post('/api/retrieval/pause')
+  @ApiOperation({
+    summary: 'Pause current retrieval job',
+    description: 'Gracefully pause the currently running retrieval job.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Retrieval paused successfully',
+    type: PauseResumeStopResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Cannot pause retrieval - no active job running',
+    type: PauseResumeStopResponseDto,
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Error pausing retrieval',
+    type: ErrorResponseDto,
+  })
+  async retrievalPause(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Body() body: any,
+  ) {
+    try {
+      const retrievalUrl = this.getExpediaRetrievalUrl();
+      if (!retrievalUrl) {
+        return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message:
+            'No Expedia retrieval server URL configured (EXPEDIA_RETRIVAL_SERVER_URL)',
+          error: 'Expedia retrieval server URL not configured',
+        });
+      }
+
+      const response = await firstValueFrom(
+        this.httpService.post(`${retrievalUrl}/api/retrieval/pause`, body, {
+          headers: {
+            // ...req.headers,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          timeout: 300000, // 5 minute timeout for long-running retrieval jobs
+        }),
+      );
+      return res.status(response.status).json(response.data);
+    } catch (error: any) {
+      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
+      const data = error.response?.data || {
+        message: 'Expedia Retrieval server is down',
+      };
+      return res.status(status).json(data);
+    }
+  }
+
+  @Post('/api/retrieval/resume')
+  @ApiOperation({
+    summary: 'Resume paused retrieval job',
+    description:
+      'Resume a previously paused retrieval job from where it left off. Requires startDate, endDate, and jobId. The OTA provider is automatically determined from the job record, and scraping mode is set based on EXPEDIA_MODE environment variable.',
+  })
+  @ApiBody({ type: ResumeScrapingRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Retrieval resumed successfully',
+    type: PauseResumeStopResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Cannot resume retrieval - no paused job found',
+    type: PauseResumeStopResponseDto,
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Error resuming retrieval',
+    type: ErrorResponseDto,
+  })
+  async retrievalResume(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Body() body: any,
+  ) {
+    try {
+      const retrievalUrl = this.getExpediaRetrievalUrl();
+      if (!retrievalUrl) {
+        return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message:
+            'No Expedia retrieval server URL configured (EXPEDIA_RETRIVAL_SERVER_URL)',
+          error: 'Expedia retrieval server URL not configured',
+        });
+      }
+
+      // Fetch job details to get OTA provider
+      const job = await this.jobService.getJobById(body.jobId);
+      const otaProvider = job.ota_provider || 'Expedia'; // Default to Expedia
+
+      // Determine scraping_mode based on OTA provider and environment variable
+      const scrapingMode = this.getScrapingMode(otaProvider);
+
+      // Create complete request body with all required fields
+      const completeRequestBody = {
+        startDate: body.startDate,
+        endDate: body.endDate,
+        jobId: body.jobId,
+        ota_provider: otaProvider, // Get from job record
+        scraping_mode: scrapingMode, // Get from environment variable
+      };
+
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${retrievalUrl}/api/retrieval/resume`,
+          completeRequestBody,
+          {
+            headers: {
+              // ...req.headers,
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            timeout: 300000, // 5 minute timeout for long-running retrieval jobs
+          },
+        ),
+      );
+      return res.status(response.status).json(response.data);
+    } catch (error: any) {
+      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
+      const data = error.response?.data || {
+        message: 'Expedia Retrieval server is down',
+      };
+      return res.status(status).json(data);
+    }
+  }
+
+  @Post('/api/retrieval/stop')
+  @ApiOperation({
+    summary: 'Stop current retrieval job',
+    description:
+      'Completely stop the current retrieval job. Requires jobId in request body.',
+  })
+  @ApiBody({ type: StopScrapingRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Retrieval stopped successfully',
+    type: PauseResumeStopResponseDto,
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Error stopping retrieval',
+    type: ErrorResponseDto,
+  })
+  async retrievalStop(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Body() body: any,
+  ) {
+    try {
+      const retrievalUrl = this.getExpediaRetrievalUrl();
+      if (!retrievalUrl) {
+        return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message:
+            'No Expedia retrieval server URL configured (EXPEDIA_RETRIVAL_SERVER_URL)',
+          error: 'Expedia retrieval server URL not configured',
+        });
+      }
+
+      const response = await firstValueFrom(
+        this.httpService.post(`${retrievalUrl}/api/retrieval/stop`, body, {
+          headers: {
+            // ...req.headers,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          timeout: 300000, // 5 minute timeout for long-running retrieval jobs
+        }),
+      );
+      return res.status(response.status).json(response.data);
+    } catch (error: any) {
+      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
+      const data = error.response?.data || {
+        message: 'Expedia Retrieval server is down',
+      };
+      return res.status(status).json(data);
+    }
+  }
+
   @Post('/api/property-run-job')
   @ApiOperation({
     summary: 'Start unified property scraping job',
@@ -1396,7 +1583,7 @@ export class ScraperController {
       // Fetch job details to get OTA provider and billing_type
       const job = await this.jobService.getJobById(body.jobId);
       const otaProvider = job.ota_provider || 'Expedia'; // Default to Expedia
-      const billingType  = job.billing_type;
+      const billingType = job.billing_type;
 
       // Check if billing_type is 'DB' and route to DB server
       if (billingType === 'DB') {
