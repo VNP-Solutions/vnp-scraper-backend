@@ -811,6 +811,64 @@ export class ScraperController {
     }
   }
 
+  @Post('/api/db/stop')
+  @ApiOperation({
+    summary: 'Stop current DB run job',
+    description:
+      'Completely stop the current DB run job. Requires jobId in request body.',
+  })
+  @ApiBody({ type: StopScrapingRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: 'DB run job stopped successfully',
+    type: PauseResumeStopResponseDto,
+  })
+  @ApiResponse({
+    status: 503,
+    description: 'Expedia DB server URL not configured',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Error stopping DB run job',
+    type: ErrorResponseDto,
+  })
+  async dbRunStop(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Body() body: any,
+  ) {
+    try {
+      const dbUrl = this.getExpediaDbUrl();
+      if (!dbUrl) {
+        return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message:
+            'No Expedia DB server URL configured (EXPEDIA_DB_SERVER_URL)',
+          error: 'Expedia DB server URL not configured',
+        });
+      }
+
+      const response = await firstValueFrom(
+        this.httpService.post(`${dbUrl}/api/db/stop`, body, {
+          headers: {
+            // ...req.headers,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          timeout: 300000, // 5 minute timeout for long-running DB run jobs
+        }),
+      );
+      return res.status(response.status).json(response.data);
+    } catch (error: any) {
+      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
+      const data = error.response?.data || {
+        message: 'Expedia DB server is down',
+      };
+      return res.status(status).json(data);
+    }
+  }
+
   @Post('/api/property-run-job')
   @ApiOperation({
     summary: 'Start unified property scraping job',
