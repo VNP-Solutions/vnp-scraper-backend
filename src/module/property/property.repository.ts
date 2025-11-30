@@ -1523,4 +1523,21 @@ export class PropertyRepository implements IPropertyRepository {
       throw error;
     }
   }
+
+  /**
+   * Encrypts a raw password
+   * @param rawPassword - The plain text password to encrypt
+   * @returns The encrypted password as a JSON string
+   */
+  encryptRawPassword(rawPassword: string): string {
+    try {
+      return this.encryptionUtil.encryptPassword(rawPassword);
+    } catch (error) {
+      this.logger.error(
+        `Error encrypting password: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
 }
