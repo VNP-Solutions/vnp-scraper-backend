@@ -5,6 +5,7 @@ export interface IDbDataRepository {
     data: DbData[];
     metadata: any;
   }>;
+  findAllByJobId(jobId: string): Promise<DbData[]>;
   findById(id: string): Promise<DbData | null>;
   delete(id: string): Promise<DbData | null>;
 }
@@ -14,6 +15,7 @@ export interface IDbDataService {
     data: DbData[];
     metadata: any;
   }>;
+  getAllDbDataByJobId(jobId: string): Promise<DbData[]>;
   getDbDataById(id: string): Promise<DbData | null>;
   deleteDbData(id: string): Promise<void>;
 }

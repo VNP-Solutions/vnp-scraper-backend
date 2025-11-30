@@ -241,6 +241,14 @@ export class CreateRetrievalItemDto {
   additional_text?: string;
 }
 
+export class CreateBatchDto {
+  @ApiProperty({
+    description: 'Name of the batch',
+    example: 'December Processing Batch',
+  })
+  name: string;
+}
+
 export class UploadRetrievalResponseDto {
   @ApiProperty({ description: 'Created parent retrieval' })
   parentRetrieval: any;
