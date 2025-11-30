@@ -1,5 +1,11 @@
-import { ParentRetrieval, Retrieval, RetrievalItem } from '@prisma/client';
 import {
+  Batch,
+  ParentRetrieval,
+  Retrieval,
+  RetrievalItem,
+} from '@prisma/client';
+import {
+  CreateBatchDto,
   CreateParentRetrievalDto,
   CreateRetrievalDto,
   CreateRetrievalItemDto,
@@ -43,6 +49,8 @@ export interface IRetrievalService {
   updateRetrieval(id: string, data: UpdateRetrievalDto): Promise<Retrieval>;
   deleteRetrieval(id: string): Promise<void>;
   deleteParentRetrieval(id: string): Promise<void>;
+  createBatch(data: CreateBatchDto): Promise<Batch>;
+  findBatchByName(name: string): Promise<Batch | null>;
 }
 
 export interface IRetrievalRepository {
@@ -74,4 +82,7 @@ export interface IRetrievalRepository {
   deleteRetrieval(id: string): Promise<void>;
   deleteParentRetrieval(id: string): Promise<void>;
   createManyRetrievalItems(data: CreateRetrievalItemDto[]): Promise<void>;
+  createBatch(data: CreateBatchDto): Promise<Batch>;
+  findBatchByName(name: string): Promise<Batch | null>;
+  findBatchById(id: string): Promise<Batch | null>;
 }

@@ -148,6 +148,34 @@ export class DbDataRepository implements IDbDataRepository {
     }
   }
 
+  async findAllByJobId(jobId: string): Promise<DbData[]> {
+    try {
+      const dbData = await this.db.dbData.findMany({
+        where: { job_id: jobId },
+        include: {
+          job: {
+            select: {
+              id: true,
+              name: true,
+              property_name: true,
+              job_status: true,
+            },
+          },
+        },
+        orderBy: {
+          created_at: 'desc',
+        },
+      });
+      return dbData;
+    } catch (error) {
+      this.logger.error(
+        `Error finding DbData by job ID: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
   async findById(id: string): Promise<DbData | null> {
     try {
       const dbData = await this.db.dbData.findUnique({

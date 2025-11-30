@@ -107,6 +107,31 @@ export class DbDataController {
     );
   }
 
+  @Get('/job/:job_id')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get all DbData by job ID (no pagination)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns list of DbData for the job',
+  })
+  async getAllDbDataByJobId(
+    @Param('job_id') jobId: string,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const dbData = await this.dbDataService.getAllDbDataByJobId(jobId);
+        return {
+          statusCode: 200,
+          message: 'DbData retrieved successfully',
+          data: dbData,
+        };
+      },
+      this.logger,
+    );
+  }
+
   @Get('/:id')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get DbData by ID' })

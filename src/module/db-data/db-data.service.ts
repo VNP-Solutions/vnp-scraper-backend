@@ -25,6 +25,19 @@ export class DbDataService implements IDbDataService {
     }
   }
 
+  async getAllDbDataByJobId(jobId: string): Promise<DbData[]> {
+    try {
+      const dbData = await this.repository.findAllByJobId(jobId);
+      return dbData;
+    } catch (error) {
+      this.logger.error(
+        `Error getting DbData by job ID: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
   async getDbDataById(id: string): Promise<DbData | null> {
     try {
       const dbData = await this.repository.findById(id);

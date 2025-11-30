@@ -5,6 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import {
+  Batch,
   OTAProvider,
   ParentRetrieval,
   PostingType,
@@ -18,6 +19,7 @@ import {
   IPropertyService,
 } from '../property/property.interface';
 import {
+  CreateBatchDto,
   CreateParentRetrievalDto,
   CreateRetrievalDto,
   CreateRetrievalItemDto,
@@ -196,8 +198,16 @@ export class RetrievalService implements IRetrievalService {
             );
 
             // Create property credentials if username and password are provided
-            const username = firstRow['User Name']?.toString()?.trim();
-            const password = firstRow['Password']?.toString()?.trim();
+            const username = (
+              firstRow['User Name'] || firstRow['Expedia Username']
+            )
+              ?.toString()
+              ?.trim();
+            const password = (
+              firstRow['Password'] || firstRow['Expedia Password']
+            )
+              ?.toString()
+              ?.trim();
 
             if (username || password) {
               try {
@@ -221,8 +231,16 @@ export class RetrievalService implements IRetrievalService {
             }
           } else {
             // Update property credential with new username and password
-            const username = firstRow['User Name']?.toString()?.trim();
-            const password = firstRow['Password']?.toString()?.trim();
+            const username = (
+              firstRow['User Name'] || firstRow['Expedia Username']
+            )
+              ?.toString()
+              ?.trim();
+            const password = (
+              firstRow['Password'] || firstRow['Expedia Password']
+            )
+              ?.toString()
+              ?.trim();
 
             if (username || password) {
               try {
@@ -269,6 +287,31 @@ export class RetrievalService implements IRetrievalService {
             .map((r) => r['Reservation ID']?.toString())
             .filter((id) => id && id.trim() !== '');
 
+          // Handle Batch - create if doesn't exist (optional field)
+          let batchId = null;
+          const batchColumn =
+            firstRow['Batch Name'] ||
+            firstRow['Batch'] ||
+            firstRow['Batch name'];
+          if (batchColumn && batchColumn.trim() !== '') {
+            const batchName = batchColumn.toString().trim();
+
+            // Try to find existing batch by name
+            let existingBatch = await this.findBatchByName(batchName);
+
+            if (existingBatch) {
+              batchId = existingBatch.id;
+              this.logger.log(
+                `Using existing batch: ${batchName} (${batchId})`,
+              );
+            } else {
+              // Create new batch if it doesn't exist
+              const newBatch = await this.createBatch({ name: batchName });
+              batchId = newBatch.id;
+              this.logger.log(`Created new batch: ${batchName} (${batchId})`);
+            }
+          }
+
           const retrievalData: CreateRetrievalDto = {
             name: firstRow['Hotel Name'] || property.name || 'Unknown',
             parent_retrieval_id: parentRetrieval.id,
@@ -285,6 +328,7 @@ export class RetrievalService implements IRetrievalService {
             job_backoff_length_loading: 5000,
             job_backoff_length_selector: 3000,
             reservations: reservationIds,
+            batch_id: batchId,
           };
 
           const retrieval = await this.createRetrieval(retrievalData);
@@ -417,6 +461,13 @@ export class RetrievalService implements IRetrievalService {
         );
         const retrieval: any = (item as any).retrieval;
 
+        // Fetch batch name if batch_id exists
+        let batchName = '';
+        if (retrieval?.batch_id) {
+          const batch = await this.repository.findBatchById(retrieval.batch_id);
+          batchName = batch?.name || '';
+        }
+
         // Fetch credentials and decrypt password
         const credentials =
           await this.propertyCredentialsService.getPropertyCredentialsByPropertyId(
@@ -436,7 +487,7 @@ export class RetrievalService implements IRetrievalService {
 
         const row = {
           'Hotel ID': property?.expedia_id || '',
-          Batch: retrieval?.batch_id || '',
+          'Batch': batchName,
           'Posting Type': retrieval?.posting_type || '',
           Portfolio: retrieval?.portfolio_name || '',
           'Hotel Name': property?.name || '',
@@ -651,6 +702,29 @@ export class RetrievalService implements IRetrievalService {
     } catch (error) {
       this.logger.error(
         `Error deleting parent retrieval: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async createBatch(data: CreateBatchDto): Promise<Batch> {
+    try {
+      const batch = await this.repository.createBatch(data);
+      return batch;
+    } catch (error) {
+      this.logger.error(`Error creating batch: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  async findBatchByName(name: string): Promise<Batch | null> {
+    try {
+      const batch = await this.repository.findBatchByName(name);
+      return batch;
+    } catch (error) {
+      this.logger.error(
+        `Error finding batch by name: ${error.message}`,
         error.stack,
       );
       throw error;

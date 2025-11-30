@@ -1,7 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { ParentRetrieval, Retrieval, RetrievalItem } from '@prisma/client';
+import {
+  Batch,
+  ParentRetrieval,
+  Retrieval,
+  RetrievalItem,
+} from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import {
+  CreateBatchDto,
   CreateParentRetrievalDto,
   CreateRetrievalDto,
   CreateRetrievalItemDto,
@@ -443,5 +449,28 @@ export class RetrievalRepository implements IRetrievalRepository {
     await this.prisma.parentRetrieval.delete({
       where: { id },
     });
+  }
+
+  async createBatch(data: CreateBatchDto): Promise<Batch> {
+    const batch = await this.prisma.batch.create({
+      data: {
+        name: data.name,
+      },
+    });
+    return batch;
+  }
+
+  async findBatchByName(name: string): Promise<Batch | null> {
+    const batch = await this.prisma.batch.findFirst({
+      where: { name },
+    });
+    return batch;
+  }
+
+  async findBatchById(id: string): Promise<Batch | null> {
+    const batch = await this.prisma.batch.findFirst({
+      where: { id },
+    });
+    return batch;
   }
 }
