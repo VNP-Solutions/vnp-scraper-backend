@@ -83,6 +83,7 @@ type PaymentInfo {
   total_payout               Float?
   amount_to_charge_or_refund Float
   charge_before              String?
+  amount_to_charge_or_refund_currency     String?
 }
 
 type DateRange {
@@ -543,6 +544,7 @@ model DbData {
   date_range        DateRange
   gearbox_queue_ids String[]  @default([])
   total_invoice_amount Float?
+  total_invoice_amount_currency String?
   created_at        DateTime  @default(now())
   updated_at        DateTime  @updatedAt
 

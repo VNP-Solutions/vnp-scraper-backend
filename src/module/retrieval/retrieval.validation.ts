@@ -43,6 +43,7 @@ export const createRetrievalSchema = z.object({
   case_open: z.boolean().optional().default(false),
   watcher_emails: z.array(z.string()).optional(),
   reservations: z.array(z.string()).optional(),
+  amount_to_charge_or_refund_currency: z.string().nullable().optional(),
 });
 
 export const updateRetrievalSchema = z.object({
@@ -65,4 +66,5 @@ export const updateRetrievalSchema = z.object({
   log_link: z.string().optional(),
   live_url: z.string().optional(),
   reservations: z.array(z.string()).optional(),
+  amount_to_charge_or_refund_currency: z.string().nullable().optional(),
 });
