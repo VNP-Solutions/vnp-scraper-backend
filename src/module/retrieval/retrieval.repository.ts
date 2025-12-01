@@ -405,6 +405,7 @@ export class RetrievalRepository implements IRetrievalRepository {
         },
       },
       retrievalItems: true,
+      batch: true,
     };
 
     const [data, total] = await Promise.all([

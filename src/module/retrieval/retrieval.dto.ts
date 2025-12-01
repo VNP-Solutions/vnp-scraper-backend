@@ -174,6 +174,9 @@ export class UpdateRetrievalDto implements Partial<CreateRetrievalDto> {
 
   @ApiProperty({ required: false, type: [String] })
   reservations?: string[];
+
+  @ApiProperty({ required: false })
+  batch_id?: string;
 }
 
 export class CreateRetrievalItemDto {
