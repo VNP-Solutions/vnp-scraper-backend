@@ -600,25 +600,36 @@ export class ScraperController {
     @Body() body: any,
   ) {
     try {
+      // Fetch job details to get OTA provider
+      const job = await this.jobService.getJobById(body.jobId);
+      const otaProvider = job.ota_provider || 'Expedia'; // Default to Expedia
+
+      // Get URL based on OTA provider
+      const selectedUrl = this.getUrlByOtaProvider(otaProvider);
+
+      if (!selectedUrl) {
+        return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message: `No scraper URL configured for OTA provider: ${otaProvider}`,
+          error: 'Scraper URL not configured',
+        });
+      }
+
       const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.getPrimaryScraperUrl()}/api/scraping/stop`,
-          body,
-          {
-            headers: {
-              // ...req.headers,
-              'Content-Type': 'application/json',
-              Accept: 'application/json',
-            },
-            timeout: 300000, // 5 minute timeout for long-running scraping jobs
+        this.httpService.post(`${selectedUrl}/api/scraping/stop`, body, {
+          headers: {
+            // ...req.headers,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
           },
-        ),
+          timeout: 300000, // 5 minute timeout for long-running scraping jobs
+        }),
       );
       return res.status(response.status).json(response.data);
     } catch (error: any) {
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
       const data = error.response?.data || {
-        message: 'Expedia Job server is down',
+        message: 'Job server is down',
       };
       return res.status(status).json(data);
     }
