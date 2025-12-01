@@ -426,6 +426,7 @@ model Batch {
   updatedAt DateTime @updatedAt
 
   jobs Job[]
+  retrievals Retrieval[]
 
   @@map("batches")
 }
@@ -485,7 +486,8 @@ model Retrieval {
 
   parentRetrieval ParentRetrieval? @relation(fields: [parent_retrieval_id], references: [id])
   retrievalItems  RetrievalItem[]
-
+  batch Batch? @relation(fields: [batch_id], references: [id])
+  
   @@map("retrievals")
 }
 
