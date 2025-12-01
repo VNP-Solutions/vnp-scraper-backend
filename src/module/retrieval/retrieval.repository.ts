@@ -302,6 +302,7 @@ export class RetrievalRepository implements IRetrievalRepository {
       property_name,
       portfolio_name,
       sub_portfolio_name,
+      batch_id,
       ...filters
     } = query;
 
@@ -390,6 +391,11 @@ export class RetrievalRepository implements IRetrievalRepository {
         contains: sub_portfolio_name.toString().trim(),
         mode: 'insensitive',
       };
+    }
+
+    // Batch ID filtering
+    if (batch_id) {
+      where.batch_id = batch_id;
     }
 
     const orderBy = {

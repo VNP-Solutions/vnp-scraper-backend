@@ -367,6 +367,11 @@ export class RetrievalController {
     required: false,
     description: 'Filter by sub-portfolio name (partial match)',
   })
+  @ApiQuery({
+    name: 'batch_id',
+    required: false,
+    description: 'Filter by batch ID',
+  })
   async getRetrievalsByParentRetrievalId(
     @Param('parentRetrievalId') parentRetrievalId: string,
     @ParseQuery() query: Record<string, any>,
