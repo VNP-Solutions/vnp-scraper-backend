@@ -740,4 +740,37 @@ export class JobRepository implements IJobRepository {
       throw error;
     }
   }
+
+  async bulkBatchUpdate(
+    jobIds: string[],
+    batchId: string,
+  ): Promise<{ count: number }> {
+    try {
+      // Verify batch exists
+      const batch = await this.db.batch.findFirst({
+        where: { id: batchId },
+      });
+
+      if (!batch) {
+        throw new Error(`Batch with ID ${batchId} not found`);
+      }
+
+      // Update all jobs with the batch_id
+      const result = await this.db.job.updateMany({
+        where: {
+          id: {
+            in: jobIds,
+          },
+        },
+        data: {
+          batch_id: batchId,
+        },
+      });
+
+      return result;
+    } catch (error) {
+      this.logger.error('Error bulk updating jobs batch:', error);
+      throw error;
+    }
+  }
 }

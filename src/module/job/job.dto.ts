@@ -332,3 +332,32 @@ export class BatchResponseDto {
   })
   jobs?: any[];
 }
+
+export class BulkBatchUpdateDto {
+  @ApiProperty({
+    description: 'Array of job IDs to update',
+    type: [String],
+    example: ['job-id-1', 'job-id-2', 'job-id-3'],
+  })
+  job_ids: string[];
+
+  @ApiProperty({
+    description: 'Batch ID to assign to all jobs',
+    example: 'batch-id-123',
+  })
+  batch_id: string;
+}
+
+export class BulkBatchUpdateResponseDto {
+  @ApiProperty({
+    description: 'Number of jobs updated',
+    example: 5,
+  })
+  updatedCount: number;
+
+  @ApiProperty({
+    description: 'Batch ID that was assigned',
+    example: 'batch-id-123',
+  })
+  batch_id: string;
+}

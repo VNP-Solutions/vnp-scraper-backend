@@ -31,6 +31,8 @@ import { ResponseHandler } from 'src/common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
   BatchResponseDto,
+  BulkBatchUpdateDto,
+  BulkBatchUpdateResponseDto,
   CreateBatchDto,
   CreateJobDto,
   ImportJobsResponseDto,
@@ -639,6 +641,37 @@ export class JobController {
           statusCode: 200,
           message: 'Batch deleted successfully',
           data: null,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Post('/bulk_batch_update')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Bulk update jobs with batch ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Jobs updated successfully',
+    type: BulkBatchUpdateResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid input' })
+  @ApiResponse({ status: 404, description: 'Batch not found' })
+  async bulkBatchUpdate(
+    @Body() bulkBatchUpdateDto: BulkBatchUpdateDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result = await this.jobService.bulkBatchUpdate(
+          bulkBatchUpdateDto.job_ids,
+          bulkBatchUpdateDto.batch_id,
+        );
+        return {
+          statusCode: 200,
+          message: 'Jobs updated successfully',
+          data: result,
         };
       },
       this.logger,
