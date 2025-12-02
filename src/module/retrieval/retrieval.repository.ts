@@ -480,4 +480,32 @@ export class RetrievalRepository implements IRetrievalRepository {
     });
     return batch;
   }
+
+  async bulkBatchUpdate(
+    retrievalIds: string[],
+    batchId: string,
+  ): Promise<{ count: number }> {
+    // Verify batch exists
+    const batch = await this.prisma.batch.findFirst({
+      where: { id: batchId },
+    });
+
+    if (!batch) {
+      throw new Error(`Batch with ID ${batchId} not found`);
+    }
+
+    // Update all retrievals with the batch_id
+    const result = await this.prisma.retrieval.updateMany({
+      where: {
+        id: {
+          in: retrievalIds,
+        },
+      },
+      data: {
+        batch_id: batchId,
+      },
+    });
+
+    return result;
+  }
 }

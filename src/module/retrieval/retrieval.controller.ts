@@ -27,6 +27,8 @@ import { ValidateBody } from 'src/common/decorators/validate.decorator';
 import { ExcelFileInterceptorOptions } from '../../common/interceptors/excel-file.interceptor';
 import { ResponseHandler } from '../../common/utils/response-handler';
 import {
+  BulkBatchUpdateDto,
+  BulkBatchUpdateResponseDto,
   CreateParentRetrievalDto,
   CreateRetrievalDto,
   UpdateRetrievalDto,
@@ -601,6 +603,36 @@ export class RetrievalController {
           statusCode: 200,
           message: 'Parent retrieval deleted successfully',
           data: null,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Post('/bulk_batch_update')
+  @ApiOperation({ summary: 'Bulk update retrievals with batch ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Retrievals updated successfully',
+    type: BulkBatchUpdateResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid input' })
+  @ApiResponse({ status: 404, description: 'Batch not found' })
+  async bulkBatchUpdate(
+    @Body() bulkBatchUpdateDto: BulkBatchUpdateDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result = await this.retrievalService.bulkBatchUpdate(
+          bulkBatchUpdateDto.retrieval_ids,
+          bulkBatchUpdateDto.batch_id,
+        );
+        return {
+          statusCode: 200,
+          message: 'Retrievals updated successfully',
+          data: result,
         };
       },
       this.logger,

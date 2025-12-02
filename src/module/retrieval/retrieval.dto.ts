@@ -271,3 +271,32 @@ export class UploadRetrievalResponseDto {
   @ApiProperty({ description: 'List of created retrievals' })
   retrievals: any[];
 }
+
+export class BulkBatchUpdateDto {
+  @ApiProperty({
+    description: 'Array of retrieval IDs to update',
+    type: [String],
+    example: ['retrieval-id-1', 'retrieval-id-2', 'retrieval-id-3'],
+  })
+  retrieval_ids: string[];
+
+  @ApiProperty({
+    description: 'Batch ID to assign to all retrievals',
+    example: 'batch-id-123',
+  })
+  batch_id: string;
+}
+
+export class BulkBatchUpdateResponseDto {
+  @ApiProperty({
+    description: 'Number of retrievals updated',
+    example: 5,
+  })
+  updatedCount: number;
+
+  @ApiProperty({
+    description: 'Batch ID that was assigned',
+    example: 'batch-id-123',
+  })
+  batch_id: string;
+}
