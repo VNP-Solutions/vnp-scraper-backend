@@ -57,6 +57,10 @@ export interface IJobRepository {
   findAllBatches(query: Record<string, any>): Promise<Batch[]>;
   updateBatch(id: string, data: UpdateBatchDto): Promise<Batch>;
   deleteBatch(id: string): Promise<Batch>;
+  bulkBatchUpdate(
+    jobIds: string[],
+    batchId: string,
+  ): Promise<{ count: number }>;
 }
 
 export interface IJobService {
@@ -89,4 +93,8 @@ export interface IJobService {
   findBatchByName(name: string): Promise<Batch | null>;
   updateBatch(id: string, data: UpdateBatchDto): Promise<Batch>;
   deleteBatch(id: string): Promise<Batch>;
+  bulkBatchUpdate(
+    jobIds: string[],
+    batchId: string,
+  ): Promise<{ updatedCount: number; batch_id: string }>;
 }

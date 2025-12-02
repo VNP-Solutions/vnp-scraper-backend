@@ -309,7 +309,9 @@ export class JobService implements IJobService {
             end_date: rowData['To (MM/DD/YYYY)'] || rowData['End Date'] || null,
             log_link: rowData['Log Link'] || null,
             live_url: rowData['Live URL'] || null,
-            db_billing_duration: rowData['Billing Duration'] ? parseInt(rowData['Billing Duration']) : null,
+            db_billing_duration: rowData['Billing Duration']
+              ? parseInt(rowData['Billing Duration'])
+              : null,
           };
 
           // Create job using existing method
@@ -441,6 +443,33 @@ export class JobService implements IJobService {
       return batch;
     } catch (error) {
       this.logger.error(`Error deleting batch: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  async bulkBatchUpdate(
+    jobIds: string[],
+    batchId: string,
+  ): Promise<{ updatedCount: number; batch_id: string }> {
+    try {
+      if (!jobIds || jobIds.length === 0) {
+        throw new Error('job_ids array cannot be empty');
+      }
+
+      if (!batchId) {
+        throw new Error('batch_id is required');
+      }
+
+      const result = await this.repository.bulkBatchUpdate(jobIds, batchId);
+      return {
+        updatedCount: result.count,
+        batch_id: batchId,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error bulk updating jobs batch: ${error.message}`,
+        error.stack,
+      );
       throw error;
     }
   }
