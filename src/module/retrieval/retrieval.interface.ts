@@ -51,6 +51,10 @@ export interface IRetrievalService {
   deleteParentRetrieval(id: string): Promise<void>;
   createBatch(data: CreateBatchDto): Promise<Batch>;
   findBatchByName(name: string): Promise<Batch | null>;
+  bulkBatchUpdate(
+    retrievalIds: string[],
+    batchId: string,
+  ): Promise<{ updatedCount: number; batch_id: string }>;
 }
 
 export interface IRetrievalRepository {
@@ -85,4 +89,8 @@ export interface IRetrievalRepository {
   createBatch(data: CreateBatchDto): Promise<Batch>;
   findBatchByName(name: string): Promise<Batch | null>;
   findBatchById(id: string): Promise<Batch | null>;
+  bulkBatchUpdate(
+    retrievalIds: string[],
+    batchId: string,
+  ): Promise<{ count: number }>;
 }

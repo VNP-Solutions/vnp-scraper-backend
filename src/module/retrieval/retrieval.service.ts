@@ -487,7 +487,7 @@ export class RetrievalService implements IRetrievalService {
 
         const row = {
           'Hotel ID': property?.expedia_id || '',
-          'Batch': batchName,
+          Batch: batchName,
           'Posting Type': retrieval?.posting_type || '',
           Portfolio: retrieval?.portfolio_name || '',
           'Hotel Name': property?.name || '',
@@ -725,6 +725,36 @@ export class RetrievalService implements IRetrievalService {
     } catch (error) {
       this.logger.error(
         `Error finding batch by name: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async bulkBatchUpdate(
+    retrievalIds: string[],
+    batchId: string,
+  ): Promise<{ updatedCount: number; batch_id: string }> {
+    try {
+      if (!retrievalIds || retrievalIds.length === 0) {
+        throw new Error('retrieval_ids array cannot be empty');
+      }
+
+      if (!batchId) {
+        throw new Error('batch_id is required');
+      }
+
+      const result = await this.repository.bulkBatchUpdate(
+        retrievalIds,
+        batchId,
+      );
+      return {
+        updatedCount: result.count,
+        batch_id: batchId,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error bulk updating retrievals batch: ${error.message}`,
         error.stack,
       );
       throw error;
