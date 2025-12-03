@@ -8,6 +8,7 @@ export interface IPropertyRepository {
   ): Promise<{ properties: Property[]; metadata: any }>;
   findById(id: string): Promise<Property>;
   findByExpediaId(expediaId: number): Promise<Property | null>;
+  findByAgodaId(agodaId: number): Promise<Property | null>;
   update(id: string, data: UpdatePropertyDto): Promise<Property>;
   delete(id: string): Promise<Property>;
   findFilteredProperty(

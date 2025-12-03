@@ -157,9 +157,30 @@ export class RetrievalService implements IRetrievalService {
             `Processing Hotel ID: ${hotelId}, Rows: ${rows.length}`,
           );
 
-          let property = await this.propertyRepository.findByExpediaId(
-            parseInt(hotelId),
-          );
+          // Determine OTA provider for this group
+          const rawProvider =
+            (
+              firstRow['OTA Provider'] ||
+              firstRow['Provider'] ||
+              firstRow['OTA'] ||
+              ''
+            )?.toString() || '';
+          const otaProvider =
+            rawProvider && rawProvider.trim() !== ''
+              ? this.convertToOTAProvider(rawProvider)
+              : firstRow['Agoda ID'] ||
+                  firstRow['Agoda Username'] ||
+                  firstRow['Agoda Password']
+                ? OTAProvider.Agoda
+                : OTAProvider.Expedia;
+
+          // Find property based on OTA provider
+          let property =
+            otaProvider === OTAProvider.Agoda
+              ? await this.propertyRepository.findByAgodaId(parseInt(hotelId))
+              : await this.propertyRepository.findByExpediaId(
+                  parseInt(hotelId),
+                );
 
           if (!property) {
             this.logger.warn(
@@ -185,10 +206,20 @@ export class RetrievalService implements IRetrievalService {
 
             // Create property using service (handles business logic)
             const propertyData = {
-              name: firstRow['Hotel Name'] || `Hotel ${hotelId}`,
+              name:
+                firstRow['Hotel Name'] ||
+                firstRow['Property Name'] ||
+                `Hotel ${hotelId}`,
               portfolio_id: portfolio.id,
-              expedia_id: parseInt(hotelId),
-              expedia_status: 'Active',
+              ...(otaProvider === OTAProvider.Agoda
+                ? {
+                    agoda_id: parseInt(hotelId),
+                    agoda_status: 'Active',
+                  }
+                : {
+                    expedia_id: parseInt(hotelId),
+                    expedia_status: 'Active',
+                  }),
             };
 
             property = await this.propertyService.createProperty(propertyData);
@@ -198,25 +229,29 @@ export class RetrievalService implements IRetrievalService {
             );
 
             // Create property credentials if username and password are provided
-            const username = (
-              firstRow['User Name'] || firstRow['Expedia Username']
-            )
+            const username = (firstRow['User Name'] || firstRow['Username'])
               ?.toString()
               ?.trim();
-            const password = (
-              firstRow['Password'] || firstRow['Expedia Password']
-            )
+            const password = (firstRow['Password'] || firstRow['Password'])
               ?.toString()
               ?.trim();
 
             if (username || password) {
               try {
+                const credentialsData: any = {
+                  property_id: property.id,
+                };
+
+                if (otaProvider === OTAProvider.Agoda) {
+                  credentialsData.agodaUsername = username || '';
+                  credentialsData.agodaPassword = password || '';
+                } else {
+                  credentialsData.expediaUsername = username || '';
+                  credentialsData.expediaPassword = password || '';
+                }
+
                 await this.propertyCredentialsService.createPropertyCredentials(
-                  {
-                    property_id: property.id,
-                    expediaUsername: username || '',
-                    expediaPassword: password || '',
-                  },
+                  credentialsData,
                 );
 
                 this.logger.log(
@@ -231,16 +266,10 @@ export class RetrievalService implements IRetrievalService {
             }
           } else {
             // Update property credential with new username and password
-            const username = (
-              firstRow['User Name'] || firstRow['Expedia Username']
-            )
+            const username = (firstRow['User Name'] || firstRow['Username'])
               ?.toString()
               ?.trim();
-            const password = (
-              firstRow['Password'] || firstRow['Expedia Password']
-            )
-              ?.toString()
-              ?.trim();
+            const password = firstRow['Password']?.toString()?.trim();
 
             if (username || password) {
               try {
@@ -250,24 +279,39 @@ export class RetrievalService implements IRetrievalService {
                   );
 
                 if (existingCredentials) {
+                  const credentialsUpdateData: any = {};
+
+                  if (otaProvider === OTAProvider.Agoda) {
+                    credentialsUpdateData.agodaUsername = username || '';
+                    credentialsUpdateData.agodaPassword = password || '';
+                  } else {
+                    credentialsUpdateData.expediaUsername = username || '';
+                    credentialsUpdateData.expediaPassword = password || '';
+                  }
+
                   await this.propertyCredentialsService.updatePropertyCredentials(
                     existingCredentials.id,
-                    {
-                      expediaUsername: username || '',
-                      expediaPassword: password || '',
-                    },
+                    credentialsUpdateData,
                   );
 
                   this.logger.log(
                     `Updated property credentials for property: ${property.id}`,
                   );
                 } else {
+                  const credentialsData: any = {
+                    property_id: property.id,
+                  };
+
+                  if (otaProvider === OTAProvider.Agoda) {
+                    credentialsData.agodaUsername = username || '';
+                    credentialsData.agodaPassword = password || '';
+                  } else {
+                    credentialsData.expediaUsername = username || '';
+                    credentialsData.expediaPassword = password || '';
+                  }
+
                   await this.propertyCredentialsService.createPropertyCredentials(
-                    {
-                      property_id: property.id,
-                      expediaUsername: username || '',
-                      expediaPassword: password || '',
-                    },
+                    credentialsData,
                   );
 
                   this.logger.log(
@@ -320,7 +364,7 @@ export class RetrievalService implements IRetrievalService {
             property_name: firstRow['Hotel Name'] || property.name || 'Unknown',
             portfolio_name: firstRow['Portfolio'] || 'Unknown',
             posting_type: this.convertToPostingType(firstRow['Posting Type']),
-            ota_provider: OTAProvider.Expedia,
+            ota_provider: otaProvider,
             execution_type: 'retrieval',
             remaining_direct_billed: 0,
             total_collectable: 0,
@@ -336,6 +380,86 @@ export class RetrievalService implements IRetrievalService {
             `Created Retrieval: ${retrieval.id} for Hotel ID: ${hotelId}`,
           );
           retrievals.push(retrieval);
+
+          // Create RetrievalItems for each row (Agoda only)
+          if (otaProvider === OTAProvider.Agoda) {
+            const retrievalItems: CreateRetrievalItemDto[] = [];
+
+            for (const row of rows) {
+              const checkInDate = this.parseExcelDate(row['From (MM/DD/YYYY)']);
+              const checkOutDate = this.parseExcelDate(row['To (MM/DD/YYYY)']);
+
+              if (!checkInDate || !checkOutDate) {
+                continue;
+              }
+
+              const guestName =
+                row['Name']?.toString() ||
+                row['Customer Name']?.toString() ||
+                'Unknown';
+
+              const amountRaw = row['Amount to Charge or Refund'];
+              const amount =
+                amountRaw !== undefined &&
+                amountRaw !== null &&
+                amountRaw !== ''
+                  ? parseFloat(amountRaw)
+                  : null;
+
+              const cardNumber = row['Card Number']
+                ? row['Card Number'].toString()
+                : null;
+              const expiryCode = row['Expiry Code']
+                ? row['Expiry Code'].toString()
+                : null;
+              const cvcCode = row['CVC Code']
+                ? row['CVC Code'].toString()
+                : null;
+
+              const hasCardInfo = !!(cardNumber || expiryCode || cvcCode);
+
+              const retrievalItemData: CreateRetrievalItemDto = {
+                retrieval_id: retrieval.id,
+                parent_retrieval_id: parentRetrieval.id,
+                property_id: property.id,
+                guest_name: guestName,
+                reservation_id: undefined,
+                confirmation_number: undefined,
+                check_in_date: checkInDate,
+                check_out_date: checkOutDate,
+                room_type: 'Standard',
+                booking_amount: amount ?? undefined,
+                booked_date: new Date(),
+                has_card_info: hasCardInfo,
+                card_info: hasCardInfo
+                  ? {
+                      card_number: cardNumber || '',
+                      expiry_date: expiryCode || '',
+                      cvv: cvcCode || undefined,
+                    }
+                  : undefined,
+                has_payment_info: amount !== null,
+                payment_info:
+                  amount !== null
+                    ? {
+                        amount_to_charge_or_refund: amount,
+                      }
+                    : undefined,
+                reservation_status: 'Pending',
+                additional_text: undefined,
+              };
+
+              retrievalItems.push(retrievalItemData);
+            }
+
+            if (retrievalItems.length > 0) {
+              await this.repository.createManyRetrievalItems(retrievalItems);
+              retrievalItemsCount += retrievalItems.length;
+              this.logger.log(
+                `Created ${retrievalItems.length} RetrievalItems for Retrieval (Agoda): ${retrieval.id}`,
+              );
+            }
+          }
 
           // Create RetrievalItems for each row
           // const retrievalItems: CreateRetrievalItemDto[] = [];
