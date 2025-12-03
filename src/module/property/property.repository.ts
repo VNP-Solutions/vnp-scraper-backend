@@ -194,6 +194,23 @@ export class PropertyRepository implements IPropertyRepository {
     }
   }
 
+  async findByAgodaId(agodaId: number): Promise<Property | null> {
+    try {
+      const property = await this.db.property.findFirst({
+        where: {
+          agoda_id: agodaId,
+        },
+        include: {
+          credentials: true,
+        },
+      });
+      return property;
+    } catch (error) {
+      this.logger.error(error);
+      return null;
+    }
+  }
+
   async update(id: string, data: UpdatePropertyDto): Promise<Property> {
     try {
       const property = await this.db.property.update({
