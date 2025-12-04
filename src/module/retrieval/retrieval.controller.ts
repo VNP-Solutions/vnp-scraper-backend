@@ -27,8 +27,8 @@ import { ValidateBody } from 'src/common/decorators/validate.decorator';
 import { ExcelFileInterceptorOptions } from '../../common/interceptors/excel-file.interceptor';
 import { ResponseHandler } from '../../common/utils/response-handler';
 import {
-  BulkBatchUpdateDto,
-  BulkBatchUpdateResponseDto,
+  BulkRetrievalBatchUpdateDto,
+  BulkRetrievalBatchUpdateResponseDto,
   CreateParentRetrievalDto,
   CreateRetrievalDto,
   UpdateRetrievalDto,
@@ -614,12 +614,12 @@ export class RetrievalController {
   @ApiResponse({
     status: 200,
     description: 'Retrievals updated successfully',
-    type: BulkBatchUpdateResponseDto,
+    type: BulkRetrievalBatchUpdateResponseDto,
   })
   @ApiResponse({ status: 400, description: 'Bad request - Invalid input' })
   @ApiResponse({ status: 404, description: 'Batch not found' })
   async bulkBatchUpdate(
-    @Body() bulkBatchUpdateDto: BulkBatchUpdateDto,
+    @Body() bulkBatchUpdateDto: BulkRetrievalBatchUpdateDto,
     @Res() response: Response,
   ) {
     return ResponseHandler.handler(
