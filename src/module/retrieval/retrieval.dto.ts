@@ -235,6 +235,7 @@ export class CreateRetrievalItemDto {
     total_payout?: number;
     amount_to_charge_or_refund: number;
     charge_before?: string;
+    amount_to_charge_or_refund_currency?: string;
   };
 
   @ApiProperty()
@@ -272,7 +273,7 @@ export class UploadRetrievalResponseDto {
   retrievals: any[];
 }
 
-export class BulkBatchUpdateDto {
+export class BulkRetrievalBatchUpdateDto {
   @ApiProperty({
     description: 'Array of retrieval IDs to update',
     type: [String],
@@ -287,7 +288,7 @@ export class BulkBatchUpdateDto {
   batch_id: string;
 }
 
-export class BulkBatchUpdateResponseDto {
+export class BulkRetrievalBatchUpdateResponseDto {
   @ApiProperty({
     description: 'Number of retrievals updated',
     example: 5,

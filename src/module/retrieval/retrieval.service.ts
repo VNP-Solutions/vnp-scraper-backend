@@ -128,7 +128,12 @@ export class RetrievalService implements IRetrievalService {
       const groupedByHotelId = new Map<string, any[]>();
 
       for (const row of rawData) {
-        const hotelId = row['Hotel ID']?.toString() || '';
+        const hotelId =
+          (
+            row['Hotel ID'] ||
+            row['Property ID'] ||
+            row['Property Id']
+          )?.toString() || '';
         if (!hotelId) continue;
 
         if (!groupedByHotelId.has(hotelId)) {
@@ -423,7 +428,7 @@ export class RetrievalService implements IRetrievalService {
                 parent_retrieval_id: parentRetrieval.id,
                 property_id: property.id,
                 guest_name: guestName,
-                reservation_id: undefined,
+                reservation_id: (row['Reservation ID'] || row['Agoda ID'] || row['Expedia ID'] )?.toString() || undefined,
                 confirmation_number: undefined,
                 check_in_date: checkInDate,
                 check_out_date: checkOutDate,
@@ -443,6 +448,8 @@ export class RetrievalService implements IRetrievalService {
                   amount !== null
                     ? {
                         amount_to_charge_or_refund: amount,
+                        amount_to_charge_or_refund_currency:
+                          firstRow['Currency'] || 'USD',
                       }
                     : undefined,
                 reservation_status: 'Pending',
