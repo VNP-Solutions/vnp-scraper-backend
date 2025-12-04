@@ -4,6 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import * as https from 'https';
 import { DatabaseService } from '../database/database.service';
 import { JobModule } from '../job/job.module';
+import { RetrievalModule } from '../retrieval/retrieval.module';
 import { ScraperJobItemRepository } from './scraper-job-item.repository';
 import { ScraperJobItemService } from './scraper-job-item.service';
 import { ScraperController } from './scraper.controller';
@@ -27,6 +28,7 @@ import { ScraperController } from './scraper.controller';
     }),
     ConfigModule,
     JobModule,
+    RetrievalModule,
   ],
   controllers: [ScraperController],
   providers: [

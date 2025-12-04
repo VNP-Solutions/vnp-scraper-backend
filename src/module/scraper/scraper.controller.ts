@@ -26,6 +26,7 @@ import { ParseQuery } from '../../common/decorators/parse-query.decorator';
 
 import { ResponseHandler } from '../../common/utils/response-handler';
 import { IJobService } from '../job/job.interface';
+import { IRetrievalService } from '../retrieval/retrieval.interface';
 import { IScraperJobItemService } from './scraper-job-item.interface';
 import {
   AllJobItemsResponseDto,
@@ -58,6 +59,8 @@ export class ScraperController {
     private readonly jobItemService: IScraperJobItemService,
     @Inject('IJobService')
     private readonly jobService: IJobService,
+    @Inject('IRetrievalService')
+    private readonly retrievalService: IRetrievalService,
   ) {
     // No need for base URL anymore - using OTA-specific URLs
   }
@@ -154,6 +157,38 @@ export class ScraperController {
     const normalizedUrl = this.normalizeUrl(url);
     console.log(`Expedia Retrieval URL: ${normalizedUrl}`);
     return normalizedUrl;
+  }
+
+  /**
+   * Get Agoda retrieval server URL (uses AGODA_SERVER_URL for retrieval)
+   */
+  private getAgodaRetrievalUrl(): string | null {
+    const url = this.configService.get<string>('AGODA_SERVER_URL');
+    if (!url) {
+      console.log('No AGODA_SERVER_URL configured');
+      return null;
+    }
+
+    const normalizedUrl = this.normalizeUrl(url);
+    console.log(`Agoda Retrieval URL: ${normalizedUrl}`);
+    return normalizedUrl;
+  }
+
+  /**
+   * Get retrieval server URL based on OTA provider
+   */
+  private getRetrievalUrlByOtaProvider(otaProvider: string): string | null {
+    switch (otaProvider) {
+      case 'Expedia':
+        return this.getExpediaRetrievalUrl();
+      case 'Agoda':
+        return this.getAgodaRetrievalUrl();
+      default:
+        console.log(
+          `Unknown OTA provider: ${otaProvider}, defaulting to Expedia`,
+        );
+        return this.getExpediaRetrievalUrl();
+    }
   }
 
   /**
@@ -773,13 +808,24 @@ export class ScraperController {
   @ApiOperation({
     summary: 'Stop current retrieval job',
     description:
-      'Completely stop the current retrieval job. Requires jobId in request body.',
+      'Completely stop the current retrieval job based on OTA provider (Expedia or Agoda). Requires jobId or retrieval_id in request body. The OTA provider is automatically determined from the retrieval/job record.',
   })
   @ApiBody({ type: StopScrapingRequestDto })
   @ApiResponse({
     status: 200,
     description: 'Retrieval stopped successfully',
     type: PauseResumeStopResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Invalid request - retrieval/job not found or OTA provider not supported',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 503,
+    description: 'Retrieval server URL not configured for the OTA provider',
+    type: ErrorResponseDto,
   })
   @ApiResponse({
     status: 500,
@@ -792,31 +838,83 @@ export class ScraperController {
     @Body() body: any,
   ) {
     try {
-      const retrievalUrl = this.getExpediaRetrievalUrl();
-      if (!retrievalUrl) {
-        return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+      // Get retrieval_id or jobId from body
+      const retrievalId = body.retrieval_id || body.jobId;
+      if (!retrievalId) {
+        return res.status(HttpStatus.BAD_REQUEST).json({
           success: false,
-          message:
-            'No Expedia retrieval server URL configured (EXPEDIA_RETRIVAL_SERVER_URL)',
-          error: 'Expedia retrieval server URL not configured',
+          message: 'retrieval_id or jobId is required',
+          error: 'Missing retrieval_id or jobId in request body',
         });
       }
 
+      // Fetch retrieval details to get OTA provider
+      let otaProvider = 'Expedia'; // Default fallback
+      try {
+        const retrieval =
+          await this.retrievalService.getRetrievalById(retrievalId);
+        otaProvider = retrieval.ota_provider || 'Expedia';
+      } catch (error) {
+        // If retrieval not found, try to get from job
+        try {
+          const job = await this.jobService.getJobById(retrievalId);
+          otaProvider = job.ota_provider || 'Expedia';
+        } catch (jobError) {
+          return res.status(HttpStatus.BAD_REQUEST).json({
+            success: false,
+            message: `Retrieval or Job with ID ${retrievalId} not found`,
+            error: 'Invalid retrieval_id or jobId',
+          });
+        }
+      }
+
+      // Get retrieval URL based on OTA provider
+      const retrievalUrl = this.getRetrievalUrlByOtaProvider(otaProvider);
+      if (!retrievalUrl) {
+        const configKey =
+          otaProvider === 'Expedia'
+            ? 'EXPEDIA_RETRIVAL_SERVER_URL'
+            : otaProvider === 'Agoda'
+              ? 'AGODA_SERVER_URL'
+              : 'RETRIEVAL_SERVER_URL';
+        return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message: `No ${otaProvider} retrieval server URL configured (${configKey})`,
+          error: `${otaProvider} retrieval server URL not configured`,
+        });
+      }
+
+      // Create request body with OTA provider info
+      const requestBody = {
+        ...body,
+        retrieval_id: retrievalId,
+        jobId: body.jobId || retrievalId,
+        ota_provider: otaProvider,
+      };
+
       const response = await firstValueFrom(
-        this.httpService.post(`${retrievalUrl}/api/retrieval/stop`, body, {
-          headers: {
-            // ...req.headers,
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
+        this.httpService.post(
+          `${retrievalUrl}/api/retrieval/stop`,
+          requestBody,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            timeout: 300000, // 5 minute timeout for long-running retrieval jobs
           },
-          timeout: 300000, // 5 minute timeout for long-running retrieval jobs
-        }),
+        ),
       );
       return res.status(response.status).json(response.data);
     } catch (error: any) {
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        'Retrieval server error';
       const data = error.response?.data || {
-        message: 'Expedia Retrieval server is down',
+        message: errorMessage,
+        error: 'Failed to stop retrieval job',
       };
       return res.status(status).json(data);
     }
