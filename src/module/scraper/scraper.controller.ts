@@ -1835,9 +1835,9 @@ export class ScraperController {
 
   @Post('/api/retrieval/property-run-job')
   @ApiOperation({
-    summary: 'Start Expedia retrieval property scraping job',
+    summary: 'Start retrieval property scraping job',
     description:
-      'Start a new property scraping job using the Expedia retrieval server. This endpoint uses EXPEDIA_RETRIVAL_SERVER_URL and follows the Expedia retrieval API pattern. Unlike regular scraper endpoints, this does not require startDate and endDate.',
+      'Start a new property scraping job using the retrieval server based on OTA provider (Expedia or Agoda). The OTA provider is automatically determined from the retrieval record. This endpoint uses EXPEDIA_RETRIVAL_SERVER_URL for Expedia or AGODA_SERVER_URL for Agoda. Unlike regular scraper endpoints, this does not require startDate and endDate.',
   })
   @ApiBody({ type: RetrievalRunJobRequestDto })
   @ApiResponse({
@@ -1847,7 +1847,7 @@ export class ScraperController {
   })
   @ApiResponse({
     status: 400,
-    description: 'Missing required parameters in request body',
+    description: 'Missing required parameters or retrieval not found',
     type: ErrorResponseDto,
   })
   @ApiResponse({
@@ -1857,7 +1857,7 @@ export class ScraperController {
   })
   @ApiResponse({
     status: 503,
-    description: 'Expedia retrieval server URL not configured',
+    description: 'Retrieval server URL not configured for the OTA provider',
     type: ErrorResponseDto,
   })
   @ApiResponse({
@@ -1873,14 +1873,43 @@ export class ScraperController {
     let selectedUrl: string | null = null;
 
     try {
-      selectedUrl = this.getExpediaRetrievalUrl();
+      // Fetch retrieval details to get OTA provider
+      if (!body.retrieval_id) {
+        return res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          message: 'retrieval_id is required',
+          error: 'Missing retrieval_id in request body',
+        });
+      }
+
+      let otaProvider = 'Expedia'; // Default fallback
+      try {
+        const retrieval = await this.retrievalService.getRetrievalById(
+          body.retrieval_id,
+        );
+        otaProvider = retrieval.ota_provider || 'Expedia';
+      } catch (error) {
+        return res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          message: `Retrieval with ID ${body.retrieval_id} not found`,
+          error: 'Invalid retrieval_id',
+        });
+      }
+
+      // Get retrieval URL based on OTA provider
+      selectedUrl = this.getRetrievalUrlByOtaProvider(otaProvider);
 
       if (!selectedUrl) {
+        const configKey =
+          otaProvider === 'Expedia'
+            ? 'EXPEDIA_RETRIVAL_SERVER_URL'
+            : otaProvider === 'Agoda'
+              ? 'AGODA_SERVER_URL'
+              : 'RETRIEVAL_SERVER_URL';
         return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
           success: false,
-          message:
-            'No Expedia retrieval server URL configured (EXPEDIA_RETRIVAL_SERVER_URL)',
-          error: 'Expedia retrieval server URL not configured',
+          message: `No ${otaProvider} retrieval server URL configured (${configKey})`,
+          error: `${otaProvider} retrieval server URL not configured`,
         });
       }
 
@@ -1888,18 +1917,34 @@ export class ScraperController {
       const enhancedBody = {
         ...body,
         scraperUrl: selectedUrl,
+        ota_provider: otaProvider,
       };
 
-      // Determine the API path based on EXPEDIA_MODE
-      const expediadMode = this.configService.get<string>('EXPEDIA_MODE');
-      const apiPath =
-        expediadMode === 'graphql'
-          ? '/api/expedia/graphql-retrieval-run-job'
-          : '/api/expedia/retrieval-run-job';
-
-      console.log(
-        `Using Expedia retrieval server with ${expediadMode || 'scraper'} mode: ${apiPath}`,
-      );
+      // Determine the API path based on OTA provider and EXPEDIA_MODE
+      let apiPath: string;
+      if (otaProvider === 'Expedia') {
+        const expediadMode = this.configService.get<string>('EXPEDIA_MODE');
+        apiPath =
+          expediadMode === 'graphql'
+            ? '/api/expedia/graphql-retrieval-run-job'
+            : '/api/expedia/retrieval-run-job';
+        console.log(
+          `Using Expedia retrieval server with ${expediadMode || 'scraper'} mode: ${apiPath}`,
+        );
+      } else if (otaProvider === 'Agoda') {
+        apiPath = '/api/agoda/retrieval-run-job';
+        console.log(`Using Agoda retrieval server: ${apiPath}`);
+      } else {
+        // Default to Expedia path for unknown providers
+        const expediadMode = this.configService.get<string>('EXPEDIA_MODE');
+        apiPath =
+          expediadMode === 'graphql'
+            ? '/api/expedia/graphql-retrieval-run-job'
+            : '/api/expedia/retrieval-run-job';
+        console.log(
+          `Unknown OTA provider ${otaProvider}, defaulting to Expedia retrieval path: ${apiPath}`,
+        );
+      }
 
       const response = await firstValueFrom(
         this.httpService.post(`${selectedUrl}${apiPath}`, enhancedBody, {
@@ -1914,8 +1959,13 @@ export class ScraperController {
       return res.status(response.status).json(response.data);
     } catch (error: any) {
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        'Retrieval server error';
       const data = error.response?.data || {
-        message: 'Expedia retrieval server is down',
+        message: errorMessage,
+        error: 'Failed to start retrieval property scraping job',
       };
       return res.status(status).json(data);
     }
