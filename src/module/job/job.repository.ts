@@ -102,6 +102,7 @@ export class JobRepository implements IJobRepository {
         end_date,
         batch_id,
         batch_name,
+        is_archived,
         ...filters
       } = query || {};
       let allFilters: any = { ...filters };
@@ -153,6 +154,27 @@ export class JobRepository implements IJobRepository {
         allFilters.batch = {
           name: { contains: batch_name.toString().trim(), mode: 'insensitive' },
         };
+      }
+
+      // Handle is_archived filter (after search to properly merge OR conditions)
+      if (is_archived !== undefined && is_archived !== null) {
+        if (is_archived === 'true' || is_archived === true) {
+          allFilters.is_archived = true;
+        } else if (is_archived === 'false' || is_archived === false) {
+          // Include records where is_archived is false OR null/undefined (legacy data)
+          const isArchivedFilter = {
+            OR: [{ is_archived: false }, { is_archived: null }],
+          };
+
+          // If there's already an OR condition from search, wrap both in AND
+          if (allFilters.OR) {
+            const existingOR = allFilters.OR;
+            delete allFilters.OR;
+            allFilters.AND = [{ OR: existingOR }, isArchivedFilter];
+          } else {
+            allFilters.OR = isArchivedFilter.OR;
+          }
+        }
       }
 
       const skip = page

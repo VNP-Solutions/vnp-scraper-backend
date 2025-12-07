@@ -135,6 +135,12 @@ export class JobController {
     required: false,
     description: 'Filter jobs by batch name (partial match)',
   })
+  @ApiQuery({
+    name: 'is_archived',
+    required: false,
+    type: 'boolean',
+    description: 'Filter jobs by archived status (true/false)',
+  })
   async getAllJobs(
     @ParseQuery() query: Record<string, any>,
     @Res() response: Response,

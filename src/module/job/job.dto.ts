@@ -159,6 +159,9 @@ export class UpdateJobDto implements Partial<CreateJobDto> {
 
   @ApiProperty({ required: false })
   db_billing_duration?: number;
+
+  @ApiProperty({ required: false, default: false })
+  is_archived?: boolean;
 }
 
 export class ImportJobsResponseDto {

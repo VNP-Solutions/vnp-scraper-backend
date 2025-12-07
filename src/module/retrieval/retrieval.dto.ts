@@ -177,6 +177,9 @@ export class UpdateRetrievalDto implements Partial<CreateRetrievalDto> {
 
   @ApiProperty({ required: false })
   batch_id?: string;
+
+  @ApiProperty({ required: false, default: false })
+  is_archived?: boolean;
 }
 
 export class CreateRetrievalItemDto {

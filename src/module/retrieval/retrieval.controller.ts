@@ -183,6 +183,12 @@ export class RetrievalController {
     required: false,
     description: 'End date for filtering (YYYY-MM-DD)',
   })
+  @ApiQuery({
+    name: 'is_archived',
+    required: false,
+    type: 'boolean',
+    description: 'Filter parent retrievals by archived status (true/false)',
+  })
   async getAllParentRetrievals(
     @ParseQuery() query: Record<string, any>,
     @Res() response: Response,
@@ -230,6 +236,12 @@ export class RetrievalController {
   @ApiResponse({
     status: 200,
     description: 'Retrievals retrieved successfully',
+  })
+  @ApiQuery({
+    name: 'is_archived',
+    required: false,
+    type: 'boolean',
+    description: 'Filter retrievals by archived status (true/false)',
   })
   async getAllRetrievals(
     @Query() query: Record<string, any>,
@@ -373,6 +385,12 @@ export class RetrievalController {
     name: 'batch_id',
     required: false,
     description: 'Filter by batch ID',
+  })
+  @ApiQuery({
+    name: 'is_archived',
+    required: false,
+    type: 'boolean',
+    description: 'Filter retrievals by archived status (true/false)',
   })
   async getRetrievalsByParentRetrievalId(
     @Param('parentRetrievalId') parentRetrievalId: string,
