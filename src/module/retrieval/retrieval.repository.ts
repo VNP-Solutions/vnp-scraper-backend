@@ -453,6 +453,14 @@ export class RetrievalRepository implements IRetrievalRepository {
   }
 
   async deleteParentRetrieval(id: string): Promise<void> {
+    await this.prisma.retrievalItem.deleteMany({
+      where: { parent_retrieval_id: id },
+    });
+
+    await this.prisma.retrieval.deleteMany({
+      where: { parent_retrieval_id: id },
+    });
+
     await this.prisma.parentRetrieval.delete({
       where: { id },
     });
