@@ -38,6 +38,7 @@ export class RetrievalRepository implements IRetrievalRepository {
       search,
       start_date,
       end_date,
+      is_archived,
       ...filters
     } = query;
 
@@ -54,6 +55,27 @@ export class RetrievalRepository implements IRetrievalRepository {
         ...(isValidObjectId ? [{ id: searchTerm }] : []),
         { name: { contains: searchTerm, mode: 'insensitive' } },
       ];
+    }
+
+    // Handle is_archived filter (after search to properly merge OR conditions)
+    if (is_archived !== undefined && is_archived !== null) {
+      if (is_archived === 'true' || is_archived === true) {
+        where.is_archived = true;
+      } else if (is_archived === 'false' || is_archived === false) {
+        // Include records where is_archived is false OR null/undefined (legacy data)
+        const isArchivedFilter = {
+          OR: [{ is_archived: false }, { is_archived: null }],
+        };
+
+        // If there's already an OR condition from search, wrap both in AND
+        if (where.OR) {
+          const existingOR = where.OR;
+          delete where.OR;
+          where.AND = [{ OR: existingOR }, isArchivedFilter];
+        } else {
+          where.OR = isArchivedFilter.OR;
+        }
+      }
     }
 
     // Date filtering
@@ -126,6 +148,7 @@ export class RetrievalRepository implements IRetrievalRepository {
       limit = 10,
       sortBy = 'createdAt',
       sortOrder = 'desc',
+      is_archived,
       ...filters
     } = query;
 
@@ -150,6 +173,48 @@ export class RetrievalRepository implements IRetrievalRepository {
 
     if (filters.posting_type) {
       where.posting_type = filters.posting_type;
+    }
+
+    // Handle is_archived filter
+    if (is_archived !== undefined && is_archived !== null) {
+      if (is_archived === 'true' || is_archived === true) {
+        where.is_archived = true;
+      } else if (is_archived === 'false' || is_archived === false) {
+        // Include records where is_archived is false OR null/undefined (legacy data)
+        const isArchivedFilter = {
+          OR: [{ is_archived: false }, { is_archived: null }],
+        };
+
+        // If there's already an OR condition, wrap both in AND
+        if (where.OR) {
+          const existingOR = where.OR;
+          delete where.OR;
+          where.AND = [{ OR: existingOR }, isArchivedFilter];
+        } else {
+          where.OR = isArchivedFilter.OR;
+        }
+      }
+    }
+
+    // Handle is_archived filter
+    if (is_archived !== undefined && is_archived !== null) {
+      if (is_archived === 'true' || is_archived === true) {
+        where.is_archived = true;
+      } else if (is_archived === 'false' || is_archived === false) {
+        // Include records where is_archived is false OR null/undefined (legacy data)
+        const isArchivedFilter = {
+          OR: [{ is_archived: false }, { is_archived: null }],
+        };
+
+        // If there's already an OR condition, wrap both in AND
+        if (where.OR) {
+          const existingOR = where.OR;
+          delete where.OR;
+          where.AND = [{ OR: existingOR }, isArchivedFilter];
+        } else {
+          where.OR = isArchivedFilter.OR;
+        }
+      }
     }
 
     const [data, total] = await Promise.all([
@@ -303,6 +368,7 @@ export class RetrievalRepository implements IRetrievalRepository {
       portfolio_name,
       sub_portfolio_name,
       batch_id,
+      is_archived,
       ...filters
     } = query;
 
@@ -396,6 +462,27 @@ export class RetrievalRepository implements IRetrievalRepository {
     // Batch ID filtering
     if (batch_id) {
       where.batch_id = batch_id;
+    }
+
+    // Handle is_archived filter (after search to properly merge OR conditions)
+    if (is_archived !== undefined && is_archived !== null) {
+      if (is_archived === 'true' || is_archived === true) {
+        where.is_archived = true;
+      } else if (is_archived === 'false' || is_archived === false) {
+        // Include records where is_archived is false OR null/undefined (legacy data)
+        const isArchivedFilter = {
+          OR: [{ is_archived: false }, { is_archived: null }],
+        };
+
+        // If there's already an OR condition from search, wrap both in AND
+        if (where.OR) {
+          const existingOR = where.OR;
+          delete where.OR;
+          where.AND = [{ OR: existingOR }, isArchivedFilter];
+        } else {
+          where.OR = isArchivedFilter.OR;
+        }
+      }
     }
 
     const orderBy = {
