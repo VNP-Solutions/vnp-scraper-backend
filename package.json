@@ -18,7 +18,8 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "decrypt-password": "ts-node scripts/decrypt-password.ts"
+    "decrypt-password": "ts-node scripts/decrypt-password.ts",
+    "migrate:add-is-archived": "ts-node migrations/add-is-archived-field.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.812.0",
