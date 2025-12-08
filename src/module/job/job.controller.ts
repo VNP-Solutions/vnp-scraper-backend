@@ -138,7 +138,7 @@ export class JobController {
   @ApiQuery({
     name: 'is_archived',
     required: false,
-    type: 'boolean',
+    type: Boolean,
     description: 'Filter jobs by archived status (true/false)',
   })
   async getAllJobs(

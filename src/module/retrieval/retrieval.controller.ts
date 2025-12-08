@@ -389,7 +389,7 @@ export class RetrievalController {
   @ApiQuery({
     name: 'is_archived',
     required: false,
-    type: 'boolean',
+    type: Boolean,
     description: 'Filter retrievals by archived status (true/false)',
   })
   async getRetrievalsByParentRetrievalId(

@@ -162,18 +162,7 @@ export class JobRepository implements IJobRepository {
           allFilters.is_archived = true;
         } else if (is_archived === 'false' || is_archived === false) {
           // Include records where is_archived is false OR null/undefined (legacy data)
-          const isArchivedFilter = {
-            OR: [{ is_archived: false }, { is_archived: null }],
-          };
-
-          // If there's already an OR condition from search, wrap both in AND
-          if (allFilters.OR) {
-            const existingOR = allFilters.OR;
-            delete allFilters.OR;
-            allFilters.AND = [{ OR: existingOR }, isArchivedFilter];
-          } else {
-            allFilters.OR = isArchivedFilter.OR;
-          }
+          allFilters.is_archived = false;
         }
       }
 
