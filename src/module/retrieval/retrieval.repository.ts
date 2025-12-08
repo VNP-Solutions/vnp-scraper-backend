@@ -11,6 +11,7 @@ import {
   CreateParentRetrievalDto,
   CreateRetrievalDto,
   CreateRetrievalItemDto,
+  UpdateParentRetrievalDto,
   UpdateRetrievalDto,
 } from './retrieval.dto';
 import { IRetrievalRepository } from './retrieval.interface';
@@ -495,6 +496,16 @@ export class RetrievalRepository implements IRetrievalRepository {
     data: UpdateRetrievalDto,
   ): Promise<Retrieval> {
     return this.prisma.retrieval.update({
+      where: { id },
+      data,
+    });
+  }
+
+  async updateParentRetrieval(
+    id: string,
+    data: UpdateParentRetrievalDto,
+  ): Promise<ParentRetrieval> {
+    return this.prisma.parentRetrieval.update({
       where: { id },
       data,
     });

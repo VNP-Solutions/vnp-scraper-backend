@@ -23,6 +23,7 @@ import {
   CreateParentRetrievalDto,
   CreateRetrievalDto,
   CreateRetrievalItemDto,
+  UpdateParentRetrievalDto,
   UpdateRetrievalDto,
 } from './retrieval.dto';
 import { IRetrievalRepository, IRetrievalService } from './retrieval.interface';
@@ -428,7 +429,12 @@ export class RetrievalService implements IRetrievalService {
                 parent_retrieval_id: parentRetrieval.id,
                 property_id: property.id,
                 guest_name: guestName,
-                reservation_id: (row['Reservation ID'] || row['Agoda ID'] || row['Expedia ID'] )?.toString() || undefined,
+                reservation_id:
+                  (
+                    row['Reservation ID'] ||
+                    row['Agoda ID'] ||
+                    row['Expedia ID']
+                  )?.toString() || undefined,
                 confirmation_number: undefined,
                 check_in_date: checkInDate,
                 check_out_date: checkOutDate,
@@ -631,7 +637,8 @@ export class RetrievalService implements IRetrievalService {
           'Check Out': item.check_out_date
             ? new Date(item.check_out_date).toLocaleDateString()
             : '',
-          Currency: item.payment_info?.amount_to_charge_or_refund_currency || 'USD',
+          Currency:
+            item.payment_info?.amount_to_charge_or_refund_currency || 'USD',
           'Amount to charge':
             item.payment_info?.amount_to_charge_or_refund || 0,
           'Charge status': item.reservation_status || '',
@@ -809,6 +816,21 @@ export class RetrievalService implements IRetrievalService {
     } catch (error) {
       this.logger.error(
         `Error updating retrieval: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async updateParentRetrieval(
+    id: string,
+    data: UpdateParentRetrievalDto,
+  ): Promise<ParentRetrieval> {
+    try {
+      return await this.repository.updateParentRetrieval(id, data);
+    } catch (error) {
+      this.logger.error(
+        `Error updating parent retrieval: ${error.message}`,
         error.stack,
       );
       throw error;

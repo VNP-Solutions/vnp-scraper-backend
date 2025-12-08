@@ -9,6 +9,7 @@ import {
   CreateParentRetrievalDto,
   CreateRetrievalDto,
   CreateRetrievalItemDto,
+  UpdateParentRetrievalDto,
   UpdateRetrievalDto,
 } from './retrieval.dto';
 
@@ -47,6 +48,10 @@ export interface IRetrievalService {
     query: Record<string, any>,
   ): Promise<{ data: RetrievalItem[]; metadata: any }>;
   updateRetrieval(id: string, data: UpdateRetrievalDto): Promise<Retrieval>;
+  updateParentRetrieval(
+    id: string,
+    data: UpdateParentRetrievalDto,
+  ): Promise<ParentRetrieval>;
   deleteRetrieval(id: string): Promise<void>;
   deleteParentRetrieval(id: string): Promise<void>;
   createBatch(data: CreateBatchDto): Promise<Batch>;
@@ -83,6 +88,10 @@ export interface IRetrievalRepository {
     query: Record<string, any>,
   ): Promise<{ data: RetrievalItem[]; metadata: any }>;
   updateRetrieval(id: string, data: UpdateRetrievalDto): Promise<Retrieval>;
+  updateParentRetrieval(
+    id: string,
+    data: UpdateParentRetrievalDto,
+  ): Promise<ParentRetrieval>;
   deleteRetrieval(id: string): Promise<void>;
   deleteParentRetrieval(id: string): Promise<void>;
   createManyRetrievalItems(data: CreateRetrievalItemDto[]): Promise<void>;

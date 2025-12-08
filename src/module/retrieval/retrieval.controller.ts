@@ -31,6 +31,7 @@ import {
   BulkRetrievalBatchUpdateResponseDto,
   CreateParentRetrievalDto,
   CreateRetrievalDto,
+  UpdateParentRetrievalDto,
   UpdateRetrievalDto,
   UploadRetrievalResponseDto,
 } from './retrieval.dto';
@@ -38,6 +39,7 @@ import { IRetrievalService } from './retrieval.interface';
 import {
   createParentRetrievalSchema,
   createRetrievalSchema,
+  updateParentRetrievalSchema,
   updateRetrievalSchema,
 } from './retrieval.validation';
 
@@ -281,6 +283,34 @@ export class RetrievalController {
         return {
           statusCode: 200,
           message: 'Parent retrieval retrieved successfully',
+          data: parentRetrieval,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Put('/parent/:id')
+  @ApiOperation({ summary: 'Update parent retrieval by ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Parent retrieval updated successfully',
+  })
+  @ApiResponse({ status: 404, description: 'Parent retrieval not found' })
+  @ValidateBody(updateParentRetrievalSchema)
+  async updateParentRetrieval(
+    @Param('id') id: string,
+    @Body() data: UpdateParentRetrievalDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const parentRetrieval =
+          await this.retrievalService.updateParentRetrieval(id, data);
+        return {
+          statusCode: 200,
+          message: 'Parent retrieval updated successfully',
           data: parentRetrieval,
         };
       },
