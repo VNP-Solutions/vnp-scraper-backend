@@ -4,6 +4,11 @@ export const createParentRetrievalSchema = z.object({
   name: z.string().min(1, 'Name is required'),
 });
 
+export const updateParentRetrievalSchema = z.object({
+  name: z.string().min(1, 'Name is required').optional(),
+  is_archived: z.boolean().optional(),
+});
+
 export const createRetrievalSchema = z.object({
   name: z.string().optional(),
   job_status: z

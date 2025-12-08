@@ -9,6 +9,22 @@ export class CreateParentRetrievalDto {
   name: string;
 }
 
+export class UpdateParentRetrievalDto {
+  @ApiProperty({
+    required: false,
+    description: 'Name of the parent retrieval',
+    example: 'Batch 2025-01-15',
+  })
+  name?: string;
+
+  @ApiProperty({
+    required: false,
+    default: false,
+    description: 'Archived status of the parent retrieval',
+  })
+  is_archived?: boolean;
+}
+
 export class CreateRetrievalDto {
   @ApiProperty({ required: false })
   name?: string;
