@@ -63,18 +63,7 @@ export class RetrievalRepository implements IRetrievalRepository {
         where.is_archived = true;
       } else if (is_archived === 'false' || is_archived === false) {
         // Include records where is_archived is false OR null/undefined (legacy data)
-        const isArchivedFilter = {
-          OR: [{ is_archived: false }, { is_archived: null }],
-        };
-
-        // If there's already an OR condition from search, wrap both in AND
-        if (where.OR) {
-          const existingOR = where.OR;
-          delete where.OR;
-          where.AND = [{ OR: existingOR }, isArchivedFilter];
-        } else {
-          where.OR = isArchivedFilter.OR;
-        }
+        where.is_archived = false;
       }
     }
 
@@ -181,18 +170,7 @@ export class RetrievalRepository implements IRetrievalRepository {
         where.is_archived = true;
       } else if (is_archived === 'false' || is_archived === false) {
         // Include records where is_archived is false OR null/undefined (legacy data)
-        const isArchivedFilter = {
-          OR: [{ is_archived: false }, { is_archived: null }],
-        };
-
-        // If there's already an OR condition, wrap both in AND
-        if (where.OR) {
-          const existingOR = where.OR;
-          delete where.OR;
-          where.AND = [{ OR: existingOR }, isArchivedFilter];
-        } else {
-          where.OR = isArchivedFilter.OR;
-        }
+        where.is_archived = false;
       }
     }
 
