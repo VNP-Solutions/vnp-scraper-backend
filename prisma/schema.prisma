@@ -435,6 +435,7 @@ model Batch {
 model ParentRetrieval {
   id   String @id @default(auto()) @map("_id") @db.ObjectId
   name String
+  ota_provider OTAProvider @map("OTA")
   is_archived Boolean @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

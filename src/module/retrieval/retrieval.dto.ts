@@ -7,6 +7,13 @@ export class CreateParentRetrievalDto {
     example: 'Batch 2025-01-15',
   })
   name: string;
+
+  @ApiProperty({
+    required: false,
+    enum: OTAProvider,
+    description: 'OTA provider for the parent retrieval',
+  })
+  ota_provider?: OTAProvider;
 }
 
 export class UpdateParentRetrievalDto {
@@ -16,6 +23,13 @@ export class UpdateParentRetrievalDto {
     example: 'Batch 2025-01-15',
   })
   name?: string;
+
+  @ApiProperty({
+    required: false,
+    enum: OTAProvider,
+    description: 'OTA provider for the parent retrieval',
+  })
+  ota_provider?: OTAProvider;
 
   @ApiProperty({
     required: false,

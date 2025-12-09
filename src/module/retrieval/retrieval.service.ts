@@ -150,6 +150,7 @@ export class RetrievalService implements IRetrievalService {
       let createdPropertiesCount = 0;
       let createdPortfoliosCount = 0;
       let retrievalItemsCount = 0;
+      let firstOtaProvider: OTAProvider | null = null;
 
       this.logger.log(
         `Processing ${groupedByHotelId.size} unique hotels from Excel file`,
@@ -386,6 +387,17 @@ export class RetrievalService implements IRetrievalService {
             `Created Retrieval: ${retrieval.id} for Hotel ID: ${hotelId}`,
           );
           retrievals.push(retrieval);
+
+          // Set ota_provider on parent retrieval from first successful retrieval
+          if (firstOtaProvider === null) {
+            firstOtaProvider = otaProvider;
+            await this.updateParentRetrieval(parentRetrieval.id, {
+              ota_provider: otaProvider,
+            });
+            this.logger.log(
+              `Set ota_provider on parent retrieval: ${otaProvider}`,
+            );
+          }
 
           // Create RetrievalItems for each row (Agoda only)
           if (otaProvider === OTAProvider.Agoda) {

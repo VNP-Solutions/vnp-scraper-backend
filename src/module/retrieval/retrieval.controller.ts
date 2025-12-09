@@ -167,7 +167,7 @@ export class RetrievalController {
     name: 'sortBy',
     required: false,
     description:
-      'Field to sort by (available fields: id, name, createdAt, updatedAt)',
+      'Field to sort by (available fields: id, name, ota_provider, createdAt, updatedAt)',
   })
   @ApiQuery({
     name: 'sortOrder',
@@ -190,6 +190,11 @@ export class RetrievalController {
     required: false,
     type: 'boolean',
     description: 'Filter parent retrievals by archived status (true/false)',
+  })
+  @ApiQuery({
+    name: 'ota_provider',
+    required: false,
+    description: 'Filter by OTA provider (Expedia, Booking, Agoda)',
   })
   async getAllParentRetrievals(
     @ParseQuery() query: Record<string, any>,

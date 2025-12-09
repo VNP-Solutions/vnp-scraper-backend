@@ -2,10 +2,12 @@ import { z } from 'zod';
 
 export const createParentRetrievalSchema = z.object({
   name: z.string().min(1, 'Name is required'),
+  ota_provider: z.enum(['Expedia', 'Booking', 'Agoda']).optional(),
 });
 
 export const updateParentRetrievalSchema = z.object({
   name: z.string().min(1, 'Name is required').optional(),
+  ota_provider: z.enum(['Expedia', 'Booking', 'Agoda']).optional(),
   is_archived: z.boolean().optional(),
 });
 
