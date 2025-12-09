@@ -40,6 +40,7 @@ export class RetrievalRepository implements IRetrievalRepository {
       start_date,
       end_date,
       is_archived,
+      ota_provider,
       ...filters
     } = query;
 
@@ -66,6 +67,15 @@ export class RetrievalRepository implements IRetrievalRepository {
         // Include records where is_archived is false OR null/undefined (legacy data)
         where.is_archived = false;
       }
+    }
+
+    // Handle ota_provider filter
+    if (
+      ota_provider !== undefined &&
+      ota_provider !== null &&
+      ota_provider !== ''
+    ) {
+      where.ota_provider = ota_provider;
     }
 
     // Date filtering
