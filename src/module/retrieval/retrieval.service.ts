@@ -626,6 +626,7 @@ export class RetrievalService implements IRetrievalService {
           'Hotel ID': property?.expedia_id || '',
           Batch: batchName,
           'Posting Type': retrieval?.posting_type || '',
+          'OTA Provider': retrieval?.ota_provider || '',
           Portfolio: retrieval?.portfolio_name || '',
           'Hotel Name': property?.name || '',
           'Reservation ID': item.reservation_id || '',
