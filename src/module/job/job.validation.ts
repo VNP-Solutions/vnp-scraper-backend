@@ -63,7 +63,16 @@ export const createBatchSchema = z.object({
 
 export const updateBatchSchema = createBatchSchema.partial();
 
+export const bulkArchiveJobsSchema = z.object({
+  job_ids: z.array(objectIdSchema).min(1, 'At least one job ID is required'),
+  status: z.boolean({
+    required_error: 'Status is required',
+    invalid_type_error: 'Status must be a boolean',
+  }),
+});
+
 export type CreateJobType = z.infer<typeof createJobSchema>;
 export type UpdateJobType = z.infer<typeof updateJobSchema>;
 export type CreateBatchType = z.infer<typeof createBatchSchema>;
 export type UpdateBatchType = z.infer<typeof updateBatchSchema>;
+export type BulkArchiveJobsType = z.infer<typeof bulkArchiveJobsSchema>;

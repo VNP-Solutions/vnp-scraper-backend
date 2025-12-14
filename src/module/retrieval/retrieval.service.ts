@@ -926,4 +926,30 @@ export class RetrievalService implements IRetrievalService {
       throw error;
     }
   }
+
+  async bulkArchiveParentRetrievals(
+    parentRetrievalIds: string[],
+    status: boolean,
+  ): Promise<{ updatedCount: number; status: boolean }> {
+    try {
+      if (!parentRetrievalIds || parentRetrievalIds.length === 0) {
+        throw new Error('parent_retrieval_ids array cannot be empty');
+      }
+
+      const result = await this.repository.bulkArchiveParentRetrievalsUpdate(
+        parentRetrievalIds,
+        status,
+      );
+      return {
+        updatedCount: result.count,
+        status: status,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error bulk updating parent retrievals archive status: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
 }

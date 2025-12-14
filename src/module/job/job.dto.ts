@@ -364,3 +364,32 @@ export class BulkBatchUpdateResponseDto {
   })
   batch_id: string;
 }
+
+export class BulkArchiveJobsDto {
+  @ApiProperty({
+    description: 'Array of job IDs to update',
+    type: [String],
+    example: ['job-id-1', 'job-id-2', 'job-id-3'],
+  })
+  job_ids: string[];
+
+  @ApiProperty({
+    description: 'Archive status - true to archive, false to unarchive',
+    example: true,
+  })
+  status: boolean;
+}
+
+export class BulkArchiveJobsResponseDto {
+  @ApiProperty({
+    description: 'Number of jobs updated',
+    example: 5,
+  })
+  updatedCount: number;
+
+  @ApiProperty({
+    description: 'Archive status that was applied',
+    example: true,
+  })
+  status: boolean;
+}

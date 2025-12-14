@@ -1,5 +1,9 @@
 import { z } from 'zod';
 
+const objectIdSchema = z.string().regex(/^[0-9a-fA-F]{24}$/, {
+  message: 'Invalid ObjectId format. Must be a 24-character hex string.',
+});
+
 export const createParentRetrievalSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   ota_provider: z.enum(['Expedia', 'Booking', 'Agoda']).optional(),
@@ -74,4 +78,14 @@ export const updateRetrievalSchema = z.object({
   live_url: z.string().optional(),
   reservations: z.array(z.string()).optional(),
   amount_to_charge_or_refund_currency: z.string().nullable().optional(),
+});
+
+export const bulkArchiveParentRetrievalsSchema = z.object({
+  parent_retrieval_ids: z
+    .array(objectIdSchema)
+    .min(1, 'At least one parent retrieval ID is required'),
+  status: z.boolean({
+    required_error: 'Status is required',
+    invalid_type_error: 'Status must be a boolean',
+  }),
 });

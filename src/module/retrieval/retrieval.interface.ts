@@ -102,4 +102,8 @@ export interface IRetrievalRepository {
     retrievalIds: string[],
     batchId: string,
   ): Promise<{ count: number }>;
+  bulkArchiveParentRetrievalsUpdate(
+    parentRetrievalIds: string[],
+    isArchived: boolean,
+  ): Promise<{ count: number }>;
 }

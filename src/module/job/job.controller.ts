@@ -31,6 +31,8 @@ import { ResponseHandler } from 'src/common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
   BatchResponseDto,
+  BulkArchiveJobsDto,
+  BulkArchiveJobsResponseDto,
   BulkBatchUpdateDto,
   BulkBatchUpdateResponseDto,
   CreateBatchDto,
@@ -41,7 +43,11 @@ import {
   UpdateJobDto,
 } from './job.dto';
 import { IJobService } from './job.interface';
-import { createBatchSchema, createJobSchema } from './job.validation';
+import {
+  bulkArchiveJobsSchema,
+  createBatchSchema,
+  createJobSchema,
+} from './job.validation';
 
 @ApiTags('Jobs')
 @ApiBearerAuth('JWT-auth')
@@ -638,6 +644,10 @@ export class JobController {
   @ApiOperation({ summary: 'Delete batch by ID' })
   @ApiResponse({ status: 200, description: 'Batch deleted successfully' })
   @ApiResponse({ status: 404, description: 'Batch not found' })
+  @ApiResponse({
+    status: 400,
+    description: 'Cannot delete batch - batch is assigned to jobs',
+  })
   async deleteBatch(@Param('id') id: string, @Res() response: Response) {
     return ResponseHandler.handler(
       response,
@@ -677,6 +687,37 @@ export class JobController {
         return {
           statusCode: 200,
           message: 'Jobs updated successfully',
+          data: result,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Post('/bulk_archive_update')
+  @UseGuards(JwtAuthGuard)
+  @ValidateBody(bulkArchiveJobsSchema)
+  @ApiOperation({ summary: 'Bulk archive or unarchive jobs' })
+  @ApiResponse({
+    status: 200,
+    description: 'Jobs archive status updated successfully',
+    type: BulkArchiveJobsResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid input' })
+  async bulkArchiveUpdate(
+    @Body() bulkArchiveJobsDto: BulkArchiveJobsDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result = await this.jobService.bulkArchiveUpdate(
+          bulkArchiveJobsDto.job_ids,
+          bulkArchiveJobsDto.status,
+        );
+        return {
+          statusCode: 200,
+          message: `Jobs ${bulkArchiveJobsDto.status ? 'archived' : 'unarchived'} successfully`,
           data: result,
         };
       },

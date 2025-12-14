@@ -734,13 +734,18 @@ export class JobRepository implements IJobRepository {
         throw new Error(`Batch with ID ${id} not found`);
       }
 
-      // First, update all jobs to remove the batch_id reference
-      await this.db.job.updateMany({
+      // Check if there are any jobs with this batch_id
+      const jobsCount = await this.db.job.count({
         where: { batch_id: id },
-        data: { batch_id: null },
       });
 
-      // Then delete the batch
+      if (jobsCount > 0) {
+        throw new Error(
+          `Cannot delete batch. This batch is currently assigned to ${jobsCount} job(s). Please remove the batch from all jobs before deleting.`,
+        );
+      }
+
+      // Delete the batch if no jobs are associated
       await this.db.batch.delete({
         where: { id },
       });
@@ -781,6 +786,30 @@ export class JobRepository implements IJobRepository {
       return result;
     } catch (error) {
       this.logger.error('Error bulk updating jobs batch:', error);
+      throw error;
+    }
+  }
+
+  async bulkArchiveUpdate(
+    jobIds: string[],
+    isArchived: boolean,
+  ): Promise<{ count: number }> {
+    try {
+      // Update all jobs with the is_archived status
+      const result = await this.db.job.updateMany({
+        where: {
+          id: {
+            in: jobIds,
+          },
+        },
+        data: {
+          is_archived: isArchived,
+        },
+      });
+
+      return result;
+    } catch (error) {
+      this.logger.error('Error bulk updating jobs archive status:', error);
       throw error;
     }
   }

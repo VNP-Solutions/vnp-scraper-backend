@@ -27,6 +27,8 @@ import { ValidateBody } from 'src/common/decorators/validate.decorator';
 import { ExcelFileInterceptorOptions } from '../../common/interceptors/excel-file.interceptor';
 import { ResponseHandler } from '../../common/utils/response-handler';
 import {
+  BulkArchiveParentRetrievalsDto,
+  BulkArchiveParentRetrievalsResponseDto,
   BulkRetrievalBatchUpdateDto,
   BulkRetrievalBatchUpdateResponseDto,
   CreateParentRetrievalDto,
@@ -685,6 +687,37 @@ export class RetrievalController {
         return {
           statusCode: 200,
           message: 'Retrievals updated successfully',
+          data: result,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Post('/bulk_archive_parent_retrievals')
+  @UseGuards(JwtAuthGuard)
+  @ValidateBody(bulkArchiveParentRetrievalsSchema)
+  @ApiOperation({ summary: 'Bulk archive or unarchive parent retrievals' })
+  @ApiResponse({
+    status: 200,
+    description: 'Parent retrievals archive status updated successfully',
+    type: BulkArchiveParentRetrievalsResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid input' })
+  async bulkArchiveParentRetrievals(
+    @Body() bulkArchiveParentRetrievalsDto: BulkArchiveParentRetrievalsDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result = await this.retrievalService.bulkArchiveParentRetrievals(
+          bulkArchiveParentRetrievalsDto.parent_retrieval_ids,
+          bulkArchiveParentRetrievalsDto.status,
+        );
+        return {
+          statusCode: 200,
+          message: `Parent retrievals ${bulkArchiveParentRetrievalsDto.status ? 'archived' : 'unarchived'} successfully`,
           data: result,
         };
       },

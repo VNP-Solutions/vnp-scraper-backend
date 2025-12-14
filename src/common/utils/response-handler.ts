@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { HttpException, Logger } from '@nestjs/common';
 import { Response } from 'express';
 
 type ResponsePayload = {
@@ -18,8 +18,21 @@ export class ResponseHandler {
       return res.status(response.statusCode).json(response);
     } catch (error) {
       logger.error(error);
+      // Handle NestJS HttpException properly
+      if (error instanceof HttpException) {
+        const status = error.getStatus();
+        const response = error.getResponse();
+        return res.status(status).json({
+          statusCode: status,
+          message:
+            typeof response === 'string'
+              ? response
+              : (response as any).message || error.message,
+          data: null,
+        });
+      }
       return res.status(500).json({
-        status: 'error',
+        statusCode: 500,
         message: error.message,
         data: null,
       });
