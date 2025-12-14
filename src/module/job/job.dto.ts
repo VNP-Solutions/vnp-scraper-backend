@@ -329,11 +329,10 @@ export class BatchResponseDto {
   updatedAt?: Date;
 
   @ApiProperty({
-    description: 'Jobs associated with this batch',
-    type: 'array',
-    required: false,
+    description: 'Number of jobs associated with this batch',
+    example: 5,
   })
-  jobs?: any[];
+  job_count?: number;
 }
 
 export class BulkBatchUpdateDto {
