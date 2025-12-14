@@ -11,6 +11,7 @@ import {
   Query,
   Res,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import {
@@ -39,11 +40,13 @@ import {
 } from './retrieval.dto';
 import { IRetrievalService } from './retrieval.interface';
 import {
+  bulkArchiveParentRetrievalsSchema,
   createParentRetrievalSchema,
   createRetrievalSchema,
   updateParentRetrievalSchema,
   updateRetrievalSchema,
 } from './retrieval.validation';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('Retrieval')
 @Controller('/retrieval')

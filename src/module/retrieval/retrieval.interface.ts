@@ -60,6 +60,10 @@ export interface IRetrievalService {
     retrievalIds: string[],
     batchId: string,
   ): Promise<{ updatedCount: number; batch_id: string }>;
+  bulkArchiveParentRetrievals(
+    parentRetrievalIds: string[],
+    status: boolean,
+  ): Promise<{ updatedCount: number; status: boolean }>;
 }
 
 export interface IRetrievalRepository {
