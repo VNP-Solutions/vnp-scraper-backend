@@ -61,6 +61,10 @@ export interface IJobRepository {
     jobIds: string[],
     batchId: string,
   ): Promise<{ count: number }>;
+  bulkArchiveUpdate(
+    jobIds: string[],
+    isArchived: boolean,
+  ): Promise<{ count: number }>;
 }
 
 export interface IJobService {
@@ -97,4 +101,8 @@ export interface IJobService {
     jobIds: string[],
     batchId: string,
   ): Promise<{ updatedCount: number; batch_id: string }>;
+  bulkArchiveUpdate(
+    jobIds: string[],
+    status: boolean,
+  ): Promise<{ updatedCount: number; status: boolean }>;
 }

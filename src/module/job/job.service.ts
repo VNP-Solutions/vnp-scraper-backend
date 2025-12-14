@@ -1,4 +1,9 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { Batch, Job, OTAProvider, PostingType } from '@prisma/client';
 import * as XLSX from 'xlsx';
 import { IPropertyRepository } from '../property/property.interface';
@@ -443,6 +448,10 @@ export class JobService implements IJobService {
       return batch;
     } catch (error) {
       this.logger.error(`Error deleting batch: ${error.message}`, error.stack);
+      // If error message indicates batch is in use, throw BadRequestException
+      if (error.message && error.message.includes('Cannot delete batch')) {
+        throw new BadRequestException(error.message);
+      }
       throw error;
     }
   }
@@ -468,6 +477,29 @@ export class JobService implements IJobService {
     } catch (error) {
       this.logger.error(
         `Error bulk updating jobs batch: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async bulkArchiveUpdate(
+    jobIds: string[],
+    status: boolean,
+  ): Promise<{ updatedCount: number; status: boolean }> {
+    try {
+      if (!jobIds || jobIds.length === 0) {
+        throw new Error('job_ids array cannot be empty');
+      }
+
+      const result = await this.repository.bulkArchiveUpdate(jobIds, status);
+      return {
+        updatedCount: result.count,
+        status: status,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error bulk updating jobs archive status: ${error.message}`,
         error.stack,
       );
       throw error;

@@ -591,4 +591,27 @@ export class RetrievalRepository implements IRetrievalRepository {
 
     return result;
   }
+
+  async bulkArchiveParentRetrievalsUpdate(
+    parentRetrievalIds: string[],
+    isArchived: boolean,
+  ): Promise<{ count: number }> {
+    try {
+      // Update all parent retrievals with the is_archived status
+      const result = await this.prisma.parentRetrieval.updateMany({
+        where: {
+          id: {
+            in: parentRetrievalIds,
+          },
+        },
+        data: {
+          is_archived: isArchived,
+        },
+      });
+
+      return result;
+    } catch (error) {
+      throw error;
+    }
+  }
 }

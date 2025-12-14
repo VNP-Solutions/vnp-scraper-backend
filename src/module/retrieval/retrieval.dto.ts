@@ -334,3 +334,32 @@ export class BulkRetrievalBatchUpdateResponseDto {
   })
   batch_id: string;
 }
+
+export class BulkArchiveParentRetrievalsDto {
+  @ApiProperty({
+    description: 'Array of parent retrieval IDs to update',
+    type: [String],
+    example: ['parent-retrieval-id-1', 'parent-retrieval-id-2', 'parent-retrieval-id-3'],
+  })
+  parent_retrieval_ids: string[];
+
+  @ApiProperty({
+    description: 'Archive status - true to archive, false to unarchive',
+    example: true,
+  })
+  status: boolean;
+}
+
+export class BulkArchiveParentRetrievalsResponseDto {
+  @ApiProperty({
+    description: 'Number of parent retrievals updated',
+    example: 5,
+  })
+  updatedCount: number;
+
+  @ApiProperty({
+    description: 'Archive status that was applied',
+    example: true,
+  })
+  status: boolean;
+}
