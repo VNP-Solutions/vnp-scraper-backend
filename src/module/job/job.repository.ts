@@ -575,20 +575,11 @@ export class JobRepository implements IJobRepository {
         data: {
           name: data.name,
         },
-        include: {
-          jobs: {
-            select: {
-              id: true,
-              name: true,
-              job_status: true,
-              property_name: true,
-              ota_provider: true,
-              createdAt: true,
-            },
-          },
-        },
       });
-      return batch as Batch;
+      return {
+        ...batch,
+        job_count: 0,
+      } as Batch;
     } catch (error) {
       this.logger.error('Error creating batch:', error);
       throw error;
@@ -599,25 +590,20 @@ export class JobRepository implements IJobRepository {
     try {
       const batch = await this.db.batch.findUnique({
         where: { id },
-        include: {
-          jobs: {
-            select: {
-              id: true,
-              name: true,
-              job_status: true,
-              property_name: true,
-              ota_provider: true,
-              createdAt: true,
-            },
-          },
-        },
       });
 
       if (!batch) {
         throw new Error(`Batch with ID ${id} not found`);
       }
 
-      return batch as Batch;
+      const jobCount = await this.db.job.count({
+        where: { batch_id: id },
+      });
+
+      return {
+        ...batch,
+        job_count: jobCount,
+      } as Batch;
     } catch (error) {
       this.logger.error('Error finding batch by ID:', error);
       throw error;
@@ -659,24 +645,24 @@ export class JobRepository implements IJobRepository {
 
       const batches = await this.db.batch.findMany({
         where: whereClause,
-        include: {
-          jobs: {
-            select: {
-              id: true,
-              name: true,
-              job_status: true,
-              property_name: true,
-              ota_provider: true,
-              createdAt: true,
-            },
-          },
-        },
         orderBy: {
           createdAt: 'desc',
         },
       });
 
-      return batches;
+      const batchesWithJobCount = await Promise.all(
+        batches.map(async (batch) => {
+          const jobCount = await this.db.job.count({
+            where: { batch_id: batch.id },
+          });
+          return {
+            ...batch,
+            job_count: jobCount,
+          };
+        }),
+      );
+
+      return batchesWithJobCount as Batch[];
     } catch (error) {
       this.logger.error('Error finding all batches:', error);
       throw error;
@@ -690,21 +676,16 @@ export class JobRepository implements IJobRepository {
         data: {
           name: data.name,
         },
-        include: {
-          jobs: {
-            select: {
-              id: true,
-              name: true,
-              job_status: true,
-              property_name: true,
-              ota_provider: true,
-              createdAt: true,
-            },
-          },
-        },
       });
 
-      return batch as Batch;
+      const jobCount = await this.db.job.count({
+        where: { batch_id: id },
+      });
+
+      return {
+        ...batch,
+        job_count: jobCount,
+      } as Batch;
     } catch (error) {
       this.logger.error('Error updating batch:', error);
       throw error;
