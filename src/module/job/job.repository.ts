@@ -248,6 +248,17 @@ export class JobRepository implements IJobRepository {
 
   async delete(id: string): Promise<Job> {
     try {
+      // First, delete all associated job items
+      await this.db.jobItem.deleteMany({
+        where: { job_id: id },
+      });
+
+      // Delete all associated db data
+      await this.db.dbData.deleteMany({
+        where: { job_id: id },
+      });
+
+      // Then delete the job
       const job = await this.db.job.delete({
         where: { id },
       });
@@ -791,6 +802,68 @@ export class JobRepository implements IJobRepository {
       return result;
     } catch (error) {
       this.logger.error('Error bulk updating jobs archive status:', error);
+      throw error;
+    }
+  }
+
+  async bulkDelete(
+    jobIds: string[],
+  ): Promise<{ count: number; deletedJobIds: string[] }> {
+    try {
+      // First, verify which jobs exist
+      const existingJobs = await this.db.job.findMany({
+        where: {
+          id: {
+            in: jobIds,
+          },
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      const existingJobIds = existingJobs.map((job) => job.id);
+
+      if (existingJobIds.length === 0) {
+        return {
+          count: 0,
+          deletedJobIds: [],
+        };
+      }
+
+      // Delete all associated job items for these jobs
+      await this.db.jobItem.deleteMany({
+        where: {
+          job_id: {
+            in: existingJobIds,
+          },
+        },
+      });
+
+      // Delete all associated db data for these jobs
+      await this.db.dbData.deleteMany({
+        where: {
+          job_id: {
+            in: existingJobIds,
+          },
+        },
+      });
+
+      // Then delete all existing jobs
+      const result = await this.db.job.deleteMany({
+        where: {
+          id: {
+            in: existingJobIds,
+          },
+        },
+      });
+
+      return {
+        count: result.count,
+        deletedJobIds: existingJobIds,
+      };
+    } catch (error) {
+      this.logger.error('Error bulk deleting jobs:', error);
       throw error;
     }
   }

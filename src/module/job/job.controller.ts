@@ -35,6 +35,8 @@ import {
   BulkArchiveJobsResponseDto,
   BulkBatchUpdateDto,
   BulkBatchUpdateResponseDto,
+  BulkDeleteJobsDto,
+  BulkDeleteJobsResponseDto,
   CreateBatchDto,
   CreateJobDto,
   ImportJobsResponseDto,
@@ -45,6 +47,7 @@ import {
 import { IJobService } from './job.interface';
 import {
   bulkArchiveJobsSchema,
+  bulkDeleteJobsSchema,
   createBatchSchema,
   createJobSchema,
 } from './job.validation';
@@ -718,6 +721,36 @@ export class JobController {
         return {
           statusCode: 200,
           message: `Jobs ${bulkArchiveJobsDto.status ? 'archived' : 'unarchived'} successfully`,
+          data: result,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Post('/bulk_delete')
+  @UseGuards(JwtAuthGuard)
+  @ValidateBody(bulkDeleteJobsSchema)
+  @ApiOperation({ summary: 'Bulk delete jobs' })
+  @ApiResponse({
+    status: 200,
+    description: 'Jobs deleted successfully',
+    type: BulkDeleteJobsResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid input' })
+  async bulkDeleteJobs(
+    @Body() bulkDeleteJobsDto: BulkDeleteJobsDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result = await this.jobService.bulkDeleteJobs(
+          bulkDeleteJobsDto.job_ids,
+        );
+        return {
+          statusCode: 200,
+          message: `${result.deletedCount} job(s) deleted successfully`,
           data: result,
         };
       },
