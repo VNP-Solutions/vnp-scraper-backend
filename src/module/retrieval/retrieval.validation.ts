@@ -89,3 +89,9 @@ export const bulkArchiveParentRetrievalsSchema = z.object({
     invalid_type_error: 'Status must be a boolean',
   }),
 });
+
+export const bulkDeleteParentRetrievalsSchema = z.object({
+  parent_retrieval_ids: z
+    .array(objectIdSchema)
+    .min(1, 'At least one parent retrieval ID is required'),
+});

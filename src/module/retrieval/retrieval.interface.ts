@@ -64,6 +64,14 @@ export interface IRetrievalService {
     parentRetrievalIds: string[],
     status: boolean,
   ): Promise<{ updatedCount: number; status: boolean }>;
+  bulkDeleteParentRetrievals(
+    parentRetrievalIds: string[],
+  ): Promise<{
+    deletedCount: number;
+    deletedRetrievalsCount: number;
+    deletedRetrievalItemsCount: number;
+    deletedParentRetrievalIds: string[];
+  }>;
 }
 
 export interface IRetrievalRepository {
@@ -110,4 +118,12 @@ export interface IRetrievalRepository {
     parentRetrievalIds: string[],
     isArchived: boolean,
   ): Promise<{ count: number }>;
+  bulkDeleteParentRetrievals(
+    parentRetrievalIds: string[],
+  ): Promise<{
+    deletedCount: number;
+    deletedRetrievalsCount: number;
+    deletedRetrievalItemsCount: number;
+    deletedParentRetrievalIds: string[];
+  }>;
 }
