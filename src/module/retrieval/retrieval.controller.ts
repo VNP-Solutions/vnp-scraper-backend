@@ -15,6 +15,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import {
+  ApiBearerAuth,
   ApiBody,
   ApiConsumes,
   ApiOperation,
@@ -27,9 +28,12 @@ import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
 import { ExcelFileInterceptorOptions } from '../../common/interceptors/excel-file.interceptor';
 import { ResponseHandler } from '../../common/utils/response-handler';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
   BulkArchiveParentRetrievalsDto,
   BulkArchiveParentRetrievalsResponseDto,
+  BulkDeleteParentRetrievalsDto,
+  BulkDeleteParentRetrievalsResponseDto,
   BulkRetrievalBatchUpdateDto,
   BulkRetrievalBatchUpdateResponseDto,
   CreateParentRetrievalDto,
@@ -41,14 +45,15 @@ import {
 import { IRetrievalService } from './retrieval.interface';
 import {
   bulkArchiveParentRetrievalsSchema,
+  bulkDeleteParentRetrievalsSchema,
   createParentRetrievalSchema,
   createRetrievalSchema,
   updateParentRetrievalSchema,
   updateRetrievalSchema,
 } from './retrieval.validation';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('Retrieval')
+@ApiBearerAuth('JWT-auth')
 @Controller('/retrieval')
 export class RetrievalController {
   constructor(
@@ -721,6 +726,40 @@ export class RetrievalController {
         return {
           statusCode: 200,
           message: `Parent retrievals ${bulkArchiveParentRetrievalsDto.status ? 'archived' : 'unarchived'} successfully`,
+          data: result,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Post('/bulk_delete_parent_retrievals')
+  @UseGuards(JwtAuthGuard)
+  @ValidateBody(bulkDeleteParentRetrievalsSchema)
+  @ApiOperation({ summary: 'Bulk delete parent retrievals' })
+  @ApiResponse({
+    status: 200,
+    description: 'Parent retrievals deleted successfully',
+    type: BulkDeleteParentRetrievalsResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid input' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Valid JWT token required',
+  })
+  async bulkDeleteParentRetrievals(
+    @Body() bulkDeleteParentRetrievalsDto: BulkDeleteParentRetrievalsDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result = await this.retrievalService.bulkDeleteParentRetrievals(
+          bulkDeleteParentRetrievalsDto.parent_retrieval_ids,
+        );
+        return {
+          statusCode: 200,
+          message: `${result.deletedCount} parent retrieval(s) deleted successfully (${result.deletedRetrievalsCount} retrievals, ${result.deletedRetrievalItemsCount} retrieval items)`,
           data: result,
         };
       },

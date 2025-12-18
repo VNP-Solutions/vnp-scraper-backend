@@ -522,6 +522,12 @@ export class RetrievalRepository implements IRetrievalRepository {
   }
 
   async deleteRetrieval(id: string): Promise<void> {
+    // First, delete all associated retrieval items
+    await this.prisma.retrievalItem.deleteMany({
+      where: { retrieval_id: id },
+    });
+
+    // Then delete the retrieval
     await this.prisma.retrieval.delete({
       where: { id },
     });
@@ -610,6 +616,105 @@ export class RetrievalRepository implements IRetrievalRepository {
       });
 
       return result;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async bulkDeleteParentRetrievals(parentRetrievalIds: string[]): Promise<{
+    deletedCount: number;
+    deletedRetrievalsCount: number;
+    deletedRetrievalItemsCount: number;
+    deletedParentRetrievalIds: string[];
+  }> {
+    try {
+      // First, verify which parent retrievals exist
+      const existingParentRetrievals =
+        await this.prisma.parentRetrieval.findMany({
+          where: {
+            id: {
+              in: parentRetrievalIds,
+            },
+          },
+          select: {
+            id: true,
+          },
+        });
+
+      const existingParentRetrievalIds = existingParentRetrievals.map(
+        (pr) => pr.id,
+      );
+
+      if (existingParentRetrievalIds.length === 0) {
+        return {
+          deletedCount: 0,
+          deletedRetrievalsCount: 0,
+          deletedRetrievalItemsCount: 0,
+          deletedParentRetrievalIds: [],
+        };
+      }
+
+      // Get all retrievals for these parent retrievals
+      const retrievals = await this.prisma.retrieval.findMany({
+        where: {
+          parent_retrieval_id: {
+            in: existingParentRetrievalIds,
+          },
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      const retrievalIds = retrievals.map((r) => r.id);
+
+      // Delete all retrieval items for these retrievals
+      const retrievalItemsResult = await this.prisma.retrievalItem.deleteMany({
+        where: {
+          retrieval_id: {
+            in: retrievalIds,
+          },
+        },
+      });
+
+      // Also delete retrieval items by parent_retrieval_id (in case some items are linked directly to parent)
+      const parentRetrievalItemsResult =
+        await this.prisma.retrievalItem.deleteMany({
+          where: {
+            parent_retrieval_id: {
+              in: existingParentRetrievalIds,
+            },
+          },
+        });
+
+      const totalRetrievalItemsDeleted =
+        retrievalItemsResult.count + parentRetrievalItemsResult.count;
+
+      // Delete all retrievals for these parent retrievals
+      const retrievalsResult = await this.prisma.retrieval.deleteMany({
+        where: {
+          parent_retrieval_id: {
+            in: existingParentRetrievalIds,
+          },
+        },
+      });
+
+      // Finally, delete all parent retrievals
+      const parentRetrievalsResult =
+        await this.prisma.parentRetrieval.deleteMany({
+          where: {
+            id: {
+              in: existingParentRetrievalIds,
+            },
+          },
+        });
+
+      return {
+        deletedCount: parentRetrievalsResult.count,
+        deletedRetrievalsCount: retrievalsResult.count,
+        deletedRetrievalItemsCount: totalRetrievalItemsDeleted,
+        deletedParentRetrievalIds: existingParentRetrievalIds,
+      };
     } catch (error) {
       throw error;
     }

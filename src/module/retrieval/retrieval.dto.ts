@@ -363,3 +363,39 @@ export class BulkArchiveParentRetrievalsResponseDto {
   })
   status: boolean;
 }
+
+export class BulkDeleteParentRetrievalsDto {
+  @ApiProperty({
+    description: 'Array of parent retrieval IDs to delete',
+    type: [String],
+    example: ['parent-retrieval-id-1', 'parent-retrieval-id-2', 'parent-retrieval-id-3'],
+  })
+  parent_retrieval_ids: string[];
+}
+
+export class BulkDeleteParentRetrievalsResponseDto {
+  @ApiProperty({
+    description: 'Number of parent retrievals deleted',
+    example: 5,
+  })
+  deletedCount: number;
+
+  @ApiProperty({
+    description: 'Number of retrievals deleted',
+    example: 25,
+  })
+  deletedRetrievalsCount: number;
+
+  @ApiProperty({
+    description: 'Number of retrieval items deleted',
+    example: 150,
+  })
+  deletedRetrievalItemsCount: number;
+
+  @ApiProperty({
+    description: 'Array of parent retrieval IDs that were deleted',
+    type: [String],
+    example: ['parent-retrieval-id-1', 'parent-retrieval-id-2', 'parent-retrieval-id-3'],
+  })
+  deletedParentRetrievalIds: string[];
+}

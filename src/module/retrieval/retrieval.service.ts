@@ -952,4 +952,30 @@ export class RetrievalService implements IRetrievalService {
       throw error;
     }
   }
+
+  async bulkDeleteParentRetrievals(
+    parentRetrievalIds: string[],
+  ): Promise<{
+    deletedCount: number;
+    deletedRetrievalsCount: number;
+    deletedRetrievalItemsCount: number;
+    deletedParentRetrievalIds: string[];
+  }> {
+    try {
+      if (!parentRetrievalIds || parentRetrievalIds.length === 0) {
+        throw new Error('parent_retrieval_ids array cannot be empty');
+      }
+
+      const result = await this.repository.bulkDeleteParentRetrievals(
+        parentRetrievalIds,
+      );
+      return result;
+    } catch (error) {
+      this.logger.error(
+        `Error bulk deleting parent retrievals: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
 }
