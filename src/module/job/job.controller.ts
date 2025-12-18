@@ -35,6 +35,8 @@ import {
   BulkArchiveJobsResponseDto,
   BulkBatchUpdateDto,
   BulkBatchUpdateResponseDto,
+  BulkDeleteBatchesDto,
+  BulkDeleteBatchesResponseDto,
   BulkDeleteJobsDto,
   BulkDeleteJobsResponseDto,
   CreateBatchDto,
@@ -47,6 +49,7 @@ import {
 import { IJobService } from './job.interface';
 import {
   bulkArchiveJobsSchema,
+  bulkDeleteBatchesSchema,
   bulkDeleteJobsSchema,
   createBatchSchema,
   createJobSchema,
@@ -751,6 +754,42 @@ export class JobController {
         return {
           statusCode: 200,
           message: `${result.deletedCount} job(s) deleted successfully`,
+          data: result,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Post('/batches/bulk_delete')
+  @UseGuards(JwtAuthGuard)
+  @ValidateBody(bulkDeleteBatchesSchema)
+  @ApiOperation({ summary: 'Bulk delete batches' })
+  @ApiResponse({
+    status: 200,
+    description: 'Batches deletion completed',
+    type: BulkDeleteBatchesResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid input' })
+  async bulkDeleteBatches(
+    @Body() bulkDeleteBatchesDto: BulkDeleteBatchesDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result = await this.jobService.bulkDeleteBatches(
+          bulkDeleteBatchesDto.batch_ids,
+        );
+        
+        let message = `${result.deletedCount} batch(es) deleted successfully`;
+        if (result.skippedCount > 0) {
+          message += `. ${result.skippedCount} batch(es) skipped (have associated jobs)`;
+        }
+
+        return {
+          statusCode: 200,
+          message,
           data: result,
         };
       },

@@ -66,6 +66,19 @@ export interface IJobRepository {
     isArchived: boolean,
   ): Promise<{ count: number }>;
   bulkDelete(jobIds: string[]): Promise<{ count: number; deletedJobIds: string[] }>;
+  bulkDeleteBatches(
+    batchIds: string[],
+  ): Promise<{
+    deletedCount: number;
+    skippedCount: number;
+    deletedBatchIds: string[];
+    skippedBatches: Array<{
+      batch_id: string;
+      batch_name: string;
+      job_count: number;
+      reason: string;
+    }>;
+  }>;
 }
 
 export interface IJobService {
@@ -109,4 +122,17 @@ export interface IJobService {
   bulkDeleteJobs(
     jobIds: string[],
   ): Promise<{ deletedCount: number; deletedJobIds: string[] }>;
+  bulkDeleteBatches(
+    batchIds: string[],
+  ): Promise<{
+    deletedCount: number;
+    skippedCount: number;
+    deletedBatchIds: string[];
+    skippedBatches: Array<{
+      batch_id: string;
+      batch_name: string;
+      job_count: number;
+      reason: string;
+    }>;
+  }>;
 }
