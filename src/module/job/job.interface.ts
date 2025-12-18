@@ -65,6 +65,7 @@ export interface IJobRepository {
     jobIds: string[],
     isArchived: boolean,
   ): Promise<{ count: number }>;
+  bulkDelete(jobIds: string[]): Promise<{ count: number; deletedJobIds: string[] }>;
 }
 
 export interface IJobService {
@@ -105,4 +106,7 @@ export interface IJobService {
     jobIds: string[],
     status: boolean,
   ): Promise<{ updatedCount: number; status: boolean }>;
+  bulkDeleteJobs(
+    jobIds: string[],
+  ): Promise<{ deletedCount: number; deletedJobIds: string[] }>;
 }

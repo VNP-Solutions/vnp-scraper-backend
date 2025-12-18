@@ -392,3 +392,27 @@ export class BulkArchiveJobsResponseDto {
   })
   status: boolean;
 }
+
+export class BulkDeleteJobsDto {
+  @ApiProperty({
+    description: 'Array of job IDs to delete',
+    type: [String],
+    example: ['job-id-1', 'job-id-2', 'job-id-3'],
+  })
+  job_ids: string[];
+}
+
+export class BulkDeleteJobsResponseDto {
+  @ApiProperty({
+    description: 'Number of jobs deleted',
+    example: 5,
+  })
+  deletedCount: number;
+
+  @ApiProperty({
+    description: 'Array of job IDs that were deleted',
+    type: [String],
+    example: ['job-id-1', 'job-id-2', 'job-id-3'],
+  })
+  deletedJobIds: string[];
+}

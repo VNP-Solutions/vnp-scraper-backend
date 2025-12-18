@@ -505,4 +505,26 @@ export class JobService implements IJobService {
       throw error;
     }
   }
+
+  async bulkDeleteJobs(
+    jobIds: string[],
+  ): Promise<{ deletedCount: number; deletedJobIds: string[] }> {
+    try {
+      if (!jobIds || jobIds.length === 0) {
+        throw new Error('job_ids array cannot be empty');
+      }
+
+      const result = await this.repository.bulkDelete(jobIds);
+      return {
+        deletedCount: result.count,
+        deletedJobIds: result.deletedJobIds,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error bulk deleting jobs: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
 }
