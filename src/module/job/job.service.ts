@@ -527,4 +527,33 @@ export class JobService implements IJobService {
       throw error;
     }
   }
+
+  async bulkDeleteBatches(
+    batchIds: string[],
+  ): Promise<{
+    deletedCount: number;
+    skippedCount: number;
+    deletedBatchIds: string[];
+    skippedBatches: Array<{
+      batch_id: string;
+      batch_name: string;
+      job_count: number;
+      reason: string;
+    }>;
+  }> {
+    try {
+      if (!batchIds || batchIds.length === 0) {
+        throw new Error('batch_ids array cannot be empty');
+      }
+
+      const result = await this.repository.bulkDeleteBatches(batchIds);
+      return result;
+    } catch (error) {
+      this.logger.error(
+        `Error bulk deleting batches: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
 }

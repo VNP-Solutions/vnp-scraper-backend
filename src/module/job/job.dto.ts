@@ -416,3 +416,66 @@ export class BulkDeleteJobsResponseDto {
   })
   deletedJobIds: string[];
 }
+
+export class BulkDeleteBatchesDto {
+  @ApiProperty({
+    description: 'Array of batch IDs to delete',
+    type: [String],
+    example: ['batch-id-1', 'batch-id-2', 'batch-id-3'],
+  })
+  batch_ids: string[];
+}
+
+export class SkippedBatchDto {
+  @ApiProperty({
+    description: 'Batch ID that was skipped',
+    example: 'batch-id-1',
+  })
+  batch_id: string;
+
+  @ApiProperty({
+    description: 'Batch name',
+    example: 'December Processing Batch',
+  })
+  batch_name: string;
+
+  @ApiProperty({
+    description: 'Number of jobs associated with this batch',
+    example: 5,
+  })
+  job_count: number;
+
+  @ApiProperty({
+    description: 'Reason why the batch was skipped',
+    example:
+      'This batch is currently assigned to 5 job(s). Please remove the batch from all jobs before deleting.',
+  })
+  reason: string;
+}
+
+export class BulkDeleteBatchesResponseDto {
+  @ApiProperty({
+    description: 'Number of batches deleted',
+    example: 2,
+  })
+  deletedCount: number;
+
+  @ApiProperty({
+    description: 'Number of batches skipped',
+    example: 1,
+  })
+  skippedCount: number;
+
+  @ApiProperty({
+    description: 'Array of batch IDs that were deleted',
+    type: [String],
+    example: ['batch-id-2', 'batch-id-3'],
+  })
+  deletedBatchIds: string[];
+
+  @ApiProperty({
+    description: 'Array of batches that were skipped with reasons',
+    type: [SkippedBatchDto],
+  })
+  skippedBatches: SkippedBatchDto[];
+}

@@ -867,4 +867,82 @@ export class JobRepository implements IJobRepository {
       throw error;
     }
   }
+
+  async bulkDeleteBatches(batchIds: string[]): Promise<{
+    deletedCount: number;
+    skippedCount: number;
+    deletedBatchIds: string[];
+    skippedBatches: Array<{
+      batch_id: string;
+      batch_name: string;
+      job_count: number;
+      reason: string;
+    }>;
+  }> {
+    try {
+      const deletedBatchIds: string[] = [];
+      const skippedBatches: Array<{
+        batch_id: string;
+        batch_name: string;
+        job_count: number;
+        reason: string;
+      }> = [];
+
+      // Process each batch individually
+      for (const batchId of batchIds) {
+        try {
+          // Get batch details
+          const batch = await this.db.batch.findUnique({
+            where: { id: batchId },
+            select: {
+              id: true,
+              name: true,
+            },
+          });
+
+          if (!batch) {
+            // Batch doesn't exist, skip it
+            continue;
+          }
+
+          // Check if there are any jobs with this batch_id
+          const jobsCount = await this.db.job.count({
+            where: { batch_id: batchId },
+          });
+
+          if (jobsCount > 0) {
+            // Skip this batch and add to skipped list
+            skippedBatches.push({
+              batch_id: batch.id,
+              batch_name: batch.name,
+              job_count: jobsCount,
+              reason: `This batch is currently assigned to ${jobsCount} job(s). Please remove the batch from all jobs before deleting.`,
+            });
+            continue;
+          }
+
+          // No jobs associated, safe to delete
+          await this.db.batch.delete({
+            where: { id: batchId },
+          });
+
+          deletedBatchIds.push(batch.id);
+        } catch (error) {
+          this.logger.error(`Error processing batch ${batchId}:`, error);
+          // Continue with next batch even if one fails
+          continue;
+        }
+      }
+
+      return {
+        deletedCount: deletedBatchIds.length,
+        skippedCount: skippedBatches.length,
+        deletedBatchIds,
+        skippedBatches,
+      };
+    } catch (error) {
+      this.logger.error('Error bulk deleting batches:', error);
+      throw error;
+    }
+  }
 }
