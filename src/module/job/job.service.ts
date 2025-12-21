@@ -264,6 +264,17 @@ export class JobService implements IJobService {
             }
           }
 
+          // Extract start_date and end_date
+          const startDate =
+            rowData['From (MM/DD/YYYY)'] || rowData['Start Date'] || null;
+          const endDate =
+            rowData['To (MM/DD/YYYY)'] || rowData['End Date'] || null;
+
+          // If one of start_date and end_date is provided, set the value in both of them
+          const dateValue = startDate || endDate;
+          const finalStartDate = dateValue ? dateValue : null;
+          const finalEndDate = dateValue ? dateValue : null;
+
           // Create job data
           const jobData: CreateJobDto = {
             name: rowData['Job Name'] || `Job ${jobsCreated + 1}`,
@@ -309,9 +320,8 @@ export class JobService implements IJobService {
             queue_name: rowData['Queue Name'] || 'default',
             worker_assigned: rowData['Worker Assigned'] || null,
             batch_execution_id: rowData['Batch Execution ID'] || null,
-            start_date:
-              rowData['From (MM/DD/YYYY)'] || rowData['Start Date'] || null,
-            end_date: rowData['To (MM/DD/YYYY)'] || rowData['End Date'] || null,
+            start_date: finalStartDate,
+            end_date: finalEndDate,
             log_link: rowData['Log Link'] || null,
             live_url: rowData['Live URL'] || null,
             db_billing_duration: rowData['Billing Duration']
