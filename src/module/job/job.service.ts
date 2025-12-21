@@ -4,7 +4,7 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common';
-import { Batch, Job, OTAProvider, PostingType } from '@prisma/client';
+import { Batch, DbEntry, Job, OTAProvider, PostingType } from '@prisma/client';
 import * as XLSX from 'xlsx';
 import { IPropertyRepository } from '../property/property.interface';
 import {
@@ -528,9 +528,7 @@ export class JobService implements IJobService {
     }
   }
 
-  async bulkDeleteBatches(
-    batchIds: string[],
-  ): Promise<{
+  async bulkDeleteBatches(batchIds: string[]): Promise<{
     deletedCount: number;
     skippedCount: number;
     deletedBatchIds: string[];
@@ -551,6 +549,19 @@ export class JobService implements IJobService {
     } catch (error) {
       this.logger.error(
         `Error bulk deleting batches: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async getDbEntriesByJobId(jobId: string): Promise<DbEntry[]> {
+    try {
+      const dbEntries = await this.repository.findDbEntriesByJobId(jobId);
+      return dbEntries;
+    } catch (error) {
+      this.logger.error(
+        `Error getting DbEntry by job ID: ${error.message}`,
         error.stack,
       );
       throw error;

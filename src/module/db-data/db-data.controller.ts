@@ -132,6 +132,33 @@ export class DbDataController {
     );
   }
 
+  @Get('/:db_data_id/db-entries')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get all DbEntry by db_data_id' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns list of DbEntry for the db_data',
+  })
+  @ApiResponse({ status: 404, description: 'DbData not found' })
+  async getDbEntriesByDbDataId(
+    @Param('db_data_id') dbDataId: string,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const dbEntries =
+          await this.dbDataService.getDbEntriesByDbDataId(dbDataId);
+        return {
+          statusCode: 200,
+          message: 'DbEntry retrieved successfully',
+          data: dbEntries,
+        };
+      },
+      this.logger,
+    );
+  }
+
   @Get('/:id')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get DbData by ID' })

@@ -781,7 +781,7 @@ export class JobController {
         const result = await this.jobService.bulkDeleteBatches(
           bulkDeleteBatchesDto.batch_ids,
         );
-        
+
         let message = `${result.deletedCount} batch(es) deleted successfully`;
         if (result.skippedCount > 0) {
           message += `. ${result.skippedCount} batch(es) skipped (have associated jobs)`;
@@ -791,6 +791,32 @@ export class JobController {
           statusCode: 200,
           message,
           data: result,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Get('/:id/db-entries')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get all DbEntry by job ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns list of DbEntry for the job',
+  })
+  @ApiResponse({ status: 404, description: 'Job not found' })
+  async getDbEntriesByJobId(
+    @Param('id') jobId: string,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const dbEntries = await this.jobService.getDbEntriesByJobId(jobId);
+        return {
+          statusCode: 200,
+          message: 'DbEntry retrieved successfully',
+          data: dbEntries,
         };
       },
       this.logger,

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Batch, Job, Prisma } from '@prisma/client';
+import { Batch, DbEntry, Job, Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import {
   CreateBatchDto,
@@ -942,6 +942,34 @@ export class JobRepository implements IJobRepository {
       };
     } catch (error) {
       this.logger.error('Error bulk deleting batches:', error);
+      throw error;
+    }
+  }
+
+  async findDbEntriesByJobId(jobId: string): Promise<DbEntry[]> {
+    try {
+      const dbEntries = await this.db.dbEntry.findMany({
+        where: { job_id: jobId },
+        include: {
+          job: {
+            select: {
+              id: true,
+              name: true,
+              property_name: true,
+              job_status: true,
+            },
+          }
+        },
+        orderBy: {
+          created_at: 'desc',
+        },
+      });
+      return dbEntries;
+    } catch (error) {
+      this.logger.error(
+        `Error finding DbEntry by job ID: ${error.message}`,
+        error.stack,
+      );
       throw error;
     }
   }

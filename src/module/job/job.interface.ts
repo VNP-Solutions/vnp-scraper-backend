@@ -1,4 +1,4 @@
-import { Batch, Job } from '@prisma/client';
+import { Batch, DbEntry, Job } from '@prisma/client';
 import {
   CreateBatchDto,
   CreateJobDto,
@@ -65,10 +65,10 @@ export interface IJobRepository {
     jobIds: string[],
     isArchived: boolean,
   ): Promise<{ count: number }>;
-  bulkDelete(jobIds: string[]): Promise<{ count: number; deletedJobIds: string[] }>;
-  bulkDeleteBatches(
-    batchIds: string[],
-  ): Promise<{
+  bulkDelete(
+    jobIds: string[],
+  ): Promise<{ count: number; deletedJobIds: string[] }>;
+  bulkDeleteBatches(batchIds: string[]): Promise<{
     deletedCount: number;
     skippedCount: number;
     deletedBatchIds: string[];
@@ -79,6 +79,7 @@ export interface IJobRepository {
       reason: string;
     }>;
   }>;
+  findDbEntriesByJobId(jobId: string): Promise<DbEntry[]>;
 }
 
 export interface IJobService {
@@ -122,9 +123,7 @@ export interface IJobService {
   bulkDeleteJobs(
     jobIds: string[],
   ): Promise<{ deletedCount: number; deletedJobIds: string[] }>;
-  bulkDeleteBatches(
-    batchIds: string[],
-  ): Promise<{
+  bulkDeleteBatches(batchIds: string[]): Promise<{
     deletedCount: number;
     skippedCount: number;
     deletedBatchIds: string[];
@@ -135,4 +134,5 @@ export interface IJobService {
       reason: string;
     }>;
   }>;
+  getDbEntriesByJobId(jobId: string): Promise<DbEntry[]>;
 }
