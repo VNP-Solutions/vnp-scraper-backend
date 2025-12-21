@@ -215,6 +215,7 @@ model Job {
   jobItem      JobItem[]
   OtpStatus    OtpStatus[]
   dbData       DbData[]
+  dbEntries    DbEntry[]
 
   @@map("jobs")
 }
@@ -555,12 +556,57 @@ model DbData {
   updated_at        DateTime  @updatedAt
 
   job Job @relation(fields: [job_id], references: [id], onDelete: Cascade)
+  dbEntries DbEntry[]
 
   @@index([job_id])
   @@index([property_id])
   @@index([job_id, property_id])
   @@index([created_at])
   @@map("db_datas")
+}
+
+model DbEntry {
+  id                              String   @id @default(auto()) @map("_id") @db.ObjectId
+  job_id                          String   @db.ObjectId
+  property_name                   String
+  property_id                     String
+  db_data_id                      String   @db.ObjectId
+  reservation_id                  String
+  invoice_id                      String
+  guest_name                      String
+  check_in_date                   DateTime
+  check_out_date                  DateTime
+  previously_paid_amount          Float
+  previously_paid_amount_currency String
+  maximum_billable_amount         Float
+  maximum_billable_amount_currency String
+  requested_booking_amount        Float
+  requested_taxes                 Float
+  requested_total                 Float
+  requested_total_currency       String
+  created_at                      DateTime @default(now())
+  updated_at                      DateTime @updatedAt
+
+  job     Job     @relation(fields: [job_id], references: [id], onDelete: Cascade)
+  dbData  DbData  @relation(fields: [db_data_id], references: [id], onDelete: Cascade)
+
+  @@index([job_id])
+  @@index([property_id])
+  @@index([db_data_id])
+  @@index([reservation_id])
+  @@index([invoice_id])
+  @@index([guest_name])
+  @@index([check_in_date])
+  @@index([check_out_date])
+  @@index([previously_paid_amount])
+  @@index([previously_paid_amount_currency])
+  @@index([maximum_billable_amount])
+  @@index([maximum_billable_amount_currency])
+  @@index([requested_booking_amount])
+  @@index([requested_taxes])
+  @@index([requested_total])
+  @@index([requested_total_currency])
+  @@map("db_entries")
 }
 
 model Notification {

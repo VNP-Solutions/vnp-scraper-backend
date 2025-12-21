@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { DbData } from '@prisma/client';
+import { DbData, DbEntry } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { IDbDataRepository } from './db-data.interface';
 
@@ -210,6 +210,33 @@ export class DbDataRepository implements IDbDataRepository {
     } catch (error) {
       this.logger.error(`Error deleting DbData: ${error.message}`, error.stack);
       return null;
+    }
+  }
+
+  async findDbEntriesByDbDataId(dbDataId: string): Promise<DbEntry[]> {
+    try {
+      const dbEntries = await this.db.dbEntry.findMany({
+        where: { db_data_id: dbDataId },
+        include: {
+          dbData: {
+            select: {
+              id: true,
+              property_name: true,
+              property_id: true,
+            },
+          },
+        },
+        orderBy: {
+          created_at: 'desc',
+        },
+      });
+      return dbEntries;
+    } catch (error) {
+      this.logger.error(
+        `Error finding DbEntry by db_data_id: ${error.message}`,
+        error.stack,
+      );
+      throw error;
     }
   }
 }
