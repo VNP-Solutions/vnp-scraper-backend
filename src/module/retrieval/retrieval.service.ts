@@ -344,7 +344,7 @@ export class RetrievalService implements IRetrievalService {
             firstRow['Batch Name'] ||
             firstRow['Batch'] ||
             firstRow['Batch name'];
-          if (batchColumn && batchColumn.trim() !== '') {
+          if (batchColumn && batchColumn.toString().trim() !== '') {
             const batchName = batchColumn.toString().trim();
 
             // Try to find existing batch by name
@@ -953,9 +953,7 @@ export class RetrievalService implements IRetrievalService {
     }
   }
 
-  async bulkDeleteParentRetrievals(
-    parentRetrievalIds: string[],
-  ): Promise<{
+  async bulkDeleteParentRetrievals(parentRetrievalIds: string[]): Promise<{
     deletedCount: number;
     deletedRetrievalsCount: number;
     deletedRetrievalItemsCount: number;
@@ -966,9 +964,8 @@ export class RetrievalService implements IRetrievalService {
         throw new Error('parent_retrieval_ids array cannot be empty');
       }
 
-      const result = await this.repository.bulkDeleteParentRetrievals(
-        parentRetrievalIds,
-      );
+      const result =
+        await this.repository.bulkDeleteParentRetrievals(parentRetrievalIds);
       return result;
     } catch (error) {
       this.logger.error(
