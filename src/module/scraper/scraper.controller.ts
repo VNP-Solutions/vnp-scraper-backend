@@ -163,7 +163,7 @@ export class ScraperController {
    * Get Agoda retrieval server URL (uses AGODA_SERVER_URL for retrieval)
    */
   private getAgodaRetrievalUrl(): string | null {
-    const url = this.configService.get<string>('AGODA_SERVER_URL');
+    const url = this.configService.get<string>('AGODA_RETRIVAL_SERVER_URL');
     if (!url) {
       console.log('No AGODA_SERVER_URL configured');
       return null;
