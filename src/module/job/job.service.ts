@@ -271,9 +271,8 @@ export class JobService implements IJobService {
             rowData['To (MM/DD/YYYY)'] || rowData['End Date'] || null;
 
           // If one of start_date and end_date is provided, set the value in both of them
-          const dateValue = startDate || endDate;
-          const finalStartDate = dateValue ? dateValue : null;
-          const finalEndDate = dateValue ? dateValue : null;
+          const finalStartDate = startDate || endDate || null;
+          const finalEndDate = endDate || startDate || null;
 
           // Create job data
           const jobData: CreateJobDto = {
