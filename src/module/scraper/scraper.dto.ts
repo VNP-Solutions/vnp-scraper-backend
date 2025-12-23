@@ -301,7 +301,7 @@ export class BatchRetrievalRunJobRequestDto {
   @ApiProperty({
     type: [BatchRetrievalJobDto],
     description:
-      'List of retrieval jobs to execute. Each retrieval job will be routed to the Expedia retrieval server.',
+      'List of retrieval jobs to execute. Each retrieval job will be automatically routed to the appropriate retrieval server (Expedia or Agoda) based on the OTA provider of the retrieval.',
   })
   jobs: BatchRetrievalJobDto[];
 }

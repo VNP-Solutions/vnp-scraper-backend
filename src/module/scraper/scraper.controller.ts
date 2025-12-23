@@ -1975,7 +1975,7 @@ export class ScraperController {
   @ApiOperation({
     summary: 'Start batch retrieval scraping jobs',
     description:
-      'Execute multiple retrieval scraping jobs in batch. Each job is routed to the Expedia retrieval server. Jobs are processed sequentially to ensure stability. The EXPEDIA_MODE environment variable determines whether to use GraphQL or regular scraper endpoint.',
+      'Execute multiple retrieval scraping jobs in batch. Each job is automatically routed to the appropriate retrieval server (Expedia or Agoda) based on the OTA provider of the retrieval. Jobs are processed sequentially to ensure stability. For Expedia jobs, the EXPEDIA_MODE environment variable determines whether to use GraphQL or regular scraper endpoint.',
   })
   @ApiBody({ type: BatchRetrievalRunJobRequestDto })
   @ApiResponse({
@@ -2007,41 +2007,88 @@ export class ScraperController {
         });
       }
 
-      const selectedUrl = this.getExpediaRetrievalUrl();
-
-      if (!selectedUrl) {
-        return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
-          success: false,
-          message:
-            'No Expedia retrieval server URL configured (EXPEDIA_RETRIVAL_SERVER_URL)',
-          error: 'Expedia retrieval server URL not configured',
-        });
-      }
-
       const processedResults = [];
-
-      // Determine the API path based on EXPEDIA_MODE
-      const expediadMode = this.configService.get<string>('EXPEDIA_MODE');
-      const apiPath =
-        expediadMode === 'graphql'
-          ? '/api/expedia/graphql-retrieval-run-job'
-          : '/api/expedia/retrieval-run-job';
-
-      console.log(
-        `Using Expedia retrieval server with ${expediadMode || 'scraper'} mode for batch processing: ${apiPath}`,
-      );
 
       // Process jobs sequentially using for...of loop
       for (const retrievalRequest of body.jobs) {
         try {
+          // Fetch retrieval details to get OTA provider
+          let otaProvider = 'Expedia'; // Default fallback
+          try {
+            const retrieval = await this.retrievalService.getRetrievalById(
+              retrievalRequest.retrieval_id,
+            );
+            otaProvider = retrieval.ota_provider || 'Expedia';
+          } catch (error) {
+            processedResults.push({
+              jobId: retrievalRequest.retrieval_id,
+              otaProvider: 'Unknown',
+              status: HttpStatus.BAD_REQUEST,
+              message: `Retrieval with ID ${retrievalRequest.retrieval_id} not found`,
+              success: false,
+              error: 'Invalid retrieval_id',
+            });
+            continue;
+          }
+
+          // Get retrieval URL based on OTA provider
+          const selectedUrl = this.getRetrievalUrlByOtaProvider(otaProvider);
+
+          if (!selectedUrl) {
+            const configKey =
+              otaProvider === 'Expedia'
+                ? 'EXPEDIA_RETRIVAL_SERVER_URL'
+                : otaProvider === 'Agoda'
+                  ? 'AGODA_RETRIVAL_SERVER_URL'
+                  : 'EXPEDIA_RETRIVAL_SERVER_URL';
+            processedResults.push({
+              jobId: retrievalRequest.retrieval_id,
+              otaProvider,
+              status: HttpStatus.SERVICE_UNAVAILABLE,
+              message: `No ${otaProvider} retrieval server URL configured (${configKey})`,
+              success: false,
+              error: `${otaProvider} retrieval server URL not configured`,
+            });
+            continue;
+          }
+
+          // Determine the API path based on OTA provider and EXPEDIA_MODE
+          let apiPath: string;
+          if (otaProvider === 'Expedia') {
+            const expediadMode = this.configService.get<string>('EXPEDIA_MODE');
+            apiPath =
+              expediadMode === 'graphql'
+                ? '/api/expedia/graphql-retrieval-run-job'
+                : '/api/expedia/retrieval-run-job';
+            console.log(
+              `[Batch Retrieval] Using Expedia retrieval server with ${expediadMode || 'scraper'} mode: ${apiPath}`,
+            );
+          } else if (otaProvider === 'Agoda') {
+            apiPath = '/api/agoda/retrieval-run-job';
+            console.log(
+              `[Batch Retrieval] Using Agoda retrieval server: ${apiPath}`,
+            );
+          } else {
+            // Default to Expedia path for unknown providers
+            const expediadMode = this.configService.get<string>('EXPEDIA_MODE');
+            apiPath =
+              expediadMode === 'graphql'
+                ? '/api/expedia/graphql-retrieval-run-job'
+                : '/api/expedia/retrieval-run-job';
+            console.log(
+              `[Batch Retrieval] Unknown OTA provider ${otaProvider}, defaulting to Expedia retrieval path: ${apiPath}`,
+            );
+          }
+
           // Add the selected URL to the request body
           const enhancedBody = {
             ...retrievalRequest,
             scraperUrl: selectedUrl,
+            ota_provider: otaProvider,
           };
 
           console.log(
-            `[Batch Retrieval] Processing retrieval ${retrievalRequest.retrieval_id}`,
+            `[Batch Retrieval] Processing retrieval ${retrievalRequest.retrieval_id} (${otaProvider})`,
           );
 
           const response = await firstValueFrom(
@@ -2050,13 +2097,13 @@ export class ScraperController {
                 'Content-Type': 'application/json',
                 Accept: 'application/json',
               },
-              timeout: 100,
+              timeout: 300000, // 5 minute timeout for long-running scraping jobs
             }),
           );
 
           processedResults.push({
             jobId: retrievalRequest.retrieval_id,
-            otaProvider: 'Expedia',
+            otaProvider,
             status: response.status,
             message: response.data?.message || 'Retrieval run successfully',
             success: true,
@@ -2070,9 +2117,20 @@ export class ScraperController {
             error.message ||
             'Unknown error occurred';
 
+          // Try to get OTA provider from retrieval if available
+          let otaProvider = 'Unknown';
+          try {
+            const retrieval = await this.retrievalService.getRetrievalById(
+              retrievalRequest.retrieval_id,
+            );
+            otaProvider = retrieval.ota_provider || 'Unknown';
+          } catch {
+            // If retrieval fetch fails, keep 'Unknown'
+          }
+
           processedResults.push({
             jobId: retrievalRequest.retrieval_id,
-            otaProvider: 'Expedia',
+            otaProvider,
             status,
             message: errorMessage,
             success: false,
