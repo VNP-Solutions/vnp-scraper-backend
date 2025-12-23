@@ -135,9 +135,55 @@ export class RetrievalRepository implements IRetrievalRepository {
   async createManyRetrievalItems(
     data: CreateRetrievalItemDto[],
   ): Promise<void> {
-    await this.prisma.retrievalItem.createMany({
-      data,
+    if (data.length === 0) {
+      return;
+    }
+
+    // Remove duplicates from input array based on (retrieval_id, reservation_id)
+    const uniqueDataMap = new Map<string, CreateRetrievalItemDto>();
+    for (const item of data) {
+      const key = `${item.retrieval_id}_${item.reservation_id || 'null'}`;
+      if (!uniqueDataMap.has(key)) {
+        uniqueDataMap.set(key, item);
+      }
+    }
+    const uniqueData = Array.from(uniqueDataMap.values());
+
+    // Check which records already exist in the database
+    const existingRecords = await this.prisma.retrievalItem.findMany({
+      where: {
+        OR: uniqueData.map((item) => ({
+          retrieval_id: item.retrieval_id,
+          reservation_id: item.reservation_id || null,
+        })),
+      },
+      select: {
+        retrieval_id: true,
+        reservation_id: true,
+      },
     });
+
+    // Create a set of existing (retrieval_id, reservation_id) combinations
+    const existingKeys = new Set(
+      existingRecords.map(
+        (r) => `${r.retrieval_id}_${r.reservation_id || 'null'}`,
+      ),
+    );
+
+    // Filter out records that already exist
+    const newData = uniqueData.filter(
+      (item) =>
+        !existingKeys.has(
+          `${item.retrieval_id}_${item.reservation_id || 'null'}`,
+        ),
+    );
+
+    // Only insert new records
+    if (newData.length > 0) {
+      await this.prisma.retrievalItem.createMany({
+        data: newData,
+      });
+    }
   }
 
   async findAllRetrievals(

@@ -404,8 +404,8 @@ export class RetrievalService implements IRetrievalService {
             const retrievalItems: CreateRetrievalItemDto[] = [];
 
             for (const row of rows) {
-              const checkInDate = this.parseExcelDate(row['From (MM/DD/YYYY)']);
-              const checkOutDate = this.parseExcelDate(row['To (MM/DD/YYYY)']);
+              const checkInDate = this.parseExcelDate(row['From (MM/DD/YYYY)'] || row['Check In'] || row['Check in']);
+              const checkOutDate = this.parseExcelDate(row['To (MM/DD/YYYY)'] || row['Check Out'] || row['Check out']);
 
               if (!checkInDate || !checkOutDate) {
                 continue;
@@ -416,7 +416,7 @@ export class RetrievalService implements IRetrievalService {
                 row['Customer Name']?.toString() ||
                 'Unknown';
 
-              const amountRaw = row['Amount to Charge or Refund'];
+              const amountRaw = row['Amount to charge'];
               const amount =
                 amountRaw !== undefined &&
                 amountRaw !== null &&
@@ -426,13 +426,15 @@ export class RetrievalService implements IRetrievalService {
 
               const cardNumber = row['Card Number']
                 ? row['Card Number'].toString()
-                : null;
+                : row['Card first 4'] ? `${row['Card first 4'].toString()}${row['Card last 12'].toString()}` : row['Card First 4'] ? `${row['Card First 4'].toString()}${row['Card Last 12'].toString()}` : null;
               const expiryCode = row['Expiry Code']
                 ? row['Expiry Code'].toString()
-                : null;
+                : row['Card Expire'] ? row['Card Expire'].toString() : null;
               const cvcCode = row['CVC Code']
                 ? row['CVC Code'].toString()
-                : null;
+                : row['Card CVV'] ? row['Card CVV'].toString() : null;
+
+              const chargeStatus = row['Charge status'] || row['Charge Status'];
 
               const hasCardInfo = !!(cardNumber || expiryCode || cvcCode);
 
@@ -470,7 +472,7 @@ export class RetrievalService implements IRetrievalService {
                           firstRow['Currency'] || 'USD',
                       }
                     : undefined,
-                reservation_status: 'Pending',
+                reservation_status: chargeStatus ? chargeStatus.toString() : 'Pending',
                 additional_text: undefined,
               };
 
