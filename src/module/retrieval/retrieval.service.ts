@@ -404,8 +404,12 @@ export class RetrievalService implements IRetrievalService {
             const retrievalItems: CreateRetrievalItemDto[] = [];
 
             for (const row of rows) {
-              const checkInDate = this.parseExcelDate(row['From (MM/DD/YYYY)'] || row['Check In'] || row['Check in']);
-              const checkOutDate = this.parseExcelDate(row['To (MM/DD/YYYY)'] || row['Check Out'] || row['Check out']);
+              const checkInDate = this.parseExcelDate(
+                row['From (MM/DD/YYYY)'] || row['Check In'] || row['Check in'],
+              );
+              const checkOutDate = this.parseExcelDate(
+                row['To (MM/DD/YYYY)'] || row['Check Out'] || row['Check out'],
+              );
 
               if (!checkInDate || !checkOutDate) {
                 continue;
@@ -426,13 +430,21 @@ export class RetrievalService implements IRetrievalService {
 
               const cardNumber = row['Card Number']
                 ? row['Card Number'].toString()
-                : row['Card first 4'] ? `${row['Card first 4'].toString()}${row['Card last 12'].toString()}` : row['Card First 4'] ? `${row['Card First 4'].toString()}${row['Card Last 12'].toString()}` : null;
+                : row['Card first 4']
+                  ? `${row['Card first 4'].toString()}${row['Card last 12'].toString()}`
+                  : row['Card First 4']
+                    ? `${row['Card First 4'].toString()}${row['Card Last 12'].toString()}`
+                    : null;
               const expiryCode = row['Expiry Code']
                 ? row['Expiry Code'].toString()
-                : row['Card Expire'] ? row['Card Expire'].toString() : null;
+                : row['Card Expire']
+                  ? row['Card Expire'].toString()
+                  : null;
               const cvcCode = row['CVC Code']
                 ? row['CVC Code'].toString()
-                : row['Card CVV'] ? row['Card CVV'].toString() : null;
+                : row['Card CVV']
+                  ? row['Card CVV'].toString()
+                  : null;
 
               const chargeStatus = row['Charge status'] || row['Charge Status'];
 
@@ -472,7 +484,9 @@ export class RetrievalService implements IRetrievalService {
                           firstRow['Currency'] || 'USD',
                       }
                     : undefined,
-                reservation_status: chargeStatus ? chargeStatus.toString() : 'Pending',
+                reservation_status: chargeStatus
+                  ? chargeStatus.toString()
+                  : 'Pending',
                 additional_text: undefined,
               };
 
@@ -658,7 +672,9 @@ export class RetrievalService implements IRetrievalService {
             item.payment_info?.amount_to_charge_or_refund || 0,
           'Charge status': item.reservation_status || '',
           'Card first 4': item.card_info?.card_number?.slice(0, 4) || '',
-          'Card last 12': item.card_info?.card_number?.slice(-12) || '',
+          'Card last 12': item.card_info?.card_number
+            ? String(item.card_info.card_number).replace(/\D/g, '').slice(-12)
+            : '',
           'Card Expire': item.card_info?.expiry_date || '',
           'Card CVV': item.card_info?.cvv || '',
           'User Name': username,
