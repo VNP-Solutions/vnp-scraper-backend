@@ -651,7 +651,12 @@ export class RetrievalService implements IRetrievalService {
         }
 
         const row = {
-          'Hotel ID': property?.expedia_id || '',
+          'Hotel ID':
+            retrieval?.ota_provider === 'Expedia'
+              ? property?.expedia_id || ''
+              : retrieval?.ota_provider === 'Agoda'
+                ? property?.agoda_id || ''
+                : '',
           Batch: batchName,
           'Posting Type': retrieval?.posting_type || '',
           'OTA Provider': retrieval?.ota_provider || '',
