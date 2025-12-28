@@ -220,13 +220,52 @@ export class JobRepository implements IJobRepository {
         orderBy,
       });
 
+      // Get all job IDs with billing_type === 'DB'
+      const dbJobIds = jobs
+        .filter((job) => job.billing_type === 'DB')
+        .map((job) => job.id);
+
+      // Fetch all DbData records for DB billing type jobs in a single query
+      let totalInvoiceAmountMap = new Map<string, number>();
+
+      if (dbJobIds.length > 0) {
+        const dbDataRecords = await this.db.dbData.findMany({
+          where: {
+            job_id: { in: dbJobIds },
+          },
+          select: {
+            job_id: true,
+            total_invoice_amount: true,
+          },
+        });
+
+        // Group by job_id and calculate sums
+        for (const dbData of dbDataRecords) {
+          const currentSum = totalInvoiceAmountMap.get(dbData.job_id) || 0;
+          const amount = dbData.total_invoice_amount || 0;
+          totalInvoiceAmountMap.set(dbData.job_id, currentSum + amount);
+        }
+      }
+
+      // Add total invoice amount field to jobs with billing_type === 'DB'
+      const jobsWithTotalInvoiceAmount = jobs.map((job) => {
+        const jobData = job as any;
+
+        if (job.billing_type === 'DB') {
+          const totalInvoiceAmount = totalInvoiceAmountMap.get(job.id) || 0;
+          jobData.total_invoice_amount = totalInvoiceAmount;
+        }
+
+        return jobData;
+      });
+
       const metadata = {
         totalDocuments,
         currentPage: parseInt(page),
         totalPage: Math.ceil(totalDocuments / parseInt(limit)),
         limit: parseInt(limit),
       };
-      return { data: jobs, metadata };
+      return { data: jobsWithTotalInvoiceAmount, metadata };
     } catch (error) {
       this.logger.error(error);
       throw error;
@@ -958,7 +997,7 @@ export class JobRepository implements IJobRepository {
               property_name: true,
               job_status: true,
             },
-          }
+          },
         },
         orderBy: {
           created_at: 'desc',
