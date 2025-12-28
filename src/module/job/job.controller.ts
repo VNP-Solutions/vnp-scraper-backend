@@ -153,6 +153,12 @@ export class JobController {
     type: Boolean,
     description: 'Filter jobs by archived status (true/false)',
   })
+  @ApiQuery({
+    name: 'billing_type',
+    required: false,
+    type: String,
+    description: 'Filter jobs by billing type (e.g., DB)',
+  })
   async getAllJobs(
     @ParseQuery() query: Record<string, any>,
     @Res() response: Response,
