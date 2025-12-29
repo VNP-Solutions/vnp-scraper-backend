@@ -29,7 +29,7 @@ async function bootstrap() {
   SwaggerModule.setup('api', app, document);
 
   const port = configService.get('PORT') || 3000;
-  const server = await app.listen(port);
+  await app.listen(port);
 
   // // Set server timeout to 15 minutes (900000ms) to prevent 504 Gateway Timeout errors
   // server.timeout = 900000;
