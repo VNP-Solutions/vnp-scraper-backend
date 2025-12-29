@@ -1975,7 +1975,7 @@ export class ScraperController {
   @ApiOperation({
     summary: 'Start batch retrieval scraping jobs',
     description:
-      'Execute multiple retrieval scraping jobs in batch. Each job is automatically routed to the appropriate retrieval server (Expedia or Agoda) based on the OTA provider of the retrieval. Expedia jobs are processed sequentially. Agoda jobs are processed using a bulk API call (bulk-retrieval-run-job) with all retrieval_ids in a single request. For Expedia jobs, the EXPEDIA_MODE environment variable determines whether to use GraphQL or regular scraper endpoint.',
+      'Execute multiple retrieval scraping jobs in batch. Each job is automatically routed to the appropriate retrieval server (Expedia or Agoda) based on the OTA provider of the retrieval. Both Expedia and Agoda jobs are processed using bulk API calls (bulk-retrieval-run-job) with all retrieval_ids in a single request. For Expedia jobs, the EXPEDIA_MODE environment variable determines whether to use GraphQL or regular scraper endpoint.',
   })
   @ApiBody({ type: BatchRetrievalRunJobRequestDto })
   @ApiResponse({
@@ -2038,68 +2038,90 @@ export class ScraperController {
         }
       }
 
-      // Process Expedia jobs sequentially (unchanged behavior)
-      for (const retrievalRequest of expediaJobs) {
+      // Process Expedia jobs using bulk API
+      if (expediaJobs.length > 0) {
         try {
-          const retrieval = await this.retrievalService.getRetrievalById(
-            retrievalRequest.retrieval_id,
-          );
-          const otaProvider = retrieval.ota_provider || 'Expedia';
+          // Get Expedia retrieval URL
+          const expediaUrl = this.getRetrievalUrlByOtaProvider('Expedia');
 
-          // Get retrieval URL based on OTA provider
-          const selectedUrl = this.getRetrievalUrlByOtaProvider(otaProvider);
+          if (!expediaUrl) {
+            // Mark all Expedia jobs as failed
+            for (const retrievalRequest of expediaJobs) {
+              processedResults.push({
+                jobId: retrievalRequest.retrieval_id,
+                otaProvider: 'Expedia',
+                status: HttpStatus.SERVICE_UNAVAILABLE,
+                message: `No Expedia retrieval server URL configured (EXPEDIA_RETRIVAL_SERVER_URL)`,
+                success: false,
+                error: 'Expedia retrieval server URL not configured',
+              });
+            }
+          } else {
+            // Collect all Expedia retrieval IDs
+            const retrievalIds = expediaJobs.map((job) => job.retrieval_id);
 
-          if (!selectedUrl) {
-            processedResults.push({
-              jobId: retrievalRequest.retrieval_id,
-              otaProvider,
-              status: HttpStatus.SERVICE_UNAVAILABLE,
-              message: `No ${otaProvider} retrieval server URL configured (EXPEDIA_RETRIVAL_SERVER_URL)`,
-              success: false,
-              error: `${otaProvider} retrieval server URL not configured`,
-            });
-            continue;
+            // Determine the API path based on EXPEDIA_MODE
+            const expediadMode = this.configService.get<string>('EXPEDIA_MODE');
+            const apiPath =
+              expediadMode === 'graphql'
+                ? '/api/expedia/bulk-graphql-retrieval-run-job'
+                : '/api/expedia/bulk-retrieval-run-job';
+            console.log(
+              `[Batch Retrieval] Processing ${expediaJobs.length} Expedia retrievals using bulk API with ${expediadMode || 'scraper'} mode: ${apiPath}`,
+            );
+
+            // Call bulk-retrieval-run-job API
+            const bulkRequestBody = {
+              retrieval_ids: retrievalIds,
+            };
+
+            const response = await firstValueFrom(
+              this.httpService.post(
+                `${expediaUrl}${apiPath}`,
+                bulkRequestBody,
+                {
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                  },
+                  timeout: 300000, // 5 minute timeout for long-running scraping jobs
+                },
+              ),
+            );
+
+            // Process bulk response - if it returns individual results, use them
+            // Otherwise, mark all as successful
+            if (
+              response.data?.results &&
+              Array.isArray(response.data.results)
+            ) {
+              // If the bulk API returns individual results, use them
+              for (const result of response.data.results) {
+                processedResults.push({
+                  jobId: result.retrieval_id || result.jobId,
+                  otaProvider: 'Expedia',
+                  status: result.status || response.status,
+                  message: result.message || 'Retrieval run successfully',
+                  success: result.success !== false,
+                  data: result.data,
+                  error: result.error,
+                });
+              }
+            } else {
+              // If bulk API doesn't return individual results, mark all as successful
+              for (const retrievalRequest of expediaJobs) {
+                processedResults.push({
+                  jobId: retrievalRequest.retrieval_id,
+                  otaProvider: 'Expedia',
+                  status: response.status,
+                  message:
+                    response.data?.message || 'Bulk retrieval run successfully',
+                  success: true,
+                  data: response.data,
+                });
+              }
+            }
           }
-
-          // Determine the API path based on EXPEDIA_MODE
-          const expediadMode = this.configService.get<string>('EXPEDIA_MODE');
-          const apiPath =
-            expediadMode === 'graphql'
-              ? '/api/expedia/graphql-retrieval-run-job'
-              : '/api/expedia/retrieval-run-job';
-          console.log(
-            `[Batch Retrieval] Using Expedia retrieval server with ${expediadMode || 'scraper'} mode: ${apiPath}`,
-          );
-
-          // Add the selected URL to the request body
-          const enhancedBody = {
-            ...retrievalRequest,
-            scraperUrl: selectedUrl,
-            ota_provider: otaProvider,
-          };
-
-          console.log(
-            `[Batch Retrieval] Processing retrieval ${retrievalRequest.retrieval_id} (${otaProvider})`,
-          );
-
-          const response = await firstValueFrom(
-            this.httpService.post(`${selectedUrl}${apiPath}`, enhancedBody, {
-              headers: {
-                'Content-Type': 'application/json',
-                Accept: 'application/json',
-              },
-              timeout: 300000, // 5 minute timeout for long-running scraping jobs
-            }),
-          );
-
-          processedResults.push({
-            jobId: retrievalRequest.retrieval_id,
-            otaProvider,
-            status: response.status,
-            message: response.data?.message || 'Retrieval run successfully',
-            success: true,
-            data: response.data,
-          });
         } catch (error: any) {
           const status =
             error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
@@ -2108,14 +2130,17 @@ export class ScraperController {
             error.message ||
             'Unknown error occurred';
 
-          processedResults.push({
-            jobId: retrievalRequest.retrieval_id,
-            otaProvider: 'Expedia',
-            status,
-            message: errorMessage,
-            success: false,
-            error: errorMessage,
-          });
+          // Mark all Expedia jobs as failed
+          for (const retrievalRequest of expediaJobs) {
+            processedResults.push({
+              jobId: retrievalRequest.retrieval_id,
+              otaProvider: 'Expedia',
+              status,
+              message: errorMessage,
+              success: false,
+              error: errorMessage,
+            });
+          }
         }
       }
 
