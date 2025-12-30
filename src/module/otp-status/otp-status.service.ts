@@ -33,12 +33,20 @@ export class OtpStatusService implements IOtpStatusService {
       if (!otpStatus) {
         return null;
       }
-      // Build the return object with expedia, agoda, booking fields
-      const platforms = ['expedia', 'agoda', 'booking'];
+      // Build the return object with expedia, agoda, booking, expedia_retrieval, agoda_retrieval fields
+      const platforms = [
+        'expedia',
+        'agoda',
+        'booking',
+        'expedia_retrieval',
+        'agoda_retrieval',
+      ];
       const result = {
         expedia: null,
         agoda: null,
         booking: null,
+        expedia_retrieval: null,
+        agoda_retrieval: null,
       };
 
       if (Array.isArray(otpStatus)) {
