@@ -103,6 +103,7 @@ export class JobRepository implements IJobRepository {
         batch_id,
         batch_name,
         is_archived,
+        filter_invoice_amount,
         ...filters
       } = query || {};
       let allFilters: any = { ...filters };
@@ -261,13 +262,21 @@ export class JobRepository implements IJobRepository {
         return jobData;
       });
 
+      // Filter jobs to only return those with total_invoice_amount > 0 if filter_invoice_amount is true
+      let filteredJobs = jobsWithTotalInvoiceAmount;
+      if (filter_invoice_amount === 'true' || filter_invoice_amount === true) {
+        filteredJobs = jobsWithTotalInvoiceAmount.filter((job) => {
+          return job.total_invoice_amount > 0;
+        });
+      }
+
       const metadata = {
-        totalDocuments,
+        totalDocuments: filteredJobs.length,
         currentPage: parseInt(page),
-        totalPage: Math.ceil(totalDocuments / parseInt(limit)),
+        totalPage: Math.ceil(filteredJobs.length / parseInt(limit)),
         limit: parseInt(limit),
       };
-      return { data: jobsWithTotalInvoiceAmount, metadata };
+      return { data: filteredJobs, metadata };
     } catch (error) {
       this.logger.error(error);
       throw error;

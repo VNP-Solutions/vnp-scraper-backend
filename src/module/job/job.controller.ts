@@ -159,6 +159,13 @@ export class JobController {
     type: String,
     description: 'Filter jobs by billing type (e.g., DB)',
   })
+  @ApiQuery({
+    name: 'filter_invoice_amount',
+    required: false,
+    type: Boolean,
+    description:
+      'Filter jobs to only return those with total_invoice_amount > 0 (only applies to DB billing type jobs)',
+  })
   async getAllJobs(
     @ParseQuery() query: Record<string, any>,
     @Res() response: Response,
