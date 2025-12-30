@@ -253,7 +253,9 @@ export class JobRepository implements IJobRepository {
 
         if (job.billing_type === 'DB') {
           const totalInvoiceAmount = totalInvoiceAmountMap.get(job.id) || 0;
-          jobData.total_invoice_amount = totalInvoiceAmount;
+          // Round to 2 decimal places to avoid floating point precision issues
+          jobData.total_invoice_amount =
+            Math.round(totalInvoiceAmount * 100) / 100;
         }
 
         return jobData;
