@@ -134,5 +134,5 @@ export interface IJobService {
       reason: string;
     }>;
   }>;
-  getDbEntriesByJobId(jobId: string): Promise<DbEntry[]>;
+  getDbEntriesByJobId(jobId: string): Promise<any[]>;
 }

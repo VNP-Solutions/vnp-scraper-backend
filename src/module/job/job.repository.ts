@@ -1007,6 +1007,12 @@ export class JobRepository implements IJobRepository {
               name: true,
               property_name: true,
               job_status: true,
+              portfolio_name: true,
+            },
+          },
+          dbData: {
+            select: {
+              gearbox_queue_ids: true,
             },
           },
         },
