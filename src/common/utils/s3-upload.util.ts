@@ -1,6 +1,11 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { ConfigService } from '@nestjs/config';
+import {
+  DeleteObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { readFileSync } from 'fs';
 
 @Injectable()
 export class S3UploadService {
@@ -21,7 +26,7 @@ export class S3UploadService {
   async uploadFile(file: Express.Multer.File): Promise<string> {
     try {
       const key = `uploads/${Date.now()}-${file.originalname}`;
-      
+
       const command = new PutObjectCommand({
         Bucket: this.bucket,
         Key: key,
@@ -30,9 +35,33 @@ export class S3UploadService {
       });
 
       await this.s3Client.send(command);
-      
+
       // Return the permanent URL without signature
-      return `${ this.configService.get<string>('S3_BUCKET_URL') }/${key}`;
+      return `${this.configService.get<string>('S3_BUCKET_URL')}/${key}`;
+    } catch (error) {
+      throw new Error(`Failed to upload file to S3: ${error.message}`);
+    }
+  }
+
+  async uploadFileFromPath(
+    filePath: string,
+    key: string,
+    contentType: string = 'application/json',
+  ): Promise<string> {
+    try {
+      const fileBuffer = readFileSync(filePath);
+
+      const command = new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: fileBuffer,
+        ContentType: contentType,
+      });
+
+      await this.s3Client.send(command);
+
+      // Return the permanent URL without signature
+      return `${this.configService.get<string>('S3_BUCKET_URL')}/${key}`;
     } catch (error) {
       throw new Error(`Failed to upload file to S3: ${error.message}`);
     }
@@ -41,8 +70,11 @@ export class S3UploadService {
   async deleteFile(url: string): Promise<void> {
     try {
       // Extract the key from the URL
-      const key = url.replace(`${this.configService.get<string>('S3_BUCKET_URL')}/`, '');
-      
+      const key = url.replace(
+        `${this.configService.get<string>('S3_BUCKET_URL')}/`,
+        '',
+      );
+
       const command = new DeleteObjectCommand({
         Bucket: this.bucket,
         Key: key,
