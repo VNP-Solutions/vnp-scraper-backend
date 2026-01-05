@@ -119,6 +119,9 @@ export class DbDataRepository implements IDbDataRepository {
                 name: true,
                 property_name: true,
                 job_status: true,
+                portfolio_name: true,
+                sub_portfolio_name: true,
+                
               },
             },
           },

@@ -410,6 +410,17 @@ model ActivityLog {
   @@map("activity_logs")
 }
 
+model ActivityLogExport {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  fileName    String
+  s3Url       String
+  exportDate  DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("activity_log_exports")
+}
+
 model OtpStatus {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
   status      OtpStatusValue

@@ -1,8 +1,10 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ActivityLoggerMiddleware } from './common/middleware/activity-logger.middleware';
+import { ActivityLogExportModule } from './module/activity-log-export/activity-log-export.module';
 import { ActivityLogModule } from './module/activity-log/activity-log.module';
 import { AgodaModule } from './module/agoda/agoda.module';
 import { AuthModule } from './module/auth/auth.module';
@@ -28,6 +30,7 @@ import { UserModule } from './module/user/user.module';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    ScheduleModule.forRoot(),
     DatabaseModule,
     AuthModule,
     UserModule,
@@ -40,6 +43,7 @@ import { UserModule } from './module/user/user.module';
     UserFeatureAccessPermissionModule,
     UserInvitationModule,
     ActivityLogModule,
+    ActivityLogExportModule,
     OtpLogModule,
     ScraperModule,
     AgodaModule,
