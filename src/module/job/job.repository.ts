@@ -209,74 +209,145 @@ export class JobRepository implements IJobRepository {
         },
       };
 
-      const totalDocuments = await this.db.job.count({
-        where: allFilters,
-      });
+      // If filter_invoice_amount is true, we need to fetch all jobs first to calculate total count
+      // Otherwise, we can use the count query for better performance
+      const needsInvoiceFilter =
+        filter_invoice_amount === 'true' || filter_invoice_amount === true;
 
-      const jobs = await this.db.job.findMany({
-        where: allFilters,
-        include,
-        skip,
-        take,
-        orderBy,
-      });
+      let totalDocuments: number;
+      let jobs: any[];
 
-      // Get all job IDs with billing_type === 'DB'
-      const dbJobIds = jobs
-        .filter((job) => job.billing_type === 'DB')
-        .map((job) => job.id);
-
-      // Fetch all DbData records for DB billing type jobs in a single query
-      let totalInvoiceAmountMap = new Map<string, number>();
-
-      if (dbJobIds.length > 0) {
-        const dbDataRecords = await this.db.dbData.findMany({
-          where: {
-            job_id: { in: dbJobIds },
-          },
-          select: {
-            job_id: true,
-            total_invoice_amount: true,
-          },
+      if (needsInvoiceFilter) {
+        // Fetch all jobs matching filters (without pagination) to calculate invoice amounts and get accurate total count
+        const allJobs = await this.db.job.findMany({
+          where: allFilters,
+          include,
+          orderBy,
         });
 
-        // Group by job_id and calculate sums
-        for (const dbData of dbDataRecords) {
-          const currentSum = totalInvoiceAmountMap.get(dbData.job_id) || 0;
-          const amount = dbData.total_invoice_amount || 0;
-          totalInvoiceAmountMap.set(dbData.job_id, currentSum + amount);
+        // Get all job IDs with billing_type === 'DB'
+        const allDbJobIds = allJobs
+          .filter((job) => job.billing_type === 'DB')
+          .map((job) => job.id);
+
+        // Fetch all DbData records for DB billing type jobs
+        let allTotalInvoiceAmountMap = new Map<string, number>();
+
+        if (allDbJobIds.length > 0) {
+          const allDbDataRecords = await this.db.dbData.findMany({
+            where: {
+              job_id: { in: allDbJobIds },
+            },
+            select: {
+              job_id: true,
+              total_invoice_amount: true,
+            },
+          });
+
+          // Group by job_id and calculate sums
+          for (const dbData of allDbDataRecords) {
+            const currentSum = allTotalInvoiceAmountMap.get(dbData.job_id) || 0;
+            const amount = dbData.total_invoice_amount || 0;
+            allTotalInvoiceAmountMap.set(dbData.job_id, currentSum + amount);
+          }
         }
-      }
 
-      // Add total invoice amount field to jobs with billing_type === 'DB'
-      const jobsWithTotalInvoiceAmount = jobs.map((job) => {
-        const jobData = job as any;
+        // Add total invoice amount field to all jobs with billing_type === 'DB'
+        const allJobsWithTotalInvoiceAmount = allJobs.map((job) => {
+          const jobData = job as any;
 
-        if (job.billing_type === 'DB') {
-          const totalInvoiceAmount = totalInvoiceAmountMap.get(job.id) || 0;
-          // Round to 2 decimal places to avoid floating point precision issues
-          jobData.total_invoice_amount =
-            Math.round(totalInvoiceAmount * 100) / 100;
-        }
+          if (job.billing_type === 'DB') {
+            const totalInvoiceAmount =
+              allTotalInvoiceAmountMap.get(job.id) || 0;
+            jobData.total_invoice_amount =
+              Math.round(totalInvoiceAmount * 100) / 100;
+          }
 
-        return jobData;
-      });
+          return jobData;
+        });
 
-      // Filter jobs to only return those with total_invoice_amount > 0 if filter_invoice_amount is true
-      let filteredJobs = jobsWithTotalInvoiceAmount;
-      if (filter_invoice_amount === 'true' || filter_invoice_amount === true) {
-        filteredJobs = jobsWithTotalInvoiceAmount.filter((job) => {
+        // Filter jobs to only return those with total_invoice_amount > 0
+        const filteredAllJobs = allJobsWithTotalInvoiceAmount.filter((job) => {
           return job.total_invoice_amount > 0;
+        });
+
+        // Get total count after filtering
+        totalDocuments = filteredAllJobs.length;
+
+        // Apply pagination to filtered results
+        const skip = page
+          ? (parseInt(page || '1') - 1) * parseInt(limit || '10')
+          : 0;
+        const take = limit ? parseInt(limit) : 10;
+        jobs = filteredAllJobs.slice(skip, skip + take);
+      } else {
+        // Normal flow: use count query for better performance
+        totalDocuments = await this.db.job.count({
+          where: allFilters,
+        });
+
+        const skip = page
+          ? (parseInt(page || '1') - 1) * parseInt(limit || '10')
+          : 0;
+        const take = limit ? parseInt(limit) : 10;
+
+        jobs = await this.db.job.findMany({
+          where: allFilters,
+          include,
+          skip,
+          take,
+          orderBy,
+        });
+
+        // Get all job IDs with billing_type === 'DB'
+        const dbJobIds = jobs
+          .filter((job) => job.billing_type === 'DB')
+          .map((job) => job.id);
+
+        // Fetch all DbData records for DB billing type jobs in a single query
+        let totalInvoiceAmountMap = new Map<string, number>();
+
+        if (dbJobIds.length > 0) {
+          const dbDataRecords = await this.db.dbData.findMany({
+            where: {
+              job_id: { in: dbJobIds },
+            },
+            select: {
+              job_id: true,
+              total_invoice_amount: true,
+            },
+          });
+
+          // Group by job_id and calculate sums
+          for (const dbData of dbDataRecords) {
+            const currentSum = totalInvoiceAmountMap.get(dbData.job_id) || 0;
+            const amount = dbData.total_invoice_amount || 0;
+            totalInvoiceAmountMap.set(dbData.job_id, currentSum + amount);
+          }
+        }
+
+        // Add total invoice amount field to jobs with billing_type === 'DB'
+        jobs = jobs.map((job) => {
+          const jobData = job as any;
+
+          if (job.billing_type === 'DB') {
+            const totalInvoiceAmount = totalInvoiceAmountMap.get(job.id) || 0;
+            // Round to 2 decimal places to avoid floating point precision issues
+            jobData.total_invoice_amount =
+              Math.round(totalInvoiceAmount * 100) / 100;
+          }
+
+          return jobData;
         });
       }
 
       const metadata = {
-        totalDocuments: filteredJobs.length,
-        currentPage: parseInt(page),
-        totalPage: Math.ceil(filteredJobs.length / parseInt(limit)),
-        limit: parseInt(limit),
+        totalDocuments,
+        currentPage: parseInt(page || '1'),
+        totalPage: Math.ceil(totalDocuments / parseInt(limit || '10')),
+        limit: parseInt(limit || '10'),
       };
-      return { data: filteredJobs, metadata };
+      return { data: jobs, metadata };
     } catch (error) {
       this.logger.error(error);
       throw error;
