@@ -10,6 +10,7 @@ import {
   Post,
   Req,
   Res,
+  UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -24,9 +25,13 @@ import { Request, Response } from 'express';
 import { firstValueFrom } from 'rxjs';
 import { ParseQuery } from '../../common/decorators/parse-query.decorator';
 
+import { ValidateBody } from '../../common/decorators/validate.decorator';
 import { ResponseHandler } from '../../common/utils/response-handler';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { IJobService } from '../job/job.interface';
 import { IRetrievalService } from '../retrieval/retrieval.interface';
+import { IScheduledJobService } from './scheduled-job.interface';
+import { createScheduledJobSchema } from './scheduled-job.validation';
 import { IScraperJobItemService } from './scraper-job-item.interface';
 import {
   AllJobItemsResponseDto,
@@ -34,6 +39,8 @@ import {
   BatchPropertyRunJobResponseDto,
   BatchRetrievalRunJobRequestDto,
   BatchRetrievalRunJobResponseDto,
+  CreateScheduledJobDto,
+  CreateScheduledJobResponseDto,
   ErrorResponseDto,
   HealthResponseDto,
   PauseResumeStopResponseDto,
@@ -45,6 +52,7 @@ import {
   ReservationRunJobResponseDto,
   ResumeScrapingRequestDto,
   RetrievalRunJobRequestDto,
+  ScheduledJobResponseDto,
   ScrapingStatusResponseDto,
   StopScrapingRequestDto,
 } from './scraper.dto';
@@ -52,6 +60,8 @@ import {
 @ApiTags('Unified Scraper')
 @Controller('/scraper')
 export class ScraperController {
+  private readonly logger = new Logger(ScraperController.name);
+
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
@@ -61,6 +71,8 @@ export class ScraperController {
     private readonly jobService: IJobService,
     @Inject('IRetrievalService')
     private readonly retrievalService: IRetrievalService,
+    @Inject('IScheduledJobService')
+    private readonly scheduledJobService: IScheduledJobService,
   ) {
     // No need for base URL anymore - using OTA-specific URLs
   }
@@ -2267,5 +2279,106 @@ export class ScraperController {
         error: error.message || 'Unknown error occurred',
       });
     }
+  }
+
+  @Post('/scheduled')
+  @UseGuards(JwtAuthGuard)
+  @ValidateBody(createScheduledJobSchema)
+  @ApiOperation({ summary: 'Create or update scheduled job' })
+  @ApiResponse({
+    status: 200,
+    description: 'Scheduled job created or updated successfully',
+    type: CreateScheduledJobResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  async createOrUpdateScheduledJob(
+    @Body() createScheduledJobDto: CreateScheduledJobDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result =
+          await this.scheduledJobService.createOrUpdateScheduledJob(
+            createScheduledJobDto.date,
+            createScheduledJobDto.job_ids || [],
+            createScheduledJobDto.retrieval_ids || [],
+          );
+        const jobMessage =
+          result.addedCount > 0 || result.skippedCount > 0
+            ? `${result.addedCount} job(s) added, ${result.skippedCount} job(s) skipped.`
+            : '';
+        const retrievalMessage =
+          result.addedRetrievalCount > 0 || result.skippedRetrievalCount > 0
+            ? `${result.addedRetrievalCount} retrieval(s) added, ${result.skippedRetrievalCount} retrieval(s) skipped.`
+            : '';
+        return {
+          statusCode: 200,
+          message:
+            `Scheduled job ${result.addedCount > 0 || result.addedRetrievalCount > 0 ? 'created/updated' : 'updated'} successfully. ${jobMessage}${retrievalMessage}`.trim(),
+          data: result,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Get('/scheduled/:date')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get scheduled job by date' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns scheduled job for the date',
+    type: ScheduledJobResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Scheduled job not found' })
+  async getScheduledJobByDate(
+    @Param('date') date: string,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const scheduledJob =
+          await this.scheduledJobService.getScheduledJobByDate(date);
+        if (!scheduledJob) {
+          return {
+            statusCode: 404,
+            message: 'Scheduled job not found for this date',
+            data: null,
+          };
+        }
+        return {
+          statusCode: 200,
+          message: 'Scheduled job retrieved successfully',
+          data: scheduledJob,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Get('/scheduled')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get all scheduled jobs' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns list of all scheduled jobs',
+    type: [ScheduledJobResponseDto],
+  })
+  async getAllScheduledJobs(@Res() response: Response) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const scheduledJobs =
+          await this.scheduledJobService.getAllScheduledJobs();
+        return {
+          statusCode: 200,
+          message: 'Scheduled jobs retrieved successfully',
+          data: scheduledJobs,
+        };
+      },
+      this.logger,
+    );
   }
 }

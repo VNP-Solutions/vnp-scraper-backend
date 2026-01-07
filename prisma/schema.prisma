@@ -639,3 +639,15 @@ model Notification {
   @@index([user_id, is_read])
   @@map("notifications")
 }
+
+model ScheduledJob {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  date          String   // Format: YYYY-MM-DD
+  job_ids       String[] @db.ObjectId // Array of job IDs
+  retrieval_ids String[] @default([]) @db.ObjectId // Array of retrieval IDs
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([date])
+  @@map("scheduled_jobs")
+}

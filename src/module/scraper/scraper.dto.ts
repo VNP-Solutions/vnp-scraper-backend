@@ -325,3 +325,124 @@ export class BatchRetrievalRunJobResponseDto {
   @ApiProperty({ example: 1 })
   failedJobs: number;
 }
+
+export class CreateScheduledJobDto {
+  @ApiProperty({
+    description: 'Date in YYYY-MM-DD format',
+    example: '2024-12-25',
+  })
+  date: string;
+
+  @ApiProperty({
+    description: 'Array of job IDs to schedule',
+    type: [String],
+    example: ['job-id-1', 'job-id-2', 'job-id-3'],
+    required: false,
+  })
+  job_ids?: string[];
+
+  @ApiProperty({
+    description: 'Array of retrieval IDs to schedule',
+    type: [String],
+    example: ['retrieval-id-1', 'retrieval-id-2', 'retrieval-id-3'],
+    required: false,
+  })
+  retrieval_ids?: string[];
+}
+
+export class ScheduledJobResponseDto {
+  @ApiProperty({ description: 'Unique identifier of the scheduled job' })
+  id: string;
+
+  @ApiProperty({
+    description: 'Date in YYYY-MM-DD format',
+    example: '2024-12-25',
+  })
+  date: string;
+
+  @ApiProperty({
+    description: 'Array of job IDs',
+    type: [String],
+    example: ['job-id-1', 'job-id-2', 'job-id-3'],
+  })
+  job_ids: string[];
+
+  @ApiProperty({
+    description: 'Array of retrieval IDs',
+    type: [String],
+    example: ['retrieval-id-1', 'retrieval-id-2', 'retrieval-id-3'],
+  })
+  retrieval_ids: string[];
+
+  @ApiProperty({
+    description: 'When the scheduled job was created',
+    type: Date,
+  })
+  createdAt?: Date;
+
+  @ApiProperty({
+    description: 'When the scheduled job was last updated',
+    type: Date,
+  })
+  updatedAt?: Date;
+}
+
+export class CreateScheduledJobResponseDto {
+  @ApiProperty({
+    description: 'Number of new job IDs added',
+    example: 3,
+  })
+  addedCount: number;
+
+  @ApiProperty({
+    description: 'Number of job IDs that were skipped (already existed)',
+    example: 2,
+  })
+  skippedCount: number;
+
+  @ApiProperty({
+    description: 'Array of job IDs that were added',
+    type: [String],
+    example: ['job-id-1', 'job-id-2', 'job-id-3'],
+  })
+  addedJobIds: string[];
+
+  @ApiProperty({
+    description: 'Array of job IDs that were skipped',
+    type: [String],
+    example: ['job-id-4', 'job-id-5'],
+  })
+  skippedJobIds: string[];
+
+  @ApiProperty({
+    description: 'Number of new retrieval IDs added',
+    example: 2,
+  })
+  addedRetrievalCount: number;
+
+  @ApiProperty({
+    description: 'Number of retrieval IDs that were skipped (already existed)',
+    example: 1,
+  })
+  skippedRetrievalCount: number;
+
+  @ApiProperty({
+    description: 'Array of retrieval IDs that were added',
+    type: [String],
+    example: ['retrieval-id-1', 'retrieval-id-2'],
+  })
+  addedRetrievalIds: string[];
+
+  @ApiProperty({
+    description: 'Array of retrieval IDs that were skipped',
+    type: [String],
+    example: ['retrieval-id-3'],
+  })
+  skippedRetrievalIds: string[];
+
+  @ApiProperty({
+    description: 'The scheduled job record',
+    type: ScheduledJobResponseDto,
+  })
+  scheduledJob: ScheduledJobResponseDto;
+}

@@ -5,6 +5,9 @@ import * as https from 'https';
 import { DatabaseService } from '../database/database.service';
 import { JobModule } from '../job/job.module';
 import { RetrievalModule } from '../retrieval/retrieval.module';
+import { ScheduledJobSchedulerService } from './scheduled-job-scheduler.service';
+import { ScheduledJobRepository } from './scheduled-job.repository';
+import { ScheduledJobService } from './scheduled-job.service';
 import { ScraperJobItemRepository } from './scraper-job-item.repository';
 import { ScraperJobItemService } from './scraper-job-item.service';
 import { ScraperController } from './scraper.controller';
@@ -40,8 +43,17 @@ import { ScraperController } from './scraper.controller';
       provide: 'IScraperJobItemRepository',
       useClass: ScraperJobItemRepository,
     },
+    {
+      provide: 'IScheduledJobService',
+      useClass: ScheduledJobService,
+    },
+    {
+      provide: 'IScheduledJobRepository',
+      useClass: ScheduledJobRepository,
+    },
     DatabaseService,
     Logger,
+    ScheduledJobSchedulerService,
   ],
 })
 export class ScraperModule {}
