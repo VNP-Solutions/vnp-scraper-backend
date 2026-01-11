@@ -645,6 +645,7 @@ model ScheduledJob {
   date          String   // Format: YYYY-MM-DD
   job_ids       String[] @db.ObjectId // Array of job IDs
   retrieval_ids String[] @default([]) @db.ObjectId // Array of retrieval IDs
+  comment       String   @default("")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
