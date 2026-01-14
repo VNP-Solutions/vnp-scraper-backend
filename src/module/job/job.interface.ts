@@ -96,6 +96,8 @@ export interface IJobService {
   ): Promise<{
     jobsCreated: number;
     jobs: any[];
+    scheduledJobsCreated: number;
+    scheduledJobs: Array<{ date: string; jobIds: string[] }>;
   }>;
   getLatestCheckoutDateByJobId(
     jobId: string,

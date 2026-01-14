@@ -494,7 +494,7 @@ export class JobController {
   @ApiOperation({
     summary: 'Import jobs from Excel file',
     description:
-      'Upload an Excel file to import jobs. The Excel file should contain columns: Portfolio (optional, must exist), Sub Portfolio (optional, must exist), Property Name (optional, must exist), Job Name, Job Status, Posting Type, OTA Provider, Billing Type, Next Due Date, Remaining Direct Billed, Total Collectable, Total Amount Confirmed, Execution Type, Retries Attempted, Max Retries, Retry Delay MS, Priority, Job Backoff Length Loading, Job Backoff Length Selector, Queue Name, Worker Assigned, Batch Execution ID, Start Date, End Date, Log Link, Live URL. Note: Portfolios, sub-portfolios, and properties must exist in the system before importing jobs if specified.',
+      'Upload an Excel file to import jobs. The Excel file should contain columns: Portfolio (optional, must exist), Sub Portfolio (optional, must exist), Property Name (optional, must exist), Job Name, Job Status, Posting Type, OTA Provider, Billing Type, Next Due Date, Remaining Direct Billed, Total Collectable, Total Amount Confirmed, Execution Type, Retries Attempted, Max Retries, Retry Delay MS, Priority, Job Backoff Length Loading, Job Backoff Length Selector, Queue Name, Worker Assigned, Batch Execution ID, Start Date, End Date, Log Link, Live URL, Scheduled Date (optional, format: YYYY-MM-DD or MM/DD/YYYY). Note: Portfolios, sub-portfolios, and properties must exist in the system before importing jobs if specified. If Scheduled Date is provided, jobs will be automatically scheduled for that date.',
   })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -568,9 +568,13 @@ export class JobController {
           file,
           user.userId,
         );
+        const schedulerMessage =
+          result.scheduledJobsCreated > 0
+            ? ` ${result.scheduledJobsCreated} scheduled job(s) created/updated.`
+            : '';
         return {
           statusCode: 200,
-          message: `Import completed successfully: ${result.jobsCreated} jobs created`,
+          message: `Import completed successfully: ${result.jobsCreated} jobs created.${schedulerMessage}`,
           data: result,
         };
       },
