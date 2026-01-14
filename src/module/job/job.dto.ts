@@ -194,6 +194,29 @@ export class ImportJobsResponseDto {
     },
   })
   jobs: any[];
+
+  @ApiProperty({
+    description: 'Number of scheduled jobs created/updated',
+    example: 3,
+  })
+  scheduledJobsCreated: number;
+
+  @ApiProperty({
+    description: 'List of scheduled jobs with their dates and job IDs',
+    type: 'array',
+    items: {
+      type: 'object',
+      properties: {
+        date: { type: 'string', example: '2024-12-25' },
+        jobIds: {
+          type: 'array',
+          items: { type: 'string' },
+          example: ['job-id-1', 'job-id-2'],
+        },
+      },
+    },
+  })
+  scheduledJobs: Array<{ date: string; jobIds: string[] }>;
 }
 
 export class JobStatusItemDto {

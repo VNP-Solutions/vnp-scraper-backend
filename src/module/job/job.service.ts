@@ -4,9 +4,10 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common';
-import { Batch, DbEntry, Job, OTAProvider, PostingType } from '@prisma/client';
+import { Batch, Job, OTAProvider, PostingType } from '@prisma/client';
 import * as XLSX from 'xlsx';
 import { IPropertyRepository } from '../property/property.interface';
+import { IScheduledJobService } from '../scraper/scheduled-job.interface';
 import {
   CreateBatchDto,
   CreateJobDto,
@@ -23,6 +24,8 @@ export class JobService implements IJobService {
     private readonly repository: IJobRepository,
     @Inject('IPropertyRepository')
     private readonly propertyRepository: IPropertyRepository,
+    @Inject('IScheduledJobService')
+    private readonly scheduledJobService: IScheduledJobService,
     private readonly logger: Logger,
   ) {}
 
@@ -113,12 +116,49 @@ export class JobService implements IJobService {
     }
   }
 
+  /**
+   * Helper function to parse scheduled date from various formats
+   * Accepts: YYYY-MM-DD, MM/DD/YYYY, DD/MM/YYYY, etc.
+   */
+  private parseScheduledDate(
+    dateString: string | null | undefined,
+  ): string | null {
+    if (!dateString || dateString.toString().trim() === '') {
+      return null;
+    }
+
+    const dateStr = dateString.toString().trim();
+
+    // Check if already in YYYY-MM-DD format
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      return dateStr;
+    }
+
+    // Try to parse various date formats
+    try {
+      // Try MM/DD/YYYY or DD/MM/YYYY
+      const date = new Date(dateStr);
+      if (!isNaN(date.getTime())) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+    } catch (error) {
+      // If parsing fails, return null
+    }
+
+    return null;
+  }
+
   async importJobsFromExcel(
     file: Express.Multer.File,
     userId: string,
   ): Promise<{
     jobsCreated: number;
     jobs: any[];
+    scheduledJobsCreated: number;
+    scheduledJobs: Array<{ date: string; jobIds: string[] }>;
   }> {
     try {
       // Validate file buffer
@@ -165,6 +205,8 @@ export class JobService implements IJobService {
 
       let jobsCreated = 0;
       const jobs: any[] = [];
+      // Map to store scheduled dates and their job IDs
+      const scheduledJobsMap = new Map<string, string[]>();
 
       // Process each row
       for (const row of data) {
@@ -328,11 +370,29 @@ export class JobService implements IJobService {
               : null,
           };
 
+          // Handle Scheduled Date - optional field
+          const scheduledDateColumn =
+            rowData['Scheduled Date'] ||
+            rowData['Scheduled'] ||
+            rowData['Schedule Date'];
+          const scheduledDate = this.parseScheduledDate(scheduledDateColumn);
+
           // Create job using existing method
           const newJob = await this.createJob(jobData);
           jobs.push(newJob);
           jobsCreated++;
           this.logger.log(`Created new job: ${newJob.name}`);
+
+          // If scheduled date is provided, add job ID to the map
+          if (scheduledDate) {
+            if (!scheduledJobsMap.has(scheduledDate)) {
+              scheduledJobsMap.set(scheduledDate, []);
+            }
+            scheduledJobsMap.get(scheduledDate)!.push(newJob.id);
+            this.logger.log(
+              `Job ${newJob.id} scheduled for date: ${scheduledDate}`,
+            );
+          }
         } catch (error) {
           this.logger.error(`Error processing job row: ${error.message}`);
           // Re-throw the error to stop the import process
@@ -342,9 +402,43 @@ export class JobService implements IJobService {
 
       this.logger.log(`Job import completed: ${jobsCreated} jobs created`);
 
+      // Create scheduled jobs for each date
+      const scheduledJobs: Array<{ date: string; jobIds: string[] }> = [];
+      let scheduledJobsCreated = 0;
+
+      for (const [date, jobIds] of scheduledJobsMap.entries()) {
+        try {
+          this.logger.log(
+            `Creating scheduled job for date ${date} with ${jobIds.length} job(s)`,
+          );
+          await this.scheduledJobService.createOrUpdateScheduledJob(
+            date,
+            jobIds,
+            [],
+          );
+          scheduledJobs.push({ date, jobIds });
+          scheduledJobsCreated++;
+          this.logger.log(
+            `Successfully created/updated scheduled job for date: ${date}`,
+          );
+        } catch (error) {
+          this.logger.error(
+            `Error creating scheduled job for date ${date}: ${error.message}`,
+          );
+          // Don't throw - continue with other scheduled dates
+          // But log the error so user knows
+        }
+      }
+
+      this.logger.log(
+        `Scheduled jobs creation completed: ${scheduledJobsCreated} scheduled job(s) created/updated`,
+      );
+
       return {
         jobsCreated,
         jobs,
+        scheduledJobsCreated,
+        scheduledJobs,
       };
     } catch (error) {
       this.logger.error(
@@ -567,13 +661,13 @@ export class JobService implements IJobService {
   async getDbEntriesByJobId(jobId: string): Promise<any[]> {
     try {
       const dbEntries = await this.repository.findDbEntriesByJobId(jobId);
-      
+
       // Transform the response to include gearbox_queue_ids and portfolio_name as flat properties
       return dbEntries.map((entry: any) => {
         const gearboxQueueIds = entry.dbData?.gearbox_queue_ids || [];
         const gearboxQueueIdsString = gearboxQueueIds.join(', ');
         const portfolioName = entry.job?.portfolio_name || null;
-        
+
         // Remove dbData from the response and add gearbox_queue_ids and portfolio_name as flat properties
         const { dbData, ...entryWithoutDbData } = entry;
         return {

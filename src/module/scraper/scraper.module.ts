@@ -1,5 +1,5 @@
 import { HttpModule } from '@nestjs/axios';
-import { Logger, Module } from '@nestjs/common';
+import { Logger, Module, forwardRef } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import * as https from 'https';
 import { DatabaseService } from '../database/database.service';
@@ -30,7 +30,7 @@ import { ScraperController } from './scraper.controller';
       inject: [ConfigService],
     }),
     ConfigModule,
-    JobModule,
+    forwardRef(() => JobModule),
     RetrievalModule,
   ],
   controllers: [ScraperController],
@@ -55,5 +55,6 @@ import { ScraperController } from './scraper.controller';
     Logger,
     ScheduledJobSchedulerService,
   ],
+  exports: ['IScheduledJobService'],
 })
 export class ScraperModule {}

@@ -15,6 +15,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import {
   ApiBody,
+  ApiBearerAuth,
   ApiOperation,
   ApiParam,
   ApiQuery,
@@ -58,6 +59,7 @@ import {
 } from './scraper.dto';
 
 @ApiTags('Unified Scraper')
+@ApiBearerAuth('JWT-auth')
 @Controller('/scraper')
 export class ScraperController {
   private readonly logger = new Logger(ScraperController.name);
