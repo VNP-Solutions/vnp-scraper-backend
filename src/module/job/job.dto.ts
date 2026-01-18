@@ -38,6 +38,9 @@ export class CreateJobDto {
   @ApiProperty()
   next_due_date?: Date;
 
+  @ApiProperty({ required: false })
+  schedule_date?: string;
+
   @ApiProperty({ enum: OTAProvider })
   ota_provider: OTAProvider;
 
@@ -123,6 +126,9 @@ export class UpdateJobDto implements Partial<CreateJobDto> {
 
   @ApiProperty({ required: false })
   next_due_date?: Date;
+
+  @ApiProperty({ required: false })
+  schedule_date?: string;
 
   @ApiProperty({ required: false })
   ota_provider?: OTAProvider;

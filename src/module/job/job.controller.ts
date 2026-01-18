@@ -166,6 +166,23 @@ export class JobController {
     description:
       'Filter jobs to only return those with total_invoice_amount > 0 (only applies to DB billing type jobs)',
   })
+  @ApiQuery({
+    name: 'job_type',
+    required: false,
+    enum: ['manual', 'scheduled', 'All'],
+    description:
+      'Filter jobs by type: "manual" (schedule_date is null), "scheduled" (schedule_date is not null), or "All" (no filter)',
+  })
+  @ApiQuery({
+    name: 'schedule_start_date',
+    required: false,
+    description: 'Start date for filtering by schedule_date (YYYY-MM-DD format)',
+  })
+  @ApiQuery({
+    name: 'schedule_end_date',
+    required: false,
+    description: 'End date for filtering by schedule_date (YYYY-MM-DD format)',
+  })
   async getAllJobs(
     @ParseQuery() query: Record<string, any>,
     @Res() response: Response,

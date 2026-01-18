@@ -30,6 +30,7 @@ export const createJobSchema = z.object({
     .optional()
     .nullable(),
   next_due_date: z.string(),
+  schedule_date: z.string().optional().nullable(),
   ota_provider: z.nativeEnum(OTAProvider),
   remaining_direct_billed: z.number().min(0),
   total_collectable: z.number().min(0),

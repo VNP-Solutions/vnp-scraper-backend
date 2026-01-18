@@ -24,4 +24,22 @@ export const createScheduledJobSchema = z
     },
   );
 
+export const removeJobsFromScheduledJobSchema = z
+  .object({
+    date: dateStringSchema,
+    job_ids: z.array(objectIdSchema).optional().default([]),
+    retrieval_ids: z.array(objectIdSchema).optional().default([]),
+  })
+  .refine(
+    (data) =>
+      (data.job_ids && data.job_ids.length > 0) ||
+      (data.retrieval_ids && data.retrieval_ids.length > 0),
+    {
+      message: 'At least one job ID or retrieval ID is required',
+    },
+  );
+
 export type CreateScheduledJobType = z.infer<typeof createScheduledJobSchema>;
+export type RemoveJobsFromScheduledJobType = z.infer<
+  typeof removeJobsFromScheduledJobSchema
+>;

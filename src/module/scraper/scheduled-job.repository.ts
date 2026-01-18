@@ -145,4 +145,127 @@ export class ScheduledJobRepository implements IScheduledJobRepository {
       throw error;
     }
   }
+
+  async findScheduledJobsByDateRange(
+    startDate: string,
+    endDate: string,
+  ): Promise<ScheduledJob[]> {
+    try {
+      const scheduledJobs = await this.db.scheduledJob.findMany({
+        where: {
+          date: {
+            gte: startDate,
+            lte: endDate,
+          },
+        },
+        orderBy: { date: 'asc' },
+      });
+      return scheduledJobs;
+    } catch (error) {
+      this.logger.error(
+        `Error finding scheduled jobs by date range: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async removeJobsFromScheduledJob(
+    date: string,
+    jobIds: string[],
+    retrievalIds: string[] = [],
+  ): Promise<{
+    scheduledJob: ScheduledJob | null;
+    removedJobIds: string[];
+    notFoundJobIds: string[];
+    removedRetrievalIds: string[];
+    notFoundRetrievalIds: string[];
+  }> {
+    try {
+      const existingScheduledJob = await this.db.scheduledJob.findFirst({
+        where: { date },
+      });
+
+      if (!existingScheduledJob) {
+        return {
+          scheduledJob: null,
+          removedJobIds: [],
+          notFoundJobIds: jobIds,
+          removedRetrievalIds: [],
+          notFoundRetrievalIds: retrievalIds,
+        };
+      }
+
+      const existingJobIds = existingScheduledJob.job_ids || [];
+      const existingRetrievalIds = existingScheduledJob.retrieval_ids || [];
+
+      const removedJobIds = jobIds.filter((id) => existingJobIds.includes(id));
+      const notFoundJobIds = jobIds.filter((id) => !existingJobIds.includes(id));
+
+      const removedRetrievalIds = retrievalIds.filter((id) =>
+        existingRetrievalIds.includes(id),
+      );
+      const notFoundRetrievalIds = retrievalIds.filter(
+        (id) => !existingRetrievalIds.includes(id),
+      );
+
+      const updatedJobIds = existingJobIds.filter(
+        (id) => !jobIds.includes(id),
+      );
+      const updatedRetrievalIds = existingRetrievalIds.filter(
+        (id) => !retrievalIds.includes(id),
+      );
+
+      // Update removed jobs' schedule_date to null
+      if (removedJobIds.length > 0) {
+        await this.db.job.updateMany({
+          where: {
+            id: {
+              in: removedJobIds,
+            },
+          },
+          data: {
+            schedule_date: null,
+          },
+        });
+        this.logger.log(
+          `Set schedule_date to null for ${removedJobIds.length} job(s)`,
+        );
+      }
+
+      let scheduledJob: ScheduledJob | null;
+
+      if (
+        updatedJobIds.length === 0 &&
+        updatedRetrievalIds.length === 0
+      ) {
+        await this.db.scheduledJob.delete({
+          where: { id: existingScheduledJob.id },
+        });
+        scheduledJob = null;
+      } else {
+        scheduledJob = await this.db.scheduledJob.update({
+          where: { id: existingScheduledJob.id },
+          data: {
+            job_ids: updatedJobIds,
+            retrieval_ids: updatedRetrievalIds,
+          },
+        });
+      }
+
+      return {
+        scheduledJob,
+        removedJobIds,
+        notFoundJobIds,
+        removedRetrievalIds,
+        notFoundRetrievalIds,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error removing jobs from scheduled job: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
 }

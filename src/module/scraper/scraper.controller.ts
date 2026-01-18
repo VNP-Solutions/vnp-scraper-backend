@@ -2,20 +2,22 @@ import { HttpService } from '@nestjs/axios';
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpStatus,
   Inject,
   Logger,
   Param,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
-  ApiBody,
   ApiBearerAuth,
+  ApiBody,
   ApiOperation,
   ApiParam,
   ApiQuery,
@@ -32,7 +34,10 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { IJobService } from '../job/job.interface';
 import { IRetrievalService } from '../retrieval/retrieval.interface';
 import { IScheduledJobService } from './scheduled-job.interface';
-import { createScheduledJobSchema } from './scheduled-job.validation';
+import {
+  createScheduledJobSchema,
+  removeJobsFromScheduledJobSchema,
+} from './scheduled-job.validation';
 import { IScraperJobItemService } from './scraper-job-item.interface';
 import {
   AllJobItemsResponseDto,
@@ -47,6 +52,8 @@ import {
   PauseResumeStopResponseDto,
   PropertyRunJobRequestDto,
   PropertyRunJobResponseDto,
+  RemoveJobsFromScheduledJobDto,
+  RemoveJobsFromScheduledJobResponseDto,
   RerunFailedJobRequestDto,
   RerunFailedJobResponseDto,
   ReservationRunJobRequestDto,
@@ -2362,22 +2369,99 @@ export class ScraperController {
 
   @Get('/scheduled')
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Get all scheduled jobs' })
+  @ApiOperation({ summary: 'Get all scheduled jobs or filter by date range' })
+  @ApiQuery({
+    name: 'start_date',
+    required: false,
+    description: 'Start date in YYYY-MM-DD format',
+    example: '2024-01-01',
+  })
+  @ApiQuery({
+    name: 'end_date',
+    required: false,
+    description: 'End date in YYYY-MM-DD format',
+    example: '2024-12-31',
+  })
   @ApiResponse({
     status: 200,
-    description: 'Returns list of all scheduled jobs',
+    description: 'Returns list of scheduled jobs',
     type: [ScheduledJobResponseDto],
   })
-  async getAllScheduledJobs(@Res() response: Response) {
+  async getScheduledJobs(
+    @Query('start_date') startDate?: string,
+    @Query('end_date') endDate?: string,
+    @Res() response?: Response,
+  ) {
     return ResponseHandler.handler(
       response,
       async () => {
-        const scheduledJobs =
-          await this.scheduledJobService.getAllScheduledJobs();
+        let scheduledJobs: any[];
+
+        if (startDate && endDate) {
+          scheduledJobs =
+            await this.scheduledJobService.getScheduledJobsByDateRange(
+              startDate,
+              endDate,
+            );
+        } else {
+          scheduledJobs =
+            await this.scheduledJobService.getAllScheduledJobs();
+        }
+
         return {
           statusCode: 200,
-          message: 'Scheduled jobs retrieved successfully',
+          message: startDate && endDate
+            ? `Scheduled jobs retrieved successfully for date range ${startDate} to ${endDate}`
+            : 'Scheduled jobs retrieved successfully',
           data: scheduledJobs,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Delete('/scheduled/jobs')
+  @UseGuards(JwtAuthGuard)
+  @ValidateBody(removeJobsFromScheduledJobSchema)
+  @ApiOperation({ summary: 'Remove jobs from scheduled job' })
+  @ApiResponse({
+    status: 200,
+    description: 'Jobs removed from scheduled job successfully',
+    type: RemoveJobsFromScheduledJobResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 404, description: 'Scheduled job not found' })
+  async removeJobsFromScheduledJob(
+    @Body() removeJobsDto: RemoveJobsFromScheduledJobDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result =
+          await this.scheduledJobService.removeJobsFromScheduledJob(
+            removeJobsDto.date,
+            removeJobsDto.job_ids || [],
+            removeJobsDto.retrieval_ids || [],
+          );
+
+        const jobMessage =
+          result.removedCount > 0 || result.notFoundCount > 0
+            ? `${result.removedCount} job(s) removed, ${result.notFoundCount} job(s) not found.`
+            : '';
+        const retrievalMessage =
+          result.removedRetrievalCount > 0 ||
+          result.notFoundRetrievalCount > 0
+            ? `${result.removedRetrievalCount} retrieval(s) removed, ${result.notFoundRetrievalCount} retrieval(s) not found.`
+            : '';
+
+        const scheduledJobDeleted =
+          result.scheduledJob === null ? ' Scheduled job deleted as it became empty.' : '';
+
+        return {
+          statusCode: 200,
+          message: `Jobs removed from scheduled job successfully. ${jobMessage}${retrievalMessage}${scheduledJobDeleted}`.trim(),
+          data: result,
         };
       },
       this.logger,
