@@ -104,6 +104,9 @@ export class JobRepository implements IJobRepository {
         batch_name,
         is_archived,
         filter_invoice_amount,
+        job_type,
+        schedule_start_date,
+        schedule_end_date,
         ...filters
       } = query || {};
       let allFilters: any = { ...filters };
@@ -164,6 +167,56 @@ export class JobRepository implements IJobRepository {
         } else if (is_archived === 'false' || is_archived === false) {
           // Include records where is_archived is false OR null/undefined (legacy data)
           allFilters.is_archived = false;
+        }
+      }
+
+      // Handle job_type and schedule_date filters
+      const jobTypeLower = job_type
+        ? job_type.toString().toLowerCase()
+        : null;
+
+      if (jobTypeLower === 'manual') {
+        // Manual jobs: schedule_date must be null
+        allFilters.schedule_date = null;
+      } else if (jobTypeLower === 'scheduled') {
+        // Scheduled jobs: schedule_date must not be null
+        // Then apply date range if provided
+        if (schedule_start_date || schedule_end_date) {
+          const scheduleDateFilter: any = {
+            not: null,
+          };
+
+          if (schedule_start_date && schedule_end_date) {
+            scheduleDateFilter.gte = schedule_start_date;
+            scheduleDateFilter.lte = schedule_end_date;
+          } else if (schedule_start_date) {
+            scheduleDateFilter.gte = schedule_start_date;
+          } else if (schedule_end_date) {
+            scheduleDateFilter.lte = schedule_end_date;
+          }
+
+          allFilters.schedule_date = scheduleDateFilter;
+        } else {
+          allFilters.schedule_date = {
+            not: null,
+          };
+        }
+      } else {
+        // job_type is 'All' or not provided - no job_type filter
+        // But can still apply schedule_date range filter
+        if (schedule_start_date || schedule_end_date) {
+          const scheduleDateFilter: any = {};
+
+          if (schedule_start_date && schedule_end_date) {
+            scheduleDateFilter.gte = schedule_start_date;
+            scheduleDateFilter.lte = schedule_end_date;
+          } else if (schedule_start_date) {
+            scheduleDateFilter.gte = schedule_start_date;
+          } else if (schedule_end_date) {
+            scheduleDateFilter.lte = schedule_end_date;
+          }
+
+          allFilters.schedule_date = scheduleDateFilter;
         }
       }
 

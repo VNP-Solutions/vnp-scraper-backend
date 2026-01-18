@@ -183,6 +183,7 @@ model Job {
   property_name               String
   billing_type                String?
   next_due_date               DateTime?
+  schedule_date               String?
   ota_provider                OTAProvider @map("OTA")
   remaining_direct_billed     Float
   total_collectable           Float

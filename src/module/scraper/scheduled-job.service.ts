@@ -91,4 +91,89 @@ export class ScheduledJobService implements IScheduledJobService {
       throw error;
     }
   }
+
+  async getScheduledJobsByDateRange(
+    startDate: string,
+    endDate: string,
+  ): Promise<ScheduledJob[]> {
+    try {
+      if (!startDate || !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+        throw new Error('Start date must be in YYYY-MM-DD format');
+      }
+
+      if (!endDate || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+        throw new Error('End date must be in YYYY-MM-DD format');
+      }
+
+      if (startDate > endDate) {
+        throw new Error('Start date must be less than or equal to end date');
+      }
+
+      const scheduledJobs =
+        await this.repository.findScheduledJobsByDateRange(
+          startDate,
+          endDate,
+        );
+      return scheduledJobs;
+    } catch (error) {
+      this.logger.error(
+        `Error getting scheduled jobs by date range: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async removeJobsFromScheduledJob(
+    date: string,
+    jobIds: string[],
+    retrievalIds: string[] = [],
+  ): Promise<{
+    removedCount: number;
+    notFoundCount: number;
+    removedJobIds: string[];
+    notFoundJobIds: string[];
+    removedRetrievalCount: number;
+    notFoundRetrievalCount: number;
+    removedRetrievalIds: string[];
+    notFoundRetrievalIds: string[];
+    scheduledJob: ScheduledJob | null;
+  }> {
+    try {
+      if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        throw new Error('Date must be in YYYY-MM-DD format');
+      }
+
+      if (
+        (!jobIds || jobIds.length === 0) &&
+        (!retrievalIds || retrievalIds.length === 0)
+      ) {
+        throw new Error('At least one job ID or retrieval ID is required');
+      }
+
+      const result = await this.repository.removeJobsFromScheduledJob(
+        date,
+        jobIds || [],
+        retrievalIds || [],
+      );
+
+      return {
+        removedCount: result.removedJobIds.length,
+        notFoundCount: result.notFoundJobIds.length,
+        removedJobIds: result.removedJobIds,
+        notFoundJobIds: result.notFoundJobIds,
+        removedRetrievalCount: result.removedRetrievalIds.length,
+        notFoundRetrievalCount: result.notFoundRetrievalIds.length,
+        removedRetrievalIds: result.removedRetrievalIds,
+        notFoundRetrievalIds: result.notFoundRetrievalIds,
+        scheduledJob: result.scheduledJob,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error removing jobs from scheduled job: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
 }

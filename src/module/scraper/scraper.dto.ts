@@ -387,6 +387,91 @@ export class ScheduledJobResponseDto {
   updatedAt?: Date;
 }
 
+export class RemoveJobsFromScheduledJobDto {
+  @ApiProperty({
+    description: 'Date in YYYY-MM-DD format',
+    example: '2024-12-25',
+  })
+  date: string;
+
+  @ApiProperty({
+    description: 'Array of job IDs to remove from schedule',
+    type: [String],
+    example: ['job-id-1', 'job-id-2', 'job-id-3'],
+    required: false,
+  })
+  job_ids?: string[];
+
+  @ApiProperty({
+    description: 'Array of retrieval IDs to remove from schedule',
+    type: [String],
+    example: ['retrieval-id-1', 'retrieval-id-2', 'retrieval-id-3'],
+    required: false,
+  })
+  retrieval_ids?: string[];
+}
+
+export class RemoveJobsFromScheduledJobResponseDto {
+  @ApiProperty({
+    description: 'Number of jobs successfully removed',
+    example: 2,
+  })
+  removedCount: number;
+
+  @ApiProperty({
+    description: 'Number of job IDs that were not found in the scheduled job',
+    example: 1,
+  })
+  notFoundCount: number;
+
+  @ApiProperty({
+    description: 'Array of job IDs that were successfully removed',
+    type: [String],
+    example: ['job-id-1', 'job-id-2'],
+  })
+  removedJobIds: string[];
+
+  @ApiProperty({
+    description: 'Array of job IDs that were not found in the scheduled job',
+    type: [String],
+    example: ['job-id-3'],
+  })
+  notFoundJobIds: string[];
+
+  @ApiProperty({
+    description: 'Number of retrievals successfully removed',
+    example: 1,
+  })
+  removedRetrievalCount: number;
+
+  @ApiProperty({
+    description: 'Number of retrieval IDs that were not found in the scheduled job',
+    example: 0,
+  })
+  notFoundRetrievalCount: number;
+
+  @ApiProperty({
+    description: 'Array of retrieval IDs that were successfully removed',
+    type: [String],
+    example: ['retrieval-id-1'],
+  })
+  removedRetrievalIds: string[];
+
+  @ApiProperty({
+    description: 'Array of retrieval IDs that were not found in the scheduled job',
+    type: [String],
+    example: [],
+  })
+  notFoundRetrievalIds: string[];
+
+  @ApiProperty({
+    description: 'Updated scheduled job (null if deleted)',
+    type: ScheduledJobResponseDto,
+    nullable: true,
+  })
+  scheduledJob: ScheduledJobResponseDto | null;
+}
+
 export class CreateScheduledJobResponseDto {
   @ApiProperty({
     description: 'Number of new job IDs added',

@@ -136,13 +136,71 @@ export class JobService implements IJobService {
 
     // Try to parse various date formats
     try {
-      // Try MM/DD/YYYY or DD/MM/YYYY
-      const date = new Date(dateStr);
-      if (!isNaN(date.getTime())) {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
+      // Check if it matches MM/DD/YYYY or DD/MM/YYYY format
+      const slashDatePattern = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+      const match = dateStr.match(slashDatePattern);
+      
+      if (match) {
+        const first = parseInt(match[1], 10);
+        const second = parseInt(match[2], 10);
+        const year = parseInt(match[3], 10);
+        
+        let month: number;
+        let day: number;
+        
+        // Determine format: if first number > 12, it's DD/MM/YYYY
+        // If second number > 12, it's MM/DD/YYYY
+        // Otherwise, assume MM/DD/YYYY (US format)
+        if (first > 12) {
+          // DD/MM/YYYY format
+          day = first;
+          month = second;
+        } else if (second > 12) {
+          // MM/DD/YYYY format
+          month = first;
+          day = second;
+        } else {
+          // Ambiguous case (both <= 12): try MM/DD/YYYY first
+          // If invalid date, try DD/MM/YYYY
+          let testDate = new Date(year, first - 1, second);
+          if (
+            testDate.getFullYear() === year &&
+            testDate.getMonth() === first - 1 &&
+            testDate.getDate() === second
+          ) {
+            // Valid MM/DD/YYYY
+            month = first;
+            day = second;
+          } else {
+            // Try DD/MM/YYYY
+            month = second;
+            day = first;
+          }
+        }
+        
+        // Validate month and day
+        if (month < 1 || month > 12 || day < 1 || day > 31) {
+          return null;
+        }
+        
+        // Create date to validate (handles invalid dates like Feb 30)
+        const date = new Date(year, month - 1, day);
+        if (
+          date.getFullYear() === year &&
+          date.getMonth() === month - 1 &&
+          date.getDate() === day
+        ) {
+          return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        }
+      } else {
+        // Try generic Date parsing for other formats (e.g., ISO, etc.)
+        const date = new Date(dateStr);
+        if (!isNaN(date.getTime())) {
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        }
       }
     } catch (error) {
       // If parsing fails, return null
@@ -376,6 +434,11 @@ export class JobService implements IJobService {
             rowData['Scheduled'] ||
             rowData['Schedule Date'];
           const scheduledDate = this.parseScheduledDate(scheduledDateColumn);
+
+          // Add schedule_date to job data if provided
+          if (scheduledDate) {
+            jobData.schedule_date = scheduledDate;
+          }
 
           // Create job using existing method
           const newJob = await this.createJob(jobData);
