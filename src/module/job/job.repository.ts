@@ -9,6 +9,7 @@ import {
   UpdateJobDto,
 } from './job.dto';
 import { IJobRepository } from './job.interface';
+import { isSet } from 'util/types';
 
 @Injectable()
 export class JobRepository implements IJobRepository {
@@ -176,8 +177,23 @@ export class JobRepository implements IJobRepository {
         : null;
 
       if (jobTypeLower === 'manual') {
-        // Manual jobs: schedule_date must be null
-        allFilters.schedule_date = null;
+        // Manual jobs: schedule_date must be null or missing
+        // In Prisma with MongoDB, for optional String? fields, null should match both:
+        // 1. Documents where schedule_date is explicitly null
+        // 2. Documents where schedule_date field doesn't exist (undefined)
+        // However, if Prisma's null check doesn't work for missing fields, we need a workaround
+        // The workaround: Don't filter by schedule_date in the query, then filter results in memory
+        // But that's inefficient. Instead, we'll try using null which should work for optional fields
+        // If this still doesn't work, the issue might be with how Prisma handles null for optional fields
+        // Setting schedule_date to null should match both null and missing values for optional fields
+        // allFilters.schedule_date = null;
+        allFilters = {
+          ...allFilters,
+          OR: [
+            { schedule_date: null },
+            { schedule_date: { isSet: false } },
+          ]
+        }
       } else if (jobTypeLower === 'scheduled') {
         // Scheduled jobs: schedule_date must not be null
         // Then apply date range if provided
