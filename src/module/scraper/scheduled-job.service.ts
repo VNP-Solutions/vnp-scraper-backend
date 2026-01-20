@@ -176,4 +176,38 @@ export class ScheduledJobService implements IScheduledJobService {
       throw error;
     }
   }
+
+  async removeJobIdsFromAllScheduledJobs(
+    jobIds: string[],
+  ): Promise<{
+    totalRemovedCount: number;
+    notFoundCount: number;
+    removedJobIds: string[];
+    notFoundJobIds: string[];
+    deletedScheduledJobsCount: number;
+  }> {
+    try {
+      if (!jobIds || jobIds.length === 0) {
+        throw new Error('At least one job ID is required');
+      }
+
+      const result = await this.repository.removeJobIdsFromAllScheduledJobs(
+        jobIds,
+      );
+
+      return {
+        totalRemovedCount: result.removedJobIds.length,
+        notFoundCount: result.notFoundJobIds.length,
+        removedJobIds: result.removedJobIds,
+        notFoundJobIds: result.notFoundJobIds,
+        deletedScheduledJobsCount: result.deletedScheduledJobsCount,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error removing job IDs from all scheduled jobs: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
 }

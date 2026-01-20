@@ -36,6 +36,7 @@ import { IRetrievalService } from '../retrieval/retrieval.interface';
 import { IScheduledJobService } from './scheduled-job.interface';
 import {
   createScheduledJobSchema,
+  removeJobIdsFromAllScheduledJobsSchema,
   removeJobsFromScheduledJobSchema,
 } from './scheduled-job.validation';
 import { IScraperJobItemService } from './scraper-job-item.interface';
@@ -52,6 +53,8 @@ import {
   PauseResumeStopResponseDto,
   PropertyRunJobRequestDto,
   PropertyRunJobResponseDto,
+  RemoveJobIdsFromAllScheduledJobsDto,
+  RemoveJobIdsFromAllScheduledJobsResponseDto,
   RemoveJobsFromScheduledJobDto,
   RemoveJobsFromScheduledJobResponseDto,
   RerunFailedJobRequestDto,
@@ -2461,6 +2464,52 @@ export class ScraperController {
         return {
           statusCode: 200,
           message: `Jobs removed from scheduled job successfully. ${jobMessage}${retrievalMessage}${scheduledJobDeleted}`.trim(),
+          data: result,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Post('/scheduled/remove-jobs')
+  @UseGuards(JwtAuthGuard)
+  @ValidateBody(removeJobIdsFromAllScheduledJobsSchema)
+  @ApiOperation({
+    summary: 'Remove job IDs from all scheduled jobs',
+    description:
+      'Removes the specified job IDs from all scheduled jobs across all dates',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Job IDs removed from all scheduled jobs successfully',
+    type: RemoveJobIdsFromAllScheduledJobsResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  async removeJobIdsFromAllScheduledJobs(
+    @Body() removeJobsDto: RemoveJobIdsFromAllScheduledJobsDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result =
+          await this.scheduledJobService.removeJobIdsFromAllScheduledJobs(
+            removeJobsDto.job_ids,
+          );
+
+        const message = `Successfully removed ${result.totalRemovedCount} job(s) from scheduled jobs. ${
+          result.notFoundCount > 0
+            ? `${result.notFoundCount} job ID(s) were not found in any scheduled job.`
+            : ''
+        }${
+          result.deletedScheduledJobsCount > 0
+            ? ` ${result.deletedScheduledJobsCount} scheduled job(s) were deleted as they became empty.`
+            : ''
+        }`.trim();
+
+        return {
+          statusCode: 200,
+          message,
           data: result,
         };
       },
