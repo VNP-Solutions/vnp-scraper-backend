@@ -226,7 +226,7 @@ export class ScheduledJobRepository implements IScheduledJobRepository {
           },
           data: {
             schedule_date: null,
-          },
+          } as any,
         });
         this.logger.log(
           `Set schedule_date to null for ${removedJobIds.length} job(s)`,
@@ -263,6 +263,96 @@ export class ScheduledJobRepository implements IScheduledJobRepository {
     } catch (error) {
       this.logger.error(
         `Error removing jobs from scheduled job: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async removeJobIdsFromAllScheduledJobs(
+    jobIds: string[],
+  ): Promise<{
+    removedJobIds: string[];
+    notFoundJobIds: string[];
+    deletedScheduledJobsCount: number;
+  }> {
+    try {
+      // Find all scheduled jobs that contain any of the provided job IDs
+      const allScheduledJobs = await this.db.scheduledJob.findMany({
+        where: {
+          job_ids: {
+            hasSome: jobIds,
+          },
+        },
+      });
+
+      const removedJobIdsSet = new Set<string>();
+      const notFoundJobIdsSet = new Set<string>(jobIds);
+      let deletedScheduledJobsCount = 0;
+
+      // Process each scheduled job
+      for (const scheduledJob of allScheduledJobs) {
+        const existingJobIds = scheduledJob.job_ids || [];
+        const jobsToRemove = jobIds.filter((id) => existingJobIds.includes(id));
+
+        // Track removed job IDs
+        jobsToRemove.forEach((id) => {
+          removedJobIdsSet.add(id);
+          notFoundJobIdsSet.delete(id);
+        });
+
+        // Remove the job IDs from this scheduled job
+        const updatedJobIds = existingJobIds.filter(
+          (id) => !jobIds.includes(id),
+        );
+
+        // If the scheduled job becomes empty, delete it
+        if (
+          updatedJobIds.length === 0 &&
+          (!scheduledJob.retrieval_ids ||
+            scheduledJob.retrieval_ids.length === 0)
+        ) {
+          await this.db.scheduledJob.delete({
+            where: { id: scheduledJob.id },
+          });
+          deletedScheduledJobsCount++;
+        } else {
+          // Update the scheduled job with remaining job IDs
+          await this.db.scheduledJob.update({
+            where: { id: scheduledJob.id },
+            data: {
+              job_ids: updatedJobIds,
+            },
+          });
+        }
+      }
+
+      // Update removed jobs' schedule_date to null
+      if (removedJobIdsSet.size > 0) {
+        const removedJobIdsArray = Array.from(removedJobIdsSet);
+        await this.db.job.updateMany({
+          where: {
+            id: {
+              in: removedJobIdsArray,
+            },
+          },
+          data: {
+            schedule_date: null,
+          } as any,
+        });
+        this.logger.log(
+          `Set schedule_date to null for ${removedJobIdsArray.length} job(s)`,
+        );
+      }
+
+      return {
+        removedJobIds: Array.from(removedJobIdsSet),
+        notFoundJobIds: Array.from(notFoundJobIdsSet),
+        deletedScheduledJobsCount,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error removing job IDs from all scheduled jobs: ${error.message}`,
         error.stack,
       );
       throw error;

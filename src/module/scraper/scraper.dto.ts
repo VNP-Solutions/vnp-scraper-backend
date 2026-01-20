@@ -411,6 +411,15 @@ export class RemoveJobsFromScheduledJobDto {
   retrieval_ids?: string[];
 }
 
+export class RemoveJobIdsFromAllScheduledJobsDto {
+  @ApiProperty({
+    description: 'Array of job IDs to remove from all scheduled jobs',
+    type: [String],
+    example: ['job-id-1', 'job-id-2', 'job-id-3'],
+  })
+  job_ids: string[];
+}
+
 export class RemoveJobsFromScheduledJobResponseDto {
   @ApiProperty({
     description: 'Number of jobs successfully removed',
@@ -530,4 +539,38 @@ export class CreateScheduledJobResponseDto {
     type: ScheduledJobResponseDto,
   })
   scheduledJob: ScheduledJobResponseDto;
+}
+
+export class RemoveJobIdsFromAllScheduledJobsResponseDto {
+  @ApiProperty({
+    description: 'Total number of jobs successfully removed across all scheduled jobs',
+    example: 5,
+  })
+  totalRemovedCount: number;
+
+  @ApiProperty({
+    description: 'Number of job IDs that were not found in any scheduled job',
+    example: 2,
+  })
+  notFoundCount: number;
+
+  @ApiProperty({
+    description: 'Array of job IDs that were successfully removed',
+    type: [String],
+    example: ['job-id-1', 'job-id-2', 'job-id-3'],
+  })
+  removedJobIds: string[];
+
+  @ApiProperty({
+    description: 'Array of job IDs that were not found in any scheduled job',
+    type: [String],
+    example: ['job-id-4', 'job-id-5'],
+  })
+  notFoundJobIds: string[];
+
+  @ApiProperty({
+    description: 'Number of scheduled jobs that were deleted because they became empty',
+    example: 2,
+  })
+  deletedScheduledJobsCount: number;
 }

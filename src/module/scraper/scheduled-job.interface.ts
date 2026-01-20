@@ -30,6 +30,13 @@ export interface IScheduledJobRepository {
     removedRetrievalIds: string[];
     notFoundRetrievalIds: string[];
   }>;
+  removeJobIdsFromAllScheduledJobs(
+    jobIds: string[],
+  ): Promise<{
+    removedJobIds: string[];
+    notFoundJobIds: string[];
+    deletedScheduledJobsCount: number;
+  }>;
 }
 
 export interface IScheduledJobService {
@@ -68,5 +75,14 @@ export interface IScheduledJobService {
     removedRetrievalIds: string[];
     notFoundRetrievalIds: string[];
     scheduledJob: ScheduledJob | null;
+  }>;
+  removeJobIdsFromAllScheduledJobs(
+    jobIds: string[],
+  ): Promise<{
+    totalRemovedCount: number;
+    notFoundCount: number;
+    removedJobIds: string[];
+    notFoundJobIds: string[];
+    deletedScheduledJobsCount: number;
   }>;
 }

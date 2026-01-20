@@ -39,7 +39,16 @@ export const removeJobsFromScheduledJobSchema = z
     },
   );
 
+export const removeJobIdsFromAllScheduledJobsSchema = z.object({
+  job_ids: z.array(objectIdSchema).min(1, {
+    message: 'At least one job ID is required',
+  }),
+});
+
 export type CreateScheduledJobType = z.infer<typeof createScheduledJobSchema>;
 export type RemoveJobsFromScheduledJobType = z.infer<
   typeof removeJobsFromScheduledJobSchema
+>;
+export type RemoveJobIdsFromAllScheduledJobsType = z.infer<
+  typeof removeJobIdsFromAllScheduledJobsSchema
 >;
