@@ -56,6 +56,23 @@ export class ScheduledJobRepository implements IScheduledJobRepository {
           ...newRetrievalIds,
         ];
 
+        // Update added jobs' schedule_date
+        if (newJobIds.length > 0) {
+          await this.db.job.updateMany({
+            where: {
+              id: {
+                in: newJobIds,
+              },
+            },
+            data: {
+              schedule_date: date,
+            } as any,
+          });
+          this.logger.log(
+            `Updated schedule_date to ${date} for ${newJobIds.length} job(s)`,
+          );
+        }
+
         const scheduledJob = await this.db.scheduledJob.update({
           where: { id: existingScheduledJob.id },
           data: {
@@ -83,6 +100,23 @@ export class ScheduledJobRepository implements IScheduledJobRepository {
 
         addedJobIds = jobIds;
         addedRetrievalIds = retrievalIds;
+
+        // Update added jobs' schedule_date
+        if (jobIds.length > 0) {
+          await this.db.job.updateMany({
+            where: {
+              id: {
+                in: jobIds,
+              },
+            },
+            data: {
+              schedule_date: date,
+            } as any,
+          });
+          this.logger.log(
+            `Updated schedule_date to ${date} for ${jobIds.length} job(s)`,
+          );
+        }
 
         return {
           scheduledJob,
