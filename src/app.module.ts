@@ -24,6 +24,7 @@ import { UploadModule } from './module/upload/upload.module';
 import { UserFeatureAccessPermissionModule } from './module/user-feature-access-permission/user-feature-access-permission.module';
 import { UserInvitationModule } from './module/user-invitation/user-invitation.module';
 import { UserModule } from './module/user/user.module';
+import { GoogleOAuthModule } from './module/google-oauth/google-oauth.module';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { UserModule } from './module/user/user.module';
     RetrievalModule,
     DbDataModule,
     NotificationModule,
+    GoogleOAuthModule,
   ],
   controllers: [AppController],
   providers: [AppService],
