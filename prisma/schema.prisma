@@ -177,6 +177,7 @@ model Job {
   property_id                 String?     @db.ObjectId
   user_id                     String      @db.ObjectId
   batch_id                    String?     @db.ObjectId
+  recurring_id                String?     @db.ObjectId
   posting_type                PostingType
   portfolio_name              String?
   sub_portfolio_name          String?
@@ -210,17 +211,31 @@ model Job {
   createdAt                   DateTime    @default(now())
   updatedAt                   DateTime    @updatedAt
 
-  portfolio    Portfolio?    @relation(fields: [portfolio_id], references: [id])
-  subPortfolio SubPortfolio? @relation(fields: [sub_portfolio_id], references: [id])
-  property     Property?     @relation(fields: [property_id], references: [id])
-  user         User?         @relation(fields: [user_id], references: [id])
-  batch        Batch?        @relation(fields: [batch_id], references: [id])
-  jobItem      JobItem[]
-  OtpStatus    OtpStatus[]
-  dbData       DbData[]
-  dbEntries    DbEntry[]
+  portfolio     Portfolio?     @relation(fields: [portfolio_id], references: [id])
+  subPortfolio  SubPortfolio?  @relation(fields: [sub_portfolio_id], references: [id])
+  property      Property?      @relation(fields: [property_id], references: [id])
+  user          User?          @relation(fields: [user_id], references: [id])
+  batch         Batch?         @relation(fields: [batch_id], references: [id])
+  recurringJob  RecurringJob?  @relation(fields: [recurring_id], references: [id])
+  jobItem       JobItem[]
+  OtpStatus     OtpStatus[]
+  dbData        DbData[]
+  dbEntries     DbEntry[]
 
   @@map("jobs")
+}
+
+model RecurringJob {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  name          String
+  schedule_date String?
+  is_active     Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  jobs Job[]
+
+  @@map("recurring_jobs")
 }
 
 model Property {
