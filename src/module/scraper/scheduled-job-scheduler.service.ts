@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { firstValueFrom } from 'rxjs';
 import { IJobService } from '../job/job.interface';
+import { IRecurringJobService } from '../recurring-job/recurring-job.interface';
 import { IRetrievalService } from '../retrieval/retrieval.interface';
 import { IScheduledJobService } from './scheduled-job.interface';
 import { IScraperJobItemService } from './scraper-job-item.interface';
@@ -21,6 +22,8 @@ export class ScheduledJobSchedulerService {
     private readonly retrievalService: IRetrievalService,
     @Inject('IScraperJobItemService')
     private readonly jobItemService: IScraperJobItemService,
+    @Inject('IRecurringJobService')
+    private readonly recurringJobService: IRecurringJobService,
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
   ) {}
@@ -606,12 +609,73 @@ export class ScheduledJobSchedulerService {
       this.logger.log(
         `Scheduled jobs execution completed for ${date}. Summary: ${successfulJobs} succeeded, ${failedJobs} failed`,
       );
+
+      // Handle recurring jobs - create next month's jobs
+      await this.handleRecurringJobs(jobs, date);
     } catch (error) {
       this.logger.error(
         `Error executing batch jobs for scheduled date ${date}: ${error.message}`,
         error.stack,
       );
       throw error;
+    }
+  }
+
+  /**
+   * Handle recurring jobs after execution - create next month's jobs
+   */
+  private async handleRecurringJobs(
+    jobs: Array<{ jobId: string }>,
+    currentDate: string,
+  ) {
+    try {
+      this.logger.log(
+        `Checking for recurring jobs to create next month's schedule...`,
+      );
+
+      let recurringJobsCount = 0;
+      let nextMonthJobsCreated = 0;
+
+      for (const jobRequest of jobs) {
+        try {
+          const job = await this.jobService.getJobById(jobRequest.jobId);
+
+          // Check if job has a recurring_id and schedule_date
+          if (job.recurring_id && job.schedule_date) {
+            recurringJobsCount++;
+
+            // Create next month's job for this recurring job
+            const nextJob = await this.recurringJobService.createNextMonthJob(
+              job.recurring_id,
+              job.schedule_date,
+            );
+
+            if (nextJob) {
+              nextMonthJobsCreated++;
+              this.logger.log(
+                `Created next month job ${nextJob.id} for recurring job ${job.recurring_id}`,
+              );
+            }
+          }
+        } catch (error: any) {
+          this.logger.error(
+            `Error handling recurring job for ${jobRequest.jobId}: ${error.message}`,
+          );
+          // Continue with other jobs even if one fails
+        }
+      }
+
+      if (recurringJobsCount > 0) {
+        this.logger.log(
+          `Recurring jobs processing completed: ${nextMonthJobsCreated} next month jobs created out of ${recurringJobsCount} recurring jobs`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Error in handleRecurringJobs: ${error.message}`,
+        error.stack,
+      );
+      // Don't throw - we don't want to fail the entire scheduled job execution
     }
   }
 

@@ -20,6 +20,9 @@ export class CreateJobDto {
   @ApiProperty()
   user_id: string;
 
+  @ApiProperty({ required: false })
+  recurring_id?: string;
+
   @ApiProperty({ enum: PostingType })
   posting_type: PostingType;
 

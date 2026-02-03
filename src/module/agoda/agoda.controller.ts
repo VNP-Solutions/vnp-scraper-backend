@@ -1,13 +1,13 @@
 import { HttpService } from '@nestjs/axios';
 import {
-  Body,
-  Controller,
-  Get,
-  HttpStatus,
-  Inject,
-  Post,
-  Req,
-  Res,
+    Body,
+    Controller,
+    Get,
+    HttpStatus,
+    Inject,
+    Post,
+    Req,
+    Res,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -16,10 +16,14 @@ import { firstValueFrom } from 'rxjs';
 import { IJobService } from '../job/job.interface';
 
 import {
-  AgodaErrorResponseDto,
-  HealthResponseDto,
-  PropertyRunJobRequestDto,
-  PropertyRunJobResponseDto,
+    BatchPropertyRunJobRequestDto,
+    BatchPropertyRunJobResponseDto,
+} from '../scraper/scraper.dto';
+import {
+    AgodaErrorResponseDto,
+    HealthResponseDto,
+    PropertyRunJobRequestDto,
+    PropertyRunJobResponseDto,
 } from './agoda.dto';
 
 @ApiTags('Agoda Scraper')
@@ -182,6 +186,57 @@ export class AgodaController {
               Accept: 'application/json',
             },
             timeout: 300000, // 5 minute timeout for long-running scraping jobs
+          },
+        ),
+      );
+
+      return res.status(response.status).json(response.data);
+    } catch (error: any) {
+      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
+      const data = error.response?.data || {
+        message: 'Agoda Job server is down',
+      };
+      return res.status(status).json(data);
+    }
+  }
+  @Post('/api/agoda/bulk-property-run-job')
+  @ApiOperation({
+    summary: 'Start batch Agoda property scraping jobs',
+    description:
+      'Start multiple Agoda property scraping jobs in a single batch request. Jobs are forwarded to the Agoda scraper service.',
+  })
+  @ApiBody({ type: BatchPropertyRunJobRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Batch Agoda property scraping jobs completed',
+    type: BatchPropertyRunJobResponseDto,
+  })
+  async batchPropertyRunJob(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Body() body: BatchPropertyRunJobRequestDto,
+  ) {
+    try {
+      const agodaUrl = this.getAgodaScraperUrl();
+
+      if (!agodaUrl) {
+        return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message: 'No Agoda server URL configured (AGODA_SERVER_URL)',
+          error: 'Agoda server URL not configured',
+        });
+      }
+
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${agodaUrl}/api/agoda/bulk-property-run-job`,
+          body,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            timeout: 300000,
           },
         ),
       );
