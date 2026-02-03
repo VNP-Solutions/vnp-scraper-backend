@@ -12,7 +12,7 @@ export class PropertyRepository implements IPropertyRepository {
     private readonly db: DatabaseService,
     private readonly logger: Logger,
     private readonly encryptionUtil: EncryptionUtil,
-  ) {}
+  ) { }
 
   get databaseService(): DatabaseService {
     return this.db;
@@ -1269,14 +1269,14 @@ export class PropertyRepository implements IPropertyRepository {
             };
 
             if (rowData['Expedia ID']) {
-              propertyData.expedia_id = rowData['Expedia ID'];
+              propertyData.expedia_id = Number(rowData['Expedia ID']);
             }
 
             if (rowData['Booking ID']) {
-              propertyData.booking_id = rowData['Booking ID'];
+              propertyData.booking_id = Number(rowData['Booking ID']);
             }
             if (rowData['Agoda ID']) {
-              propertyData.agoda_id = rowData['Agoda ID'];
+              propertyData.agoda_id = Number(rowData['Agoda ID']);
             }
 
             // Create property using repository method
