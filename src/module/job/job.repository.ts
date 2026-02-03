@@ -29,15 +29,18 @@ export class JobRepository implements IJobRepository {
         ...rest
       } = data;
 
-      const propertyData = await this.db.property.findFirst({
-        where: {
-          id: property_id,
-        },
-        include: {
-          portfolio: true,
-          subPortfolio: true,
-        },
-      });
+      let propertyData = null;
+      if (property_id) {
+        propertyData = await this.db.property.findFirst({
+          where: {
+            id: property_id,
+          },
+          include: {
+            portfolio: true,
+            subPortfolio: true,
+          },
+        });
+      }
 
       const jobData: Prisma.JobCreateInput = {
         ...rest,
