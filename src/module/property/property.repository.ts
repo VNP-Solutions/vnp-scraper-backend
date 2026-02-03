@@ -1469,13 +1469,13 @@ export class PropertyRepository implements IPropertyRepository {
             // Update property with IDs if they exist
             const propertyUpdateData: any = {};
             if (rowData['Expedia ID']) {
-              propertyUpdateData.expedia_id = rowData['Expedia ID'];
+              propertyUpdateData.expedia_id = parseInt(rowData['Expedia ID']);
             }
             if (rowData['Booking ID']) {
-              propertyUpdateData.booking_id = rowData['Booking ID'];
+              propertyUpdateData.booking_id = parseInt(rowData['Booking ID']);
             }
             if (rowData['Agoda ID']) {
-              propertyUpdateData.agoda_id = rowData['Agoda ID'];
+              propertyUpdateData.agoda_id = parseInt(rowData['Agoda ID']);
             }
 
             // Update property if there are IDs to update
