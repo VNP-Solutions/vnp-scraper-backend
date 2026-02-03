@@ -29,6 +29,6 @@ import { JobService } from './job.service';
     EncryptionUtil,
     ConfigService,
   ],
-  exports: ['IJobService'],
+  exports: ['IJobService', 'IJobRepository'],
 })
 export class JobModule {}
