@@ -94,6 +94,9 @@ export class CreateRecurringJobDto {
 
   @ApiProperty({ required: false })
   db_billing_duration?: number;
+
+  @ApiProperty({ required: false, default: 1, description: 'Duration in months (default: 1)' })
+  duration?: number;
 }
 
 export class CreateRecurringJobFromJobDto {
@@ -102,6 +105,9 @@ export class CreateRecurringJobFromJobDto {
 
   @ApiProperty({ required: true, description: 'Schedule date in YYYY-MM-DD format' })
   schedule_date: string;
+
+  @ApiProperty({ required: false, default: 1, description: 'Duration in months (default: 1)' })
+  duration?: number;
 }
 
 export class UpdateRecurringJobDto {
@@ -110,6 +116,9 @@ export class UpdateRecurringJobDto {
 
   @ApiProperty({ required: false })
   name?: string;
+
+  @ApiProperty({ required: false, description: 'Duration in months' })
+  duration?: number;
 }
 
 export class UpdateRecurringJobStatusDto {
@@ -126,6 +135,9 @@ export class RecurringJobResponseDto {
 
   @ApiProperty()
   schedule_date: string;
+
+  @ApiProperty()
+  duration: number;
 
   @ApiProperty()
   is_active: boolean;

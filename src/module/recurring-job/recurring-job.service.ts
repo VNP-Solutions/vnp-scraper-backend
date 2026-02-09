@@ -39,9 +39,15 @@ export class RecurringJobService implements IRecurringJobService {
   }
 
   /**
-   * Get previous month's first and last day
+   * Get date range for job based on duration
+   * If duration is 2 months and schedule_date is 2026-03-15:
+   * - start_date: 2026-01-01 (first day of 2 months ago)
+   * - end_date: 2026-02-29 (last day of previous month)
    */
-  private getPreviousMonthDates(scheduleDate: string): {
+  private getDateRangeForDuration(
+    scheduleDate: string,
+    duration: number,
+  ): {
     startDate: string;
     endDate: string;
   } {
@@ -49,11 +55,20 @@ export class RecurringJobService implements IRecurringJobService {
     const year = date.getFullYear();
     const month = date.getMonth(); // 0-indexed
 
-    // Get previous month
+    // Calculate start date (duration months before schedule date)
+    let startMonth = month - duration;
+    let startYear = year;
+
+    while (startMonth < 0) {
+      startMonth += 12;
+      startYear -= 1;
+    }
+
+    const startDate = `${startYear}-${String(startMonth + 1).padStart(2, '0')}-01`;
+
+    // Calculate end date (last day of previous month)
     const prevMonth = month === 0 ? 11 : month - 1;
     const prevYear = month === 0 ? year - 1 : year;
-
-    const startDate = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-01`;
     const lastDay = this.getLastDayOfMonth(prevYear, prevMonth + 1);
     const endDate = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
@@ -61,23 +76,50 @@ export class RecurringJobService implements IRecurringJobService {
   }
 
   /**
-   * Get next month's schedule date (same day)
+   * Get previous month's first and last day (for backward compatibility)
    */
-  private getNextMonthScheduleDate(currentScheduleDate: string): string {
+  private getPreviousMonthDates(scheduleDate: string): {
+    startDate: string;
+    endDate: string;
+  } {
+    return this.getDateRangeForDuration(scheduleDate, 1);
+  }
+
+  /**
+   * Get next schedule date by adding duration months
+   * If current schedule is 2026-02-15 and duration is 2:
+   * - Next schedule will be 2026-04-15 (2 months later)
+   */
+  private getNextScheduleDate(
+    currentScheduleDate: string,
+    duration: number,
+  ): string {
     const date = new Date(currentScheduleDate);
     const currentDay = date.getDate();
     const year = date.getFullYear();
     const month = date.getMonth(); // 0-indexed
 
-    // Get next month
-    const nextMonth = month === 11 ? 0 : month + 1;
-    const nextYear = month === 11 ? year + 1 : year;
+    // Add duration months
+    let nextMonth = month + duration;
+    let nextYear = year;
+
+    while (nextMonth > 11) {
+      nextMonth -= 12;
+      nextYear += 1;
+    }
 
     // Handle edge case: if current day doesn't exist in next month (e.g., Jan 31 -> Feb 28)
     const lastDayOfNextMonth = this.getLastDayOfMonth(nextYear, nextMonth + 1);
     const nextDay = Math.min(currentDay, lastDayOfNextMonth);
 
     return `${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-${String(nextDay).padStart(2, '0')}`;
+  }
+
+  /**
+   * Get next month's schedule date (same day) - for backward compatibility
+   */
+  private getNextMonthScheduleDate(currentScheduleDate: string): string {
+    return this.getNextScheduleDate(currentScheduleDate, 1);
   }
 
   /**
@@ -120,7 +162,8 @@ export class RecurringJobService implements IRecurringJobService {
     data: CreateRecurringJobDto,
   ): Promise<{ recurringJob: RecurringJob; job: Job }> {
     try {
-      const { schedule_date, user_id, ...jobData } = data;
+      const { schedule_date, user_id, duration, ...jobData } = data;
+      const durationValue = duration ?? 1;
 
       // Generate recurring job name
       const recurringJobName = this.generateRecurringJobName(
@@ -132,12 +175,15 @@ export class RecurringJobService implements IRecurringJobService {
       const recurringJob = await this.repository.create({
         name: recurringJobName,
         schedule_date: schedule_date,
+        duration: durationValue,
         is_active: true, // Always true on creation
       });
 
-      // Get previous month dates for the job
-      const { startDate, endDate } =
-        this.getPreviousMonthDates(schedule_date);
+      // Get date range based on duration
+      const { startDate, endDate } = this.getDateRangeForDuration(
+        schedule_date,
+        durationValue,
+      );
 
       // Create the first job linked to this recurring job
       const job = await this.jobRepository.create({
@@ -148,6 +194,7 @@ export class RecurringJobService implements IRecurringJobService {
         end_date: endDate,
         schedule_date: schedule_date,
         name: `${recurringJobName} - ${startDate} to ${endDate}`,
+        next_due_date: jobData.next_due_date ? new Date(jobData.next_due_date) : null,
       });
 
       // Add job to scheduler (always active on creation)
@@ -157,7 +204,7 @@ export class RecurringJobService implements IRecurringJobService {
       );
 
       this.logger.log(
-        `Created recurring job ${recurringJob.id} with initial job ${job.id}`,
+        `Created recurring job ${recurringJob.id} with duration ${durationValue} months and initial job ${job.id}`,
       );
 
       return { recurringJob, job };
@@ -174,7 +221,8 @@ export class RecurringJobService implements IRecurringJobService {
     data: CreateRecurringJobFromJobDto,
   ): Promise<{ recurringJob: RecurringJob; job: Job }> {
     try {
-      const { job_id, schedule_date } = data;
+      const { job_id, schedule_date, duration } = data;
+      const durationValue = duration ?? 1;
 
       // Get the existing job
       const existingJob = await this.jobRepository.findById(job_id);
@@ -193,12 +241,15 @@ export class RecurringJobService implements IRecurringJobService {
       const recurringJob = await this.repository.create({
         name: recurringJobName,
         schedule_date: schedule_date,
+        duration: durationValue,
         is_active: true, // Always true on creation
       });
 
-      // Get previous month dates for the job
-      const { startDate, endDate } =
-        this.getPreviousMonthDates(schedule_date);
+      // Get date range based on duration
+      const { startDate, endDate } = this.getDateRangeForDuration(
+        schedule_date,
+        durationValue,
+      );
 
       // Create the first job linked to this recurring job using existing job as template
       const job = await this.jobRepository.create({
@@ -245,7 +296,7 @@ export class RecurringJobService implements IRecurringJobService {
       );
 
       this.logger.log(
-        `Created recurring job ${recurringJob.id} from existing job ${job_id} with initial job ${job.id}`,
+        `Created recurring job ${recurringJob.id} with duration ${durationValue} months from existing job ${job_id} with initial job ${job.id}`,
       );
 
       return { recurringJob, job };
@@ -342,8 +393,11 @@ export class RecurringJobService implements IRecurringJobService {
             );
           } else {
             // Create new job for the new schedule date
-            const { startDate, endDate } =
-              this.getPreviousMonthDates(newScheduleDate);
+            const duration = data.duration ?? recurringJob.duration ?? 1;
+            const { startDate, endDate } = this.getDateRangeForDuration(
+              newScheduleDate,
+              duration,
+            );
 
             // Get job template from existing jobs
             const templateJob = jobs[0];
@@ -440,8 +494,11 @@ export class RecurringJobService implements IRecurringJobService {
 
           if (!jobExists) {
             // Create a new job for this month
-            const { startDate, endDate } =
-              this.getPreviousMonthDates(scheduleDate);
+            const duration = recurringJob.duration ?? 1;
+            const { startDate, endDate } = this.getDateRangeForDuration(
+              scheduleDate,
+              duration,
+            );
 
             // Get existing jobs to use as template
             const jobs = await this.repository.findJobsByRecurringId(id);
@@ -569,7 +626,7 @@ export class RecurringJobService implements IRecurringJobService {
   }
 
   /**
-   * Create next month's job for a recurring job (called after cron execution)
+   * Create next job for a recurring job based on duration (called after cron execution)
    * This method should be called by the cron scheduler after executing jobs
    */
   async createNextMonthJob(recurringId: string, currentScheduleDate: string): Promise<Job | null> {
@@ -578,14 +635,24 @@ export class RecurringJobService implements IRecurringJobService {
 
       if (!recurringJob || !recurringJob.is_active) {
         this.logger.warn(
-          `Recurring job ${recurringId} not found or not active, skipping next month job creation`,
+          `Recurring job ${recurringId} not found or not active, skipping next job creation`,
         );
         return null;
       }
 
-      // Calculate next month's schedule date
-      const nextScheduleDate = this.getNextMonthScheduleDate(currentScheduleDate);
-      const { startDate, endDate } = this.getPreviousMonthDates(nextScheduleDate);
+      const duration = recurringJob.duration ?? 1;
+
+      // Calculate next schedule date by adding duration months
+      const nextScheduleDate = this.getNextScheduleDate(
+        currentScheduleDate,
+        duration,
+      );
+
+      // Calculate date range based on duration
+      const { startDate, endDate } = this.getDateRangeForDuration(
+        nextScheduleDate,
+        duration,
+      );
 
       // Get existing jobs to use as template
       const jobs = await this.repository.findJobsByRecurringId(recurringId);
@@ -595,7 +662,7 @@ export class RecurringJobService implements IRecurringJobService {
         throw new BadRequestException('No template job found for recurring job');
       }
 
-      // Create new job for next month
+      // Create new job for next period
       const newJob = await this.jobRepository.create({
         job_status: templateJob.job_status,
         portfolio_id: templateJob.portfolio_id,
@@ -640,7 +707,7 @@ export class RecurringJobService implements IRecurringJobService {
       );
 
       this.logger.log(
-        `Created next month job ${newJob.id} for recurring job ${recurringId} scheduled for ${nextScheduleDate}`,
+        `Created next job ${newJob.id} for recurring job ${recurringId} with duration ${duration} months, scheduled for ${nextScheduleDate}, covering period ${startDate} to ${endDate}`,
       );
 
       return newJob;

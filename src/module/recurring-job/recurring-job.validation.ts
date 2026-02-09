@@ -14,7 +14,7 @@ const dateStringSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, {
 export const createRecurringJobSchema = z.object({
   job_status: z.nativeEnum(JobStatus).default(JobStatus.Pending),
   portfolio_id: objectIdSchema.optional(),
-  sub_portfolio_id: objectIdSchema.optional(),
+  sub_portfolio_id: objectIdSchema.optional().nullable(),
   property_id: objectIdSchema.optional(),
   posting_type: z.nativeEnum(PostingType),
   portfolio_name: z.string().optional().nullable(),
@@ -40,16 +40,19 @@ export const createRecurringJobSchema = z.object({
   log_link: z.string().optional().nullable(),
   live_url: z.string().optional().nullable(),
   db_billing_duration: z.number().int().optional().nullable(),
+  duration: z.number().int().min(1).max(12).default(1),
 });
 
 export const createRecurringJobFromJobSchema = z.object({
   job_id: objectIdSchema,
   schedule_date: dateStringSchema,
+  duration: z.number().int().min(1).max(12).default(1),
 });
 
 export const updateRecurringJobSchema = z.object({
   schedule_date: dateStringSchema.optional(),
   name: z.string().optional(),
+  duration: z.number().int().min(1).max(12).optional(),
 });
 
 export const updateRecurringJobStatusSchema = z.object({
