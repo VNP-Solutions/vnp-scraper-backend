@@ -4,9 +4,11 @@ const prisma = new PrismaClient();
 
 /**
  * Add recurring_id and schedule_date fields to jobs collection
+ * Add duration field to recurring_jobs collection
  */
 async function addJobRecurringFields() {
   console.log('🚀 Starting migration to add recurring_id and schedule_date fields to jobs...');
+  console.log('🚀 Also adding duration field to recurring_jobs...');
 
   try {
     // Connect to database
@@ -24,7 +26,7 @@ async function addJobRecurringFields() {
     console.log('\n🔍 Processing jobs collection...');
 
     // Step 1: Add recurring_id field (set to null for existing jobs)
-    console.log('\n📋 Step 1: Adding recurring_id field...');
+    console.log('\n📋 Step 1: Adding recurring_id field to jobs...');
     const recurringIdResult = await prisma.$runCommandRaw({
       update: 'jobs',
       updates: [
@@ -58,7 +60,7 @@ async function addJobRecurringFields() {
     }
 
     // Step 2: Add schedule_date field (set to null for existing jobs)
-    console.log('\n📋 Step 2: Adding schedule_date field...');
+    console.log('\n📋 Step 2: Adding schedule_date field to jobs...');
     const scheduleDateResult = await prisma.$runCommandRaw({
       update: 'jobs',
       updates: [
@@ -91,21 +93,56 @@ async function addJobRecurringFields() {
       console.log('   ✅ Verification: All jobs now have schedule_date field');
     }
 
+    // Step 3: Add duration field to recurring_jobs (set to 1 for existing recurring jobs)
+    console.log('\n📋 Step 3: Adding duration field to recurring_jobs...');
+    const durationResult = await prisma.$runCommandRaw({
+      update: 'recurring_jobs',
+      updates: [
+        {
+          q: { duration: { $exists: false } },
+          u: { $set: { duration: 1 } },
+          multi: true,
+        },
+      ],
+    });
+
+    const durationModified = Number(durationResult.nModified) || 0;
+    const durationMatched = Number(durationResult.nMatched) || 0;
+
+    console.log(`   📋 Documents matched (missing duration): ${durationMatched}`);
+    console.log(`   ✅ Documents updated with duration: ${durationModified}`);
+
+    // Verify duration update
+    const remainingWithoutDuration = await prisma.$runCommandRaw({
+      count: 'recurring_jobs',
+      query: { duration: { $exists: false } },
+    });
+
+    const remainingDurationCount = Number(remainingWithoutDuration.n) || 0;
+    if (remainingDurationCount > 0) {
+      console.warn(
+        `   ⚠️  Warning: ${remainingDurationCount} recurring job(s) still missing duration field`,
+      );
+    } else {
+      console.log('   ✅ Verification: All recurring jobs now have duration field');
+    }
+
     // Overall summary
     console.log('\n📊 Migration Summary:');
-    console.log(`📋 Total documents updated with recurring_id: ${recurringIdModified}`);
-    console.log(`📋 Total documents updated with schedule_date: ${scheduleDateModified}`);
+    console.log(`📋 Total jobs updated with recurring_id: ${recurringIdModified}`);
+    console.log(`📋 Total jobs updated with schedule_date: ${scheduleDateModified}`);
+    console.log(`📋 Total recurring jobs updated with duration: ${durationModified}`);
     console.log(
-      `⚠️  Total documents still missing fields: ${remainingRecurringIdCount + remainingScheduleDateCount}`,
+      `⚠️  Total documents still missing fields: ${remainingRecurringIdCount + remainingScheduleDateCount + remainingDurationCount}`,
     );
 
-    if (recurringIdModified === 0 && scheduleDateModified === 0) {
+    if (recurringIdModified === 0 && scheduleDateModified === 0 && durationModified === 0) {
       console.log(
-        '\nℹ️  No documents needed updating. All jobs already have recurring_id and schedule_date fields.',
+        '\nℹ️  No documents needed updating. All collections already have required fields.',
       );
     } else {
       console.log(
-        `\n🎉 Successfully added fields to ${Math.max(recurringIdModified, scheduleDateModified)} job document(s)`,
+        `\n🎉 Successfully added fields to job and recurring job documents`,
       );
     }
   } catch (error) {

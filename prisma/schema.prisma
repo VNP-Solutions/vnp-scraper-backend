@@ -229,6 +229,7 @@ model RecurringJob {
   id            String   @id @default(auto()) @map("_id") @db.ObjectId
   name          String
   schedule_date String?
+  duration      Int      @default(1) // Duration in months
   is_active     Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

@@ -15,6 +15,7 @@ export class RecurringJobRepository implements IRecurringJobRepository {
       const recurringJobData: Prisma.RecurringJobCreateInput = {
         name: data.name,
         schedule_date: data.schedule_date,
+        duration: data.duration ?? 1,
         is_active: data.is_active ?? true,
       };
 
@@ -142,6 +143,10 @@ export class RecurringJobRepository implements IRecurringJobRepository {
 
       if (data.schedule_date !== undefined) {
         updateData.schedule_date = data.schedule_date;
+      }
+
+      if (data.duration !== undefined) {
+        updateData.duration = data.duration;
       }
 
       if (data.is_active !== undefined) {

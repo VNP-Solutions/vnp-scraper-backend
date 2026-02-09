@@ -9,7 +9,6 @@ import {
   UpdateJobDto,
 } from './job.dto';
 import { IJobRepository } from './job.interface';
-import { isSet } from 'util/types';
 
 @Injectable()
 export class JobRepository implements IJobRepository {
@@ -26,6 +25,7 @@ export class JobRepository implements IJobRepository {
         portfolio_id,
         sub_portfolio_id,
         batch_id,
+        recurring_id,
         ...rest
       } = data;
 
@@ -67,7 +67,8 @@ export class JobRepository implements IJobRepository {
                 },
               }
             : undefined,
-        batch: data.batch_id ? { connect: { id: data.batch_id } } : undefined,
+        batch: batch_id ? { connect: { id: batch_id } } : undefined,
+        recurringJob: recurring_id ? { connect: { id: recurring_id } } : undefined,
       };
 
       const job = await this.db.job.create({
@@ -175,9 +176,7 @@ export class JobRepository implements IJobRepository {
       }
 
       // Handle job_type and schedule_date filters
-      const jobTypeLower = job_type
-        ? job_type.toString().toLowerCase()
-        : null;
+      const jobTypeLower = job_type ? job_type.toString().toLowerCase() : null;
 
       if (jobTypeLower === 'manual') {
         // Manual jobs: schedule_date must be null or missing
@@ -192,11 +191,8 @@ export class JobRepository implements IJobRepository {
         // allFilters.schedule_date = null;
         allFilters = {
           ...allFilters,
-          OR: [
-            { schedule_date: null },
-            { schedule_date: { isSet: false } },
-          ]
-        }
+          OR: [{ schedule_date: null }, { schedule_date: { isSet: false } }],
+        };
       } else if (jobTypeLower === 'scheduled') {
         // Scheduled jobs: schedule_date must not be null
         // Then apply date range if provided
