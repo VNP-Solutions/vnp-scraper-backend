@@ -642,7 +642,6 @@ export class RetrievalService implements IRetrievalService {
         let username = '';
         let password = '';
         if (credentials) {
-          console.log("ota provider", retrieval?.ota_provider);
           // Check OTA provider and fetch appropriate credentials
           if (retrieval?.ota_provider === 'Agoda') {
             username = credentials.agodaUsername || '';
