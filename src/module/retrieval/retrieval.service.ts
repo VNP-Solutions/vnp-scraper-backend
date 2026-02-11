@@ -599,6 +599,7 @@ export class RetrievalService implements IRetrievalService {
     parentRetrievalId: string,
   ): Promise<Buffer> {
     try {
+      console.log('exportRetrievalItemsToExcel', parentRetrievalId);
       // Get parent retrieval
       const parentRetrieval =
         await this.repository.findParentRetrievalById(parentRetrievalId);
@@ -632,7 +633,6 @@ export class RetrievalService implements IRetrievalService {
           const batch = await this.repository.findBatchById(retrieval.batch_id);
           batchName = batch?.name || '';
         }
-
         // Fetch credentials and decrypt password
         const credentials =
           await this.propertyCredentialsService.getPropertyCredentialsByPropertyId(
@@ -642,12 +642,24 @@ export class RetrievalService implements IRetrievalService {
         let username = '';
         let password = '';
         if (credentials) {
-          username = credentials.expediaUsername || '';
-          password = credentials.expediaPassword
-            ? this.propertyCredentialsService.decryptPassword(
-                credentials.expediaPassword,
-              )
-            : '';
+          console.log("ota provider", retrieval?.ota_provider);
+          // Check OTA provider and fetch appropriate credentials
+          if (retrieval?.ota_provider === 'Agoda') {
+            username = credentials.agodaUsername || '';
+            password = credentials.agodaPassword
+              ? this.propertyCredentialsService.decryptPassword(
+                  credentials.agodaPassword,
+                )
+              : '';
+          } else {
+            // Default to Expedia credentials for Expedia and other providers
+            username = credentials.expediaUsername || '';
+            password = credentials.expediaPassword
+              ? this.propertyCredentialsService.decryptPassword(
+                  credentials.expediaPassword,
+                )
+              : '';
+          }
         }
 
         const row = {
