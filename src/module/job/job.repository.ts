@@ -68,7 +68,9 @@ export class JobRepository implements IJobRepository {
               }
             : undefined,
         batch: batch_id ? { connect: { id: batch_id } } : undefined,
-        recurringJob: recurring_id ? { connect: { id: recurring_id } } : undefined,
+        ...(recurring_id
+          ? { recurringJob: { connect: { id: recurring_id } } }
+          : {}),
       };
 
       const job = await this.db.job.create({
