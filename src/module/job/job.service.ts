@@ -117,6 +117,59 @@ export class JobService implements IJobService {
   }
 
   /**
+   * Normalizes an Excel date value to MM/DD/YYYY string format.
+   * Handles: JS Date objects, Excel serial numbers, 2-digit year strings, and already correct strings.
+   */
+  private normalizeExcelDate(value: any): string | null {
+    if (value === null || value === undefined || value === '') return null;
+
+    // If it's a JavaScript Date object (Excel date-formatted cells)
+    if (value instanceof Date) {
+      const month = String(value.getMonth() + 1).padStart(2, '0');
+      const day = String(value.getDate()).padStart(2, '0');
+      const year = value.getFullYear();
+      return `${month}/${day}/${year}`;
+    }
+
+    // If it's a number, treat as Excel serial date
+    if (typeof value === 'number') {
+      const excelEpoch = new Date(1899, 11, 30);
+      const date = new Date(excelEpoch.getTime() + value * 86400000);
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const year = date.getFullYear();
+      return `${month}/${day}/${year}`;
+    }
+
+    const str = value.toString().trim();
+    if (!str) return null;
+
+    // Handle 2-digit year: MM/DD/YY → MM/DD/YYYY
+    const twoDigitYearMatch = str.match(
+      /^(\d{1,2})\/(\d{1,2})\/(\d{2})$/,
+    );
+    if (twoDigitYearMatch) {
+      const month = twoDigitYearMatch[1].padStart(2, '0');
+      const day = twoDigitYearMatch[2].padStart(2, '0');
+      const shortYear = parseInt(twoDigitYearMatch[3]);
+      const year = shortYear >= 0 && shortYear <= 99 ? 2000 + shortYear : shortYear;
+      return `${month}/${day}/${year}`;
+    }
+
+    // Handle M/D/YYYY or MM/DD/YYYY (pad single digit month/day)
+    const slashMatch = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (slashMatch) {
+      const month = slashMatch[1].padStart(2, '0');
+      const day = slashMatch[2].padStart(2, '0');
+      const year = slashMatch[3];
+      return `${month}/${day}/${year}`;
+    }
+
+    // Return as-is for validation to catch
+    return str;
+  }
+
+  /**
    * Helper function to parse scheduled date from various formats
    * Accepts: YYYY-MM-DD, MM/DD/YYYY, DD/MM/YYYY, etc.
    */
@@ -364,31 +417,29 @@ export class JobService implements IJobService {
             }
           }
 
-          // Extract start_date and end_date
+          // Extract start_date and end_date, normalizing Excel date values
           const startDateRaw =
             rowData['From (MM/DD/YYYY)'] || rowData['Start Date'] || null;
           const endDateRaw =
             rowData['To (MM/DD/YYYY)'] || rowData['End Date'] || null;
 
-          // Validate MM/DD/YYYY format
+          const startDate = this.normalizeExcelDate(startDateRaw);
+          const endDate = this.normalizeExcelDate(endDateRaw);
+
+          // Validate MM/DD/YYYY format after normalization
           const mmddyyyyRegex = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/;
 
-          if (startDateRaw && !mmddyyyyRegex.test(startDateRaw.toString().trim())) {
+          if (startDate && !mmddyyyyRegex.test(startDate)) {
             throw new Error(
               `Invalid 'From' date format "${startDateRaw}" for job "${rowData['Job Name'] || `Job ${jobsCreated + 1}`}". Expected format: MM/DD/YYYY`,
             );
           }
 
-          if (endDateRaw && !mmddyyyyRegex.test(endDateRaw.toString().trim())) {
+          if (endDate && !mmddyyyyRegex.test(endDate)) {
             throw new Error(
               `Invalid 'To' date format "${endDateRaw}" for job "${rowData['Job Name'] || `Job ${jobsCreated + 1}`}". Expected format: MM/DD/YYYY`,
             );
           }
-
-          const startDate = startDateRaw
-            ? startDateRaw.toString().trim()
-            : null;
-          const endDate = endDateRaw ? endDateRaw.toString().trim() : null;
 
           // If one of start_date and end_date is provided, set the value in both of them
           const finalStartDate = startDate || endDate || null;
