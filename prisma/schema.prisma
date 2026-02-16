@@ -178,6 +178,7 @@ model Job {
   user_id                     String      @db.ObjectId
   batch_id                    String?     @db.ObjectId
   recurring_id                String?     @db.ObjectId
+  recurring_report_bucket_id  String?     @db.ObjectId
   posting_type                PostingType
   portfolio_name              String?
   sub_portfolio_name          String?
@@ -215,8 +216,9 @@ model Job {
   subPortfolio  SubPortfolio?  @relation(fields: [sub_portfolio_id], references: [id])
   property      Property?      @relation(fields: [property_id], references: [id])
   user          User?          @relation(fields: [user_id], references: [id])
-  batch         Batch?         @relation(fields: [batch_id], references: [id])
-  recurringJob  RecurringJob?  @relation(fields: [recurring_id], references: [id])
+  batch         Batch?              @relation(fields: [batch_id], references: [id])
+  recurringJob  RecurringJob?       @relation(fields: [recurring_id], references: [id])
+  recurringReportBucket RecurringReportBucket? @relation(fields: [recurring_report_bucket_id], references: [id])
   jobItem       JobItem[]
   OtpStatus     OtpStatus[]
   dbData        DbData[]
@@ -229,14 +231,30 @@ model RecurringJob {
   id            String   @id @default(auto()) @map("_id") @db.ObjectId
   name          String
   schedule_date String?
-  duration      Int      @default(1) // Duration in months
+  duration      Int      @default(1) // Number of monthly jobs per cycle
   is_active     Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  jobs Job[]
+  jobs    Job[]
+  buckets RecurringReportBucket[]
 
   @@map("recurring_jobs")
+}
+
+model RecurringReportBucket {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  recurring_id  String   @db.ObjectId
+  bucket_number Int
+  name          String   // Auto-generated: "Reporting for {Month-YYYY}"
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  recurringJob RecurringJob @relation(fields: [recurring_id], references: [id], onDelete: Cascade)
+  jobs         Job[]
+
+  @@index([recurring_id])
+  @@map("recurring_report_buckets")
 }
 
 model Property {

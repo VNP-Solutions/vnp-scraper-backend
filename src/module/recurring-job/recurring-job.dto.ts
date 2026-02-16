@@ -149,7 +149,33 @@ export class RecurringJobResponseDto {
   updatedAt: Date;
 }
 
-export class RecurringJobWithJobsResponseDto extends RecurringJobResponseDto {
+export class RecurringReportBucketResponseDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty()
+  recurring_id: string;
+
+  @ApiProperty()
+  bucket_number: number;
+
+  @ApiProperty({ description: 'Auto-generated name, e.g. "Reporting for April-2026"' })
+  name: string;
+
+  @ApiProperty({ type: 'array', items: { type: 'object' } })
+  jobs: any[];
+
+  @ApiProperty()
+  createdAt: Date;
+
+  @ApiProperty()
+  updatedAt: Date;
+}
+
+export class RecurringJobWithBucketsResponseDto extends RecurringJobResponseDto {
+  @ApiProperty({ type: [RecurringReportBucketResponseDto] })
+  buckets: RecurringReportBucketResponseDto[];
+
   @ApiProperty({ type: 'array', items: { type: 'object' } })
   jobs: any[];
 }

@@ -23,6 +23,9 @@ export class CreateJobDto {
   @ApiProperty({ required: false })
   recurring_id?: string;
 
+  @ApiProperty({ required: false })
+  recurring_report_bucket_id?: string;
+
   @ApiProperty({ enum: PostingType })
   posting_type: PostingType;
 

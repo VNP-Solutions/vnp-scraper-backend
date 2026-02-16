@@ -27,7 +27,7 @@ import {
   CreateRecurringJobDto,
   CreateRecurringJobFromJobDto,
   RecurringJobResponseDto,
-  RecurringJobWithJobsResponseDto,
+  RecurringJobWithBucketsResponseDto,
   UpdateRecurringJobDto,
   UpdateRecurringJobStatusDto,
 } from './recurring-job.dto';
@@ -52,10 +52,10 @@ export class RecurringJobController {
   @Post()
   @UseGuards(JwtAuthGuard)
   @ValidateBody(createRecurringJobSchema)
-  @ApiOperation({ summary: 'Create new recurring job' })
+  @ApiOperation({ summary: 'Create new recurring job with first report bucket and job' })
   @ApiResponse({
     status: 201,
-    description: 'Recurring job created successfully',
+    description: 'Recurring job created successfully with report bucket',
     type: RecurringJobResponseDto,
   })
   @ApiResponse({ status: 400, description: 'Bad request' })
@@ -145,11 +145,11 @@ export class RecurringJobController {
 
   @UseGuards(JwtAuthGuard)
   @Get(':id')
-  @ApiOperation({ summary: 'Get recurring job by ID with all its jobs' })
+  @ApiOperation({ summary: 'Get recurring job by ID with all its buckets and jobs' })
   @ApiResponse({
     status: 200,
-    description: 'Returns recurring job with jobs',
-    type: RecurringJobWithJobsResponseDto,
+    description: 'Returns recurring job with report buckets and jobs',
+    type: RecurringJobWithBucketsResponseDto,
   })
   @ApiResponse({ status: 404, description: 'Recurring job not found' })
   async getRecurringJobById(

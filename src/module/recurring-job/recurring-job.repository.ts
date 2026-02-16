@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Job, Prisma, RecurringJob } from '@prisma/client';
+import { Job, Prisma, RecurringJob, RecurringReportBucket } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
-import { IRecurringJobRepository } from './recurring-job.interface';
+import {
+  IRecurringJobRepository,
+  RecurringJobWithBucketsAndJobs,
+} from './recurring-job.interface';
 
 @Injectable()
 export class RecurringJobRepository implements IRecurringJobRepository {
@@ -44,11 +47,23 @@ export class RecurringJobRepository implements IRecurringJobRepository {
 
   async findByIdWithJobs(
     id: string,
-  ): Promise<(RecurringJob & { jobs: Job[] }) | null> {
+  ): Promise<RecurringJobWithBucketsAndJobs | null> {
     try {
       const recurringJob = await this.db.recurringJob.findUnique({
         where: { id },
         include: {
+          buckets: {
+            orderBy: {
+              bucket_number: 'asc',
+            },
+            include: {
+              jobs: {
+                orderBy: {
+                  createdAt: 'asc',
+                },
+              },
+            },
+          },
           jobs: {
             orderBy: {
               createdAt: 'desc',
@@ -58,7 +73,7 @@ export class RecurringJobRepository implements IRecurringJobRepository {
       });
       return recurringJob;
     } catch (error) {
-      this.logger.error('Error finding recurring job with jobs:', error);
+      this.logger.error('Error finding recurring job with buckets and jobs:', error);
       throw error;
     }
   }
@@ -114,6 +129,26 @@ export class RecurringJobRepository implements IRecurringJobRepository {
         orderBy: {
           [sortBy]: sortOrder,
         },
+        include: {
+          buckets: {
+            orderBy: {
+              bucket_number: 'asc',
+            },
+            include: {
+              jobs: {
+                orderBy: {
+                  createdAt: 'asc',
+                },
+              },
+            },
+          },
+          _count: {
+            select: {
+              buckets: true,
+              jobs: true,
+            },
+          },
+        },
       });
 
       const totalPages = Math.ceil(total / limit);
@@ -167,6 +202,11 @@ export class RecurringJobRepository implements IRecurringJobRepository {
 
   async delete(id: string): Promise<RecurringJob> {
     try {
+      // Delete all buckets first (cascade handles job disconnection)
+      await this.db.recurringReportBucket.deleteMany({
+        where: { recurring_id: id },
+      });
+
       const recurringJob = await this.db.recurringJob.delete({
         where: { id },
       });
@@ -190,6 +230,92 @@ export class RecurringJobRepository implements IRecurringJobRepository {
       return jobs;
     } catch (error) {
       this.logger.error('Error finding jobs by recurring id:', error);
+      throw error;
+    }
+  }
+
+  // --- Bucket methods ---
+
+  async createBucket(data: {
+    recurring_id: string;
+    bucket_number: number;
+    name: string;
+  }): Promise<RecurringReportBucket> {
+    try {
+      const bucket = await this.db.recurringReportBucket.create({
+        data: {
+          recurring_id: data.recurring_id,
+          bucket_number: data.bucket_number,
+          name: data.name,
+        },
+      });
+      return bucket;
+    } catch (error) {
+      this.logger.error('Error creating recurring report bucket:', error);
+      throw error;
+    }
+  }
+
+  async findBucketById(id: string): Promise<RecurringReportBucket | null> {
+    try {
+      const bucket = await this.db.recurringReportBucket.findUnique({
+        where: { id },
+      });
+      return bucket;
+    } catch (error) {
+      this.logger.error('Error finding bucket by id:', error);
+      throw error;
+    }
+  }
+
+  async findBucketsByRecurringId(
+    recurringId: string,
+  ): Promise<(RecurringReportBucket & { jobs: Job[] })[]> {
+    try {
+      const buckets = await this.db.recurringReportBucket.findMany({
+        where: { recurring_id: recurringId },
+        orderBy: { bucket_number: 'asc' },
+        include: {
+          jobs: {
+            orderBy: { createdAt: 'asc' },
+          },
+        },
+      });
+      return buckets;
+    } catch (error) {
+      this.logger.error('Error finding buckets by recurring id:', error);
+      throw error;
+    }
+  }
+
+  async findLatestBucketByRecurringId(
+    recurringId: string,
+  ): Promise<(RecurringReportBucket & { jobs: Job[] }) | null> {
+    try {
+      const bucket = await this.db.recurringReportBucket.findFirst({
+        where: { recurring_id: recurringId },
+        orderBy: { bucket_number: 'desc' },
+        include: {
+          jobs: {
+            orderBy: { createdAt: 'asc' },
+          },
+        },
+      });
+      return bucket;
+    } catch (error) {
+      this.logger.error('Error finding latest bucket:', error);
+      throw error;
+    }
+  }
+
+  async countJobsInBucket(bucketId: string): Promise<number> {
+    try {
+      const count = await this.db.job.count({
+        where: { recurring_report_bucket_id: bucketId },
+      });
+      return count;
+    } catch (error) {
+      this.logger.error('Error counting jobs in bucket:', error);
       throw error;
     }
   }
