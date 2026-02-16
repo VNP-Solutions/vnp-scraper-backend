@@ -5,7 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Job, RecurringJob } from '@prisma/client';
+import { Job, RecurringJob, RecurringReportBucket } from '@prisma/client';
 import { IJobRepository } from '../job/job.interface';
 import { IScheduledJobService } from '../scraper/scheduled-job.interface';
 import {
@@ -17,7 +17,14 @@ import {
 import {
   IRecurringJobRepository,
   IRecurringJobService,
+  RecurringJobWithBucketsAndJobs,
 } from './recurring-job.interface';
+
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April',
+  'May', 'June', 'July', 'August',
+  'September', 'October', 'November', 'December',
+];
 
 @Injectable()
 export class RecurringJobService implements IRecurringJobService {
@@ -39,15 +46,11 @@ export class RecurringJobService implements IRecurringJobService {
   }
 
   /**
-   * Get date range for job based on duration
-   * If duration is 2 months and schedule_date is 2026-03-15:
-   * - start_date: 2026-01-01 (first day of 2 months ago)
-   * - end_date: 2026-02-29 (last day of previous month)
+   * Get single month date range (previous month relative to schedule date).
+   * Each job always covers exactly 1 month of data.
+   * For schedule_date 2026-02-15 → covers Jan 2026 (start: 2026-01-01, end: 2026-01-31)
    */
-  private getDateRangeForDuration(
-    scheduleDate: string,
-    duration: number,
-  ): {
+  private getMonthlyDateRange(scheduleDate: string): {
     startDate: string;
     endDate: string;
   } {
@@ -55,71 +58,68 @@ export class RecurringJobService implements IRecurringJobService {
     const year = date.getFullYear();
     const month = date.getMonth(); // 0-indexed
 
-    // Calculate start date (duration months before schedule date)
-    let startMonth = month - duration;
-    let startYear = year;
-
-    while (startMonth < 0) {
-      startMonth += 12;
-      startYear -= 1;
-    }
-
-    const startDate = `${startYear}-${String(startMonth + 1).padStart(2, '0')}-01`;
-
-    // Calculate end date (last day of previous month)
     const prevMonth = month === 0 ? 11 : month - 1;
     const prevYear = month === 0 ? year - 1 : year;
     const lastDay = this.getLastDayOfMonth(prevYear, prevMonth + 1);
+
+    const startDate = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-01`;
     const endDate = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
     return { startDate, endDate };
   }
 
   /**
-   * Get previous month's first and last day (for backward compatibility)
+   * Generate the bucket name: "Reporting for {Month-YYYY}"
+   *
+   * The month is the month AFTER the last job in the bucket.
+   * i.e., first schedule month + duration.
+   *
+   * Example: first schedule_date = 2026-02-15, duration = 3
+   *   - Jobs cover: Jan, Feb, Mar (data months)
+   *   - Job scheduled on: Feb, Mar, Apr (schedule months)
+   *   - Month after last job's schedule month = May 2026
+   *   → "Reporting for May-2026"
+   *
+   * Simplified: the reporting month = first_schedule_month + duration
    */
-  private getPreviousMonthDates(scheduleDate: string): {
-    startDate: string;
-    endDate: string;
-  } {
-    return this.getDateRangeForDuration(scheduleDate, 1);
+  private generateBucketName(
+    firstScheduleDate: string,
+    duration: number,
+  ): string {
+    const date = new Date(firstScheduleDate);
+    let reportMonth = date.getMonth() + duration; // 0-indexed
+    let reportYear = date.getFullYear();
+
+    while (reportMonth > 11) {
+      reportMonth -= 12;
+      reportYear += 1;
+    }
+
+    return `Reporting for ${MONTH_NAMES[reportMonth]}-${reportYear}`;
   }
 
   /**
-   * Get next schedule date by adding duration months
-   * If current schedule is 2026-02-15 and duration is 2:
-   * - Next schedule will be 2026-04-15 (2 months later)
+   * Get next schedule date (advance by 1 month from current schedule date).
+   * Since each job covers 1 month, the next schedule is always 1 month later.
    */
-  private getNextScheduleDate(
-    currentScheduleDate: string,
-    duration: number,
-  ): string {
+  private getNextMonthScheduleDate(currentScheduleDate: string): string {
     const date = new Date(currentScheduleDate);
     const currentDay = date.getDate();
     const year = date.getFullYear();
     const month = date.getMonth(); // 0-indexed
 
-    // Add duration months
-    let nextMonth = month + duration;
+    let nextMonth = month + 1;
     let nextYear = year;
 
-    while (nextMonth > 11) {
-      nextMonth -= 12;
+    if (nextMonth > 11) {
+      nextMonth = 0;
       nextYear += 1;
     }
 
-    // Handle edge case: if current day doesn't exist in next month (e.g., Jan 31 -> Feb 28)
     const lastDayOfNextMonth = this.getLastDayOfMonth(nextYear, nextMonth + 1);
     const nextDay = Math.min(currentDay, lastDayOfNextMonth);
 
     return `${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-${String(nextDay).padStart(2, '0')}`;
-  }
-
-  /**
-   * Get next month's schedule date (same day) - for backward compatibility
-   */
-  private getNextMonthScheduleDate(currentScheduleDate: string): string {
-    return this.getNextScheduleDate(currentScheduleDate, 1);
   }
 
   /**
@@ -145,7 +145,7 @@ export class RecurringJobService implements IRecurringJobService {
 
     for (const job of jobs) {
       if (job.schedule_date) {
-        const jobMonth = job.schedule_date.substring(0, 7); // Extract YYYY-MM
+        const jobMonth = job.schedule_date.substring(0, 7);
         if (jobMonth === targetMonth) {
           return true;
         }
@@ -156,58 +156,124 @@ export class RecurringJobService implements IRecurringJobService {
   }
 
   /**
-   * Create a new recurring job with initial job in scheduler
+   * Create a job using template data, linked to a bucket
+   */
+  private async createJobFromTemplate(
+    templateData: any,
+    overrides: {
+      recurring_id: string;
+      bucket_id: string;
+      schedule_date: string;
+      start_date: string;
+      end_date: string;
+      name: string;
+    },
+  ): Promise<Job> {
+    return this.jobRepository.create({
+      job_status: templateData.job_status,
+      portfolio_id: templateData.portfolio_id,
+      sub_portfolio_id: templateData.sub_portfolio_id,
+      property_id: templateData.property_id,
+      user_id: templateData.user_id,
+      recurring_id: overrides.recurring_id,
+      recurring_report_bucket_id: overrides.bucket_id,
+      posting_type: templateData.posting_type,
+      portfolio_name: templateData.portfolio_name,
+      sub_portfolio_name: templateData.sub_portfolio_name,
+      property_name: templateData.property_name,
+      billing_type: templateData.billing_type,
+      next_due_date: templateData.next_due_date,
+      schedule_date: overrides.schedule_date,
+      ota_provider: templateData.ota_provider,
+      remaining_direct_billed: templateData.remaining_direct_billed,
+      total_collectable: templateData.total_collectable,
+      total_amount_confirmed: templateData.total_amount_confirmed,
+      execution_type: templateData.execution_type,
+      retries_attempted: 0,
+      max_retries: templateData.max_retries,
+      retry_delay_ms: templateData.retry_delay_ms,
+      priority: templateData.priority,
+      job_backoff_length_loading: templateData.job_backoff_length_loading,
+      job_backoff_length_selector: templateData.job_backoff_length_selector,
+      queue_name: templateData.queue_name,
+      worker_assigned: templateData.worker_assigned,
+      batch_execution_id: templateData.batch_execution_id,
+      start_date: overrides.start_date,
+      end_date: overrides.end_date,
+      log_link: templateData.log_link,
+      live_url: templateData.live_url,
+      watcher_emails: templateData.watcher_emails,
+      db_billing_duration: templateData.db_billing_duration,
+      name: overrides.name,
+    });
+  }
+
+  /**
+   * Create a new recurring job with its first report bucket and first monthly job.
+   *
+   * Structure:
+   *   RecurringJob → ReportBucket #1 → Job #1 (1 month of data)
+   *
+   * Each month the cron creates the next job. When a bucket fills up
+   * (i.e., has `duration` jobs), the next job starts a new bucket.
    */
   async createRecurringJob(
     data: CreateRecurringJobDto,
-  ): Promise<{ recurringJob: RecurringJob; job: Job }> {
+  ): Promise<{ recurringJob: RecurringJob; bucket: RecurringReportBucket; job: Job }> {
     try {
       const { schedule_date, user_id, duration, ...jobData } = data;
       const durationValue = duration ?? 1;
 
-      // Generate recurring job name
       const recurringJobName = this.generateRecurringJobName(
         data.property_name,
         schedule_date,
       );
 
-      // Create the recurring job (always active by default)
+      // Create the recurring job
       const recurringJob = await this.repository.create({
         name: recurringJobName,
         schedule_date: schedule_date,
         duration: durationValue,
-        is_active: true, // Always true on creation
+        is_active: true,
       });
 
-      // Get date range based on duration
-      const { startDate, endDate } = this.getDateRangeForDuration(
-        schedule_date,
-        durationValue,
-      );
+      // Create first bucket
+      const bucketName = this.generateBucketName(schedule_date, durationValue);
+      const bucket = await this.repository.createBucket({
+        recurring_id: recurringJob.id,
+        bucket_number: 1,
+        name: bucketName,
+      });
 
-      // Create the first job linked to this recurring job
+      // Get the 1-month date range for the first job
+      const { startDate, endDate } = this.getMonthlyDateRange(schedule_date);
+
+      // Create the first job linked to this recurring job and bucket
       const job = await this.jobRepository.create({
         ...jobData,
         user_id,
         recurring_id: recurringJob.id,
+        recurring_report_bucket_id: bucket.id,
         start_date: startDate,
         end_date: endDate,
         schedule_date: schedule_date,
         name: `${recurringJobName} - ${startDate} to ${endDate}`,
-        next_due_date: jobData.next_due_date ? new Date(jobData.next_due_date) : null,
+        next_due_date: jobData.next_due_date
+          ? new Date(jobData.next_due_date)
+          : null,
       });
 
-      // Add job to scheduler (always active on creation)
+      // Add job to scheduler
       await this.scheduledJobService.createOrUpdateScheduledJob(
         schedule_date,
         [job.id],
       );
 
       this.logger.log(
-        `Created recurring job ${recurringJob.id} with duration ${durationValue} months and initial job ${job.id}`,
+        `Created recurring job ${recurringJob.id} with bucket "${bucketName}" and initial job ${job.id} covering ${startDate} to ${endDate}`,
       );
 
-      return { recurringJob, job };
+      return { recurringJob, bucket, job };
     } catch (error) {
       this.logger.error('Error creating recurring job:', error);
       throw error;
@@ -219,87 +285,62 @@ export class RecurringJobService implements IRecurringJobService {
    */
   async createRecurringJobFromJob(
     data: CreateRecurringJobFromJobDto,
-  ): Promise<{ recurringJob: RecurringJob; job: Job }> {
+  ): Promise<{ recurringJob: RecurringJob; bucket: RecurringReportBucket; job: Job }> {
     try {
       const { job_id, schedule_date, duration } = data;
       const durationValue = duration ?? 1;
 
-      // Get the existing job
       const existingJob = await this.jobRepository.findById(job_id);
 
       if (!existingJob) {
         throw new NotFoundException(`Job with ID ${job_id} not found`);
       }
 
-      // Generate recurring job name
       const recurringJobName = this.generateRecurringJobName(
         existingJob.property_name,
         schedule_date,
       );
 
-      // Create the recurring job (always active by default)
+      // Create the recurring job
       const recurringJob = await this.repository.create({
         name: recurringJobName,
         schedule_date: schedule_date,
         duration: durationValue,
-        is_active: true, // Always true on creation
+        is_active: true,
       });
 
-      // Get date range based on duration
-      const { startDate, endDate } = this.getDateRangeForDuration(
-        schedule_date,
-        durationValue,
-      );
-
-      // Create the first job linked to this recurring job using existing job as template
-      const job = await this.jobRepository.create({
-        job_status: existingJob.job_status,
-        portfolio_id: existingJob.portfolio_id,
-        sub_portfolio_id: existingJob.sub_portfolio_id,
-        property_id: existingJob.property_id,
-        user_id: existingJob.user_id,
+      // Create first bucket
+      const bucketName = this.generateBucketName(schedule_date, durationValue);
+      const bucket = await this.repository.createBucket({
         recurring_id: recurringJob.id,
-        posting_type: existingJob.posting_type,
-        portfolio_name: existingJob.portfolio_name,
-        sub_portfolio_name: existingJob.sub_portfolio_name,
-        property_name: existingJob.property_name,
-        billing_type: existingJob.billing_type,
-        next_due_date: existingJob.next_due_date,
+        bucket_number: 1,
+        name: bucketName,
+      });
+
+      // Get 1-month date range for the first job
+      const { startDate, endDate } = this.getMonthlyDateRange(schedule_date);
+
+      // Create the first job linked to the bucket
+      const job = await this.createJobFromTemplate(existingJob, {
+        recurring_id: recurringJob.id,
+        bucket_id: bucket.id,
         schedule_date: schedule_date,
-        ota_provider: existingJob.ota_provider,
-        remaining_direct_billed: existingJob.remaining_direct_billed,
-        total_collectable: existingJob.total_collectable,
-        total_amount_confirmed: existingJob.total_amount_confirmed,
-        execution_type: existingJob.execution_type,
-        retries_attempted: 0, // Reset retries
-        max_retries: existingJob.max_retries,
-        retry_delay_ms: existingJob.retry_delay_ms,
-        priority: existingJob.priority,
-        job_backoff_length_loading: existingJob.job_backoff_length_loading,
-        job_backoff_length_selector: existingJob.job_backoff_length_selector,
-        queue_name: existingJob.queue_name,
-        worker_assigned: existingJob.worker_assigned,
-        batch_execution_id: existingJob.batch_execution_id,
         start_date: startDate,
         end_date: endDate,
-        log_link: existingJob.log_link,
-        live_url: existingJob.live_url,
-        watcher_emails: existingJob.watcher_emails,
-        db_billing_duration: existingJob.db_billing_duration,
         name: `${recurringJobName} - ${startDate} to ${endDate}`,
       });
 
-      // Add job to scheduler (always active on creation)
+      // Add job to scheduler
       await this.scheduledJobService.createOrUpdateScheduledJob(
         schedule_date,
         [job.id],
       );
 
       this.logger.log(
-        `Created recurring job ${recurringJob.id} with duration ${durationValue} months from existing job ${job_id} with initial job ${job.id}`,
+        `Created recurring job ${recurringJob.id} from job ${job_id} with bucket "${bucketName}" and initial job ${job.id}`,
       );
 
-      return { recurringJob, job };
+      return { recurringJob, bucket, job };
     } catch (error) {
       this.logger.error('Error creating recurring job from job:', error);
       throw error;
@@ -323,11 +364,11 @@ export class RecurringJobService implements IRecurringJobService {
   }
 
   /**
-   * Get recurring job by ID with all its jobs
+   * Get recurring job by ID with all its buckets and jobs
    */
   async getRecurringJobById(
     id: string,
-  ): Promise<RecurringJob & { jobs: Job[] }> {
+  ): Promise<RecurringJobWithBucketsAndJobs> {
     try {
       const recurringJob = await this.repository.findByIdWithJobs(id);
 
@@ -361,10 +402,8 @@ export class RecurringJobService implements IRecurringJobService {
         const oldScheduleDate = recurringJob.schedule_date;
         const newScheduleDate = data.schedule_date;
 
-        // Get all jobs for this recurring job
         const jobs = await this.repository.findJobsByRecurringId(id);
 
-        // If recurring job is active, we need to handle scheduler updates
         if (recurringJob.is_active) {
           // Remove jobs from old schedule date in scheduler
           if (oldScheduleDate) {
@@ -386,58 +425,36 @@ export class RecurringJobService implements IRecurringJobService {
           );
 
           if (existingJobForNewDate) {
-            // Add existing job to new schedule date
             await this.scheduledJobService.createOrUpdateScheduledJob(
               newScheduleDate,
               [existingJobForNewDate.id],
             );
           } else {
-            // Create new job for the new schedule date
             const duration = data.duration ?? recurringJob.duration ?? 1;
-            const { startDate, endDate } = this.getDateRangeForDuration(
-              newScheduleDate,
-              duration,
-            );
+            const { startDate, endDate } = this.getMonthlyDateRange(newScheduleDate);
 
-            // Get job template from existing jobs
+            // Get or create bucket for this job
+            const latestBucket = await this.repository.findLatestBucketByRecurringId(id);
+            let targetBucket = latestBucket;
+
+            if (!targetBucket) {
+              const bucketName = this.generateBucketName(newScheduleDate, duration);
+              const newBucket = await this.repository.createBucket({
+                recurring_id: id,
+                bucket_number: 1,
+                name: bucketName,
+              });
+              targetBucket = { ...newBucket, jobs: [] };
+            }
+
             const templateJob = jobs[0];
             if (templateJob) {
-              const newJob = await this.jobRepository.create({
-                job_status: templateJob.job_status,
-                portfolio_id: templateJob.portfolio_id,
-                sub_portfolio_id: templateJob.sub_portfolio_id,
-                property_id: templateJob.property_id,
-                user_id: templateJob.user_id,
+              const newJob = await this.createJobFromTemplate(templateJob, {
                 recurring_id: id,
-                posting_type: templateJob.posting_type,
-                portfolio_name: templateJob.portfolio_name,
-                sub_portfolio_name: templateJob.sub_portfolio_name,
-                property_name: templateJob.property_name,
-                billing_type: templateJob.billing_type,
-                next_due_date: templateJob.next_due_date,
+                bucket_id: targetBucket.id,
                 schedule_date: newScheduleDate,
-                ota_provider: templateJob.ota_provider,
-                remaining_direct_billed: templateJob.remaining_direct_billed,
-                total_collectable: templateJob.total_collectable,
-                total_amount_confirmed: templateJob.total_amount_confirmed,
-                execution_type: templateJob.execution_type,
-                retries_attempted: templateJob.retries_attempted,
-                max_retries: templateJob.max_retries,
-                retry_delay_ms: templateJob.retry_delay_ms,
-                priority: templateJob.priority,
-                job_backoff_length_loading:
-                  templateJob.job_backoff_length_loading,
-                job_backoff_length_selector:
-                  templateJob.job_backoff_length_selector,
-                queue_name: templateJob.queue_name,
-                worker_assigned: templateJob.worker_assigned,
-                batch_execution_id: templateJob.batch_execution_id,
                 start_date: startDate,
                 end_date: endDate,
-                log_link: templateJob.log_link,
-                live_url: templateJob.live_url,
-                watcher_emails: templateJob.watcher_emails,
-                db_billing_duration: templateJob.db_billing_duration,
                 name: `${recurringJob.name} - ${startDate} to ${endDate}`,
               });
 
@@ -450,7 +467,6 @@ export class RecurringJobService implements IRecurringJobService {
         }
       }
 
-      // Update the recurring job
       const updatedRecurringJob = await this.repository.update(id, data);
 
       this.logger.log(`Updated recurring job ${id}`);
@@ -483,75 +499,48 @@ export class RecurringJobService implements IRecurringJobService {
         const scheduleDate = recurringJob.schedule_date;
 
         if (scheduleDate) {
-          // Extract current month from schedule date
-          const currentMonth = scheduleDate.substring(0, 7); // YYYY-MM
-
-          // Check if a job exists for this month
-          const jobExists = await this.checkJobExistsInMonth(
-            id,
-            currentMonth,
-          );
+          const currentMonth = scheduleDate.substring(0, 7);
+          const jobExists = await this.checkJobExistsInMonth(id, currentMonth);
 
           if (!jobExists) {
-            // Create a new job for this month
             const duration = recurringJob.duration ?? 1;
-            const { startDate, endDate } = this.getDateRangeForDuration(
-              scheduleDate,
-              duration,
-            );
+            const { startDate, endDate } = this.getMonthlyDateRange(scheduleDate);
 
-            // Get existing jobs to use as template
             const jobs = await this.repository.findJobsByRecurringId(id);
             const templateJob = jobs[0];
 
             if (templateJob) {
-              const newJob = await this.jobRepository.create({
-                job_status: templateJob.job_status,
-                portfolio_id: templateJob.portfolio_id,
-                sub_portfolio_id: templateJob.sub_portfolio_id,
-                property_id: templateJob.property_id,
-                user_id: templateJob.user_id,
+              // Get or create bucket
+              const latestBucket = await this.repository.findLatestBucketByRecurringId(id);
+              let targetBucket = latestBucket;
+
+              if (!targetBucket || latestBucket.jobs.length >= duration) {
+                const bucketNumber = targetBucket ? targetBucket.bucket_number + 1 : 1;
+                const bucketName = this.generateBucketName(scheduleDate, duration);
+                const newBucket = await this.repository.createBucket({
+                  recurring_id: id,
+                  bucket_number: bucketNumber,
+                  name: bucketName,
+                });
+                targetBucket = { ...newBucket, jobs: [] };
+              }
+
+              const newJob = await this.createJobFromTemplate(templateJob, {
                 recurring_id: id,
-                posting_type: templateJob.posting_type,
-                portfolio_name: templateJob.portfolio_name,
-                sub_portfolio_name: templateJob.sub_portfolio_name,
-                property_name: templateJob.property_name,
-                billing_type: templateJob.billing_type,
-                next_due_date: templateJob.next_due_date,
+                bucket_id: targetBucket.id,
                 schedule_date: scheduleDate,
-                ota_provider: templateJob.ota_provider,
-                remaining_direct_billed: templateJob.remaining_direct_billed,
-                total_collectable: templateJob.total_collectable,
-                total_amount_confirmed: templateJob.total_amount_confirmed,
-                execution_type: templateJob.execution_type,
-                retries_attempted: templateJob.retries_attempted,
-                max_retries: templateJob.max_retries,
-                retry_delay_ms: templateJob.retry_delay_ms,
-                priority: templateJob.priority,
-                job_backoff_length_loading:
-                  templateJob.job_backoff_length_loading,
-                job_backoff_length_selector:
-                  templateJob.job_backoff_length_selector,
-                queue_name: templateJob.queue_name,
-                worker_assigned: templateJob.worker_assigned,
-                batch_execution_id: templateJob.batch_execution_id,
                 start_date: startDate,
                 end_date: endDate,
-                log_link: templateJob.log_link,
-                live_url: templateJob.live_url,
-                watcher_emails: templateJob.watcher_emails,
-                db_billing_duration: templateJob.db_billing_duration,
                 name: `${recurringJob.name} - ${startDate} to ${endDate}`,
               });
 
-              // Add to scheduler
               await this.scheduledJobService.createOrUpdateScheduledJob(
                 scheduleDate,
                 [newJob.id],
               );
 
               this.logger.log(
-                `Created new job ${newJob.id} for activated recurring job ${id}`,
+                `Created new job ${newJob.id} in bucket #${targetBucket.bucket_number} for activated recurring job ${id}`,
               );
             } else {
               throw new BadRequestException(
@@ -559,7 +548,6 @@ export class RecurringJobService implements IRecurringJobService {
               );
             }
           } else {
-            // Job exists, just add it to scheduler
             const jobs = await this.repository.findJobsByRecurringId(id);
             const jobForCurrentMonth = jobs.find(
               (job) => job.schedule_date?.substring(0, 7) === currentMonth,
@@ -575,7 +563,6 @@ export class RecurringJobService implements IRecurringJobService {
         }
       }
 
-      // Update the status
       const updatedRecurringJob = await this.repository.update(id, {
         is_active,
       });
@@ -602,21 +589,20 @@ export class RecurringJobService implements IRecurringJobService {
         throw new NotFoundException(`Recurring job with ID ${id} not found`);
       }
 
-      // Get all jobs for this recurring job
       const jobs = await this.repository.findJobsByRecurringId(id);
       const jobIds = jobs.map((job) => job.id);
 
-      // Remove all jobs from schedulers
       if (jobIds.length > 0) {
         await this.scheduledJobService.removeJobIdsFromAllScheduledJobs(
           jobIds,
         );
       }
 
-      // Delete the recurring job (cascade will delete linked jobs)
       const deletedRecurringJob = await this.repository.delete(id);
 
-      this.logger.log(`Deleted recurring job ${id} and its ${jobIds.length} jobs`);
+      this.logger.log(
+        `Deleted recurring job ${id} and its ${jobIds.length} jobs`,
+      );
 
       return deletedRecurringJob;
     } catch (error) {
@@ -626,10 +612,19 @@ export class RecurringJobService implements IRecurringJobService {
   }
 
   /**
-   * Create next job for a recurring job based on duration (called after cron execution)
-   * This method should be called by the cron scheduler after executing jobs
+   * Create the next monthly job for a recurring job (called after cron execution).
+   *
+   * Logic:
+   * 1. Find the latest bucket for this recurring job
+   * 2. Count jobs in the latest bucket
+   * 3. If bucket is full (jobs >= duration), create a new bucket
+   * 4. Create next monthly job in the target bucket
+   * 5. Schedule the job
    */
-  async createNextMonthJob(recurringId: string, currentScheduleDate: string): Promise<Job | null> {
+  async createNextMonthJob(
+    recurringId: string,
+    currentScheduleDate: string,
+  ): Promise<Job | null> {
     try {
       const recurringJob = await this.repository.findById(recurringId);
 
@@ -642,61 +637,61 @@ export class RecurringJobService implements IRecurringJobService {
 
       const duration = recurringJob.duration ?? 1;
 
-      // Calculate next schedule date by adding duration months
-      const nextScheduleDate = this.getNextScheduleDate(
-        currentScheduleDate,
-        duration,
-      );
+      // Next schedule date is always 1 month later
+      const nextScheduleDate = this.getNextMonthScheduleDate(currentScheduleDate);
 
-      // Calculate date range based on duration
-      const { startDate, endDate } = this.getDateRangeForDuration(
-        nextScheduleDate,
-        duration,
-      );
+      // Get 1-month date range for next job
+      const { startDate, endDate } = this.getMonthlyDateRange(nextScheduleDate);
+
+      // Find the latest bucket
+      const latestBucket = await this.repository.findLatestBucketByRecurringId(recurringId);
+
+      let targetBucket: RecurringReportBucket & { jobs: Job[] };
+
+      if (!latestBucket) {
+        // No bucket exists (legacy data), create one
+        const bucketName = this.generateBucketName(nextScheduleDate, duration);
+        const newBucket = await this.repository.createBucket({
+          recurring_id: recurringId,
+          bucket_number: 1,
+          name: bucketName,
+        });
+        targetBucket = { ...newBucket, jobs: [] };
+      } else if (latestBucket.jobs.length >= duration) {
+        // Current bucket is full, create a new one
+        const newBucketNumber = latestBucket.bucket_number + 1;
+        const bucketName = this.generateBucketName(nextScheduleDate, duration);
+        const newBucket = await this.repository.createBucket({
+          recurring_id: recurringId,
+          bucket_number: newBucketNumber,
+          name: bucketName,
+        });
+        targetBucket = { ...newBucket, jobs: [] };
+
+        this.logger.log(
+          `Bucket #${latestBucket.bucket_number} is full (${latestBucket.jobs.length}/${duration} jobs). Created new bucket #${newBucketNumber} "${bucketName}"`,
+        );
+      } else {
+        targetBucket = latestBucket;
+      }
 
       // Get existing jobs to use as template
       const jobs = await this.repository.findJobsByRecurringId(recurringId);
       const templateJob = jobs[0];
 
       if (!templateJob) {
-        throw new BadRequestException('No template job found for recurring job');
+        throw new BadRequestException(
+          'No template job found for recurring job',
+        );
       }
 
-      // Create new job for next period
-      const newJob = await this.jobRepository.create({
-        job_status: templateJob.job_status,
-        portfolio_id: templateJob.portfolio_id,
-        sub_portfolio_id: templateJob.sub_portfolio_id,
-        property_id: templateJob.property_id,
-        user_id: templateJob.user_id,
+      // Create new job for next month in the target bucket
+      const newJob = await this.createJobFromTemplate(templateJob, {
         recurring_id: recurringId,
-        posting_type: templateJob.posting_type,
-        portfolio_name: templateJob.portfolio_name,
-        sub_portfolio_name: templateJob.sub_portfolio_name,
-        property_name: templateJob.property_name,
-        billing_type: templateJob.billing_type,
-        next_due_date: templateJob.next_due_date,
+        bucket_id: targetBucket.id,
         schedule_date: nextScheduleDate,
-        ota_provider: templateJob.ota_provider,
-        remaining_direct_billed: templateJob.remaining_direct_billed,
-        total_collectable: templateJob.total_collectable,
-        total_amount_confirmed: templateJob.total_amount_confirmed,
-        execution_type: templateJob.execution_type,
-        retries_attempted: 0, // Reset retries for new job
-        max_retries: templateJob.max_retries,
-        retry_delay_ms: templateJob.retry_delay_ms,
-        priority: templateJob.priority,
-        job_backoff_length_loading: templateJob.job_backoff_length_loading,
-        job_backoff_length_selector: templateJob.job_backoff_length_selector,
-        queue_name: templateJob.queue_name,
-        worker_assigned: templateJob.worker_assigned,
-        batch_execution_id: templateJob.batch_execution_id,
         start_date: startDate,
         end_date: endDate,
-        log_link: templateJob.log_link,
-        live_url: templateJob.live_url,
-        watcher_emails: templateJob.watcher_emails,
-        db_billing_duration: templateJob.db_billing_duration,
         name: `${recurringJob.name} - ${startDate} to ${endDate}`,
       });
 
@@ -707,7 +702,7 @@ export class RecurringJobService implements IRecurringJobService {
       );
 
       this.logger.log(
-        `Created next job ${newJob.id} for recurring job ${recurringId} with duration ${duration} months, scheduled for ${nextScheduleDate}, covering period ${startDate} to ${endDate}`,
+        `Created next job ${newJob.id} in bucket #${targetBucket.bucket_number} "${targetBucket.name}" for recurring job ${recurringId}, scheduled for ${nextScheduleDate}, covering ${startDate} to ${endDate}`,
       );
 
       return newJob;

@@ -26,6 +26,7 @@ export class JobRepository implements IJobRepository {
         sub_portfolio_id,
         batch_id,
         recurring_id,
+        recurring_report_bucket_id,
         ...rest
       } = data;
 
@@ -70,6 +71,9 @@ export class JobRepository implements IJobRepository {
         batch: batch_id ? { connect: { id: batch_id } } : undefined,
         ...(recurring_id
           ? { recurringJob: { connect: { id: recurring_id } } }
+          : {}),
+        ...(recurring_report_bucket_id
+          ? { recurringReportBucket: { connect: { id: recurring_report_bucket_id } } }
           : {}),
       };
 
