@@ -1299,7 +1299,7 @@ export class PropertyRepository implements IPropertyRepository {
             if (rowData['Expedia Password']) {
               credentialsData.expediaPassword =
                 this.encryptionUtil.encryptPassword(
-                  rowData['Expedia Password'],
+                  rowData['Expedia Password'].toString().trim(),
                 );
               hasCredentials = true;
             }
@@ -1311,7 +1311,9 @@ export class PropertyRepository implements IPropertyRepository {
             }
             if (rowData['Agoda Password']) {
               credentialsData.agodaPassword =
-                this.encryptionUtil.encryptPassword(rowData['Agoda Password']);
+                this.encryptionUtil.encryptPassword(
+                  rowData['Agoda Password'].toString().trim(),
+                );
               hasCredentials = true;
             }
             if (rowData['Booking Username']) {
@@ -1323,7 +1325,7 @@ export class PropertyRepository implements IPropertyRepository {
             if (rowData['Booking Password']) {
               credentialsData.bookingPassword =
                 this.encryptionUtil.encryptPassword(
-                  rowData['Booking Password'],
+                  rowData['Booking Password'].toString().trim(),
                 );
               hasCredentials = true;
             }
@@ -1401,7 +1403,7 @@ export class PropertyRepository implements IPropertyRepository {
             if (rowData['Expedia Password']) {
               credentialsData.expediaPassword =
                 this.encryptionUtil.encryptPassword(
-                  rowData['Expedia Password'],
+                  rowData['Expedia Password'].toString().trim(),
                 );
               hasCredentials = true;
             }
@@ -1413,7 +1415,9 @@ export class PropertyRepository implements IPropertyRepository {
             }
             if (rowData['Agoda Password']) {
               credentialsData.agodaPassword =
-                this.encryptionUtil.encryptPassword(rowData['Agoda Password']);
+                this.encryptionUtil.encryptPassword(
+                  rowData['Agoda Password'].toString().trim(),
+                );
               hasCredentials = true;
             }
             if (rowData['Booking Username']) {
@@ -1425,7 +1429,7 @@ export class PropertyRepository implements IPropertyRepository {
             if (rowData['Booking Password']) {
               credentialsData.bookingPassword =
                 this.encryptionUtil.encryptPassword(
-                  rowData['Booking Password'],
+                  rowData['Booking Password'].toString().trim(),
                 );
               hasCredentials = true;
             }
