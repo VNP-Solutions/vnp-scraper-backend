@@ -365,10 +365,30 @@ export class JobService implements IJobService {
           }
 
           // Extract start_date and end_date
-          const startDate =
+          const startDateRaw =
             rowData['From (MM/DD/YYYY)'] || rowData['Start Date'] || null;
-          const endDate =
+          const endDateRaw =
             rowData['To (MM/DD/YYYY)'] || rowData['End Date'] || null;
+
+          // Validate MM/DD/YYYY format
+          const mmddyyyyRegex = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/;
+
+          if (startDateRaw && !mmddyyyyRegex.test(startDateRaw.toString().trim())) {
+            throw new Error(
+              `Invalid 'From' date format "${startDateRaw}" for job "${rowData['Job Name'] || `Job ${jobsCreated + 1}`}". Expected format: MM/DD/YYYY`,
+            );
+          }
+
+          if (endDateRaw && !mmddyyyyRegex.test(endDateRaw.toString().trim())) {
+            throw new Error(
+              `Invalid 'To' date format "${endDateRaw}" for job "${rowData['Job Name'] || `Job ${jobsCreated + 1}`}". Expected format: MM/DD/YYYY`,
+            );
+          }
+
+          const startDate = startDateRaw
+            ? startDateRaw.toString().trim()
+            : null;
+          const endDate = endDateRaw ? endDateRaw.toString().trim() : null;
 
           // If one of start_date and end_date is provided, set the value in both of them
           const finalStartDate = startDate || endDate || null;
@@ -387,7 +407,7 @@ export class JobService implements IJobService {
             portfolio_name: portfolioName,
             sub_portfolio_name: subPortfolioName,
             property_name: propertyName,
-            billing_type: rowData['Billing Type'] || 'DB',
+            billing_type: (rowData['Billing Type'] || 'DB').toString().trim().toUpperCase(),
             next_due_date: rowData['Next Due Date']
               ? new Date(rowData['Next Due Date'])
               : undefined,
