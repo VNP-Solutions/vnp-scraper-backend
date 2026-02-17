@@ -674,7 +674,6 @@ export class RetrievalService implements IRetrievalService {
           Portfolio: retrieval?.portfolio_name || '',
           'Hotel Name': property?.name || '',
           'Reservation ID': item.reservation_id || '',
-          'Hotel Confirmation Code': item.confirmation_number || '',
           Name: item.guest_name || '',
           'Check In': item.check_in_date
             ? new Date(item.check_in_date).toLocaleDateString()
@@ -682,6 +681,8 @@ export class RetrievalService implements IRetrievalService {
           'Check Out': item.check_out_date
             ? new Date(item.check_out_date).toLocaleDateString()
             : '',
+          'User Name': username,
+          Password: password,
           Currency:
             item.payment_info?.amount_to_charge_or_refund_currency || 'USD',
           'Amount to charge':
@@ -693,8 +694,6 @@ export class RetrievalService implements IRetrievalService {
             : '',
           'Card Expire': item.card_info?.expiry_date || '',
           'Card CVV': item.card_info?.cvv || '',
-          'User Name': username,
-          Password: password,
           isMissing: item.additional_text || 'Present',
         };
 
