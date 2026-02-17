@@ -497,6 +497,18 @@ export class JobService implements IJobService {
             db_billing_duration: rowData['Billing Duration']
               ? parseInt(rowData['Billing Duration'])
               : null,
+            watcher_emails: (() => {
+              const raw =
+                rowData['Watcher Emails'] ||
+                rowData['Watcher Email'] ||
+                null;
+              if (!raw) return [];
+              return raw
+                .toString()
+                .split(',')
+                .map((email: string) => email.trim())
+                .filter((email: string) => email);
+            })(),
           };
 
           // Handle Scheduled Date - optional field
