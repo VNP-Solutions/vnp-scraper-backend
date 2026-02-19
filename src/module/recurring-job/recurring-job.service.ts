@@ -5,7 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Job, RecurringJob, RecurringReportBucket } from '@prisma/client';
+import { Job, JobStatus, RecurringJob, RecurringReportBucket } from '@prisma/client';
 import { IJobRepository } from '../job/job.interface';
 import { IScheduledJobService } from '../scraper/scheduled-job.interface';
 import {
@@ -170,7 +170,7 @@ export class RecurringJobService implements IRecurringJobService {
     },
   ): Promise<Job> {
     return this.jobRepository.create({
-      job_status: templateData.job_status,
+      job_status: JobStatus.Pending,
       portfolio_id: templateData.portfolio_id,
       sub_portfolio_id: templateData.sub_portfolio_id,
       property_id: templateData.property_id,
