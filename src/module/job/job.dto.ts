@@ -229,6 +229,29 @@ export class ImportJobsResponseDto {
     },
   })
   scheduledJobs: Array<{ date: string; jobIds: string[] }>;
+
+  @ApiProperty({
+    description: 'Number of recurring jobs created',
+    example: 2,
+  })
+  recurringJobsCreated: number;
+
+  @ApiProperty({
+    description: 'List of created recurring jobs',
+    type: 'array',
+    items: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        name: { type: 'string' },
+        schedule_date: { type: 'string', example: '2026-03-15' },
+        duration: { type: 'number', example: 3 },
+        is_active: { type: 'boolean', example: true },
+        createdAt: { type: 'string', format: 'date-time' },
+      },
+    },
+  })
+  recurringJobs: any[];
 }
 
 export class JobStatusItemDto {
