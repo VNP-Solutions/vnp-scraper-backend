@@ -98,6 +98,8 @@ export interface IJobService {
     jobs: any[];
     scheduledJobsCreated: number;
     scheduledJobs: Array<{ date: string; jobIds: string[] }>;
+    recurringJobsCreated: number;
+    recurringJobs: any[];
   }>;
   getLatestCheckoutDateByJobId(
     jobId: string,

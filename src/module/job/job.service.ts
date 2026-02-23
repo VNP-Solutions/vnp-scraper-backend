@@ -7,6 +7,7 @@ import {
 import { Batch, Job, OTAProvider, PostingType } from '@prisma/client';
 import * as XLSX from 'xlsx';
 import { IPropertyRepository } from '../property/property.interface';
+import { IRecurringJobService } from '../recurring-job/recurring-job.interface';
 import { IScheduledJobService } from '../scraper/scheduled-job.interface';
 import {
   CreateBatchDto,
@@ -26,6 +27,8 @@ export class JobService implements IJobService {
     private readonly propertyRepository: IPropertyRepository,
     @Inject('IScheduledJobService')
     private readonly scheduledJobService: IScheduledJobService,
+    @Inject('IRecurringJobService')
+    private readonly recurringJobService: IRecurringJobService,
     private readonly logger: Logger,
   ) {}
 
@@ -270,44 +273,27 @@ export class JobService implements IJobService {
     jobs: any[];
     scheduledJobsCreated: number;
     scheduledJobs: Array<{ date: string; jobIds: string[] }>;
+    recurringJobsCreated: number;
+    recurringJobs: any[];
   }> {
     try {
-      // Validate file buffer
       if (!file.buffer) {
         throw new Error('File buffer is empty');
       }
 
-      // Parse Excel file - read all data as strings
       const workbook = XLSX.read(file.buffer, { type: 'buffer' });
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
 
-      // Read all data as strings
       const data = XLSX.utils.sheet_to_json(worksheet, {
-        raw: false, // Convert all values to strings
-        defval: '', // Default value for empty cells
+        raw: false,
+        defval: '',
       });
 
       if (!data || data.length === 0) {
         throw new Error('Excel file is empty or invalid');
       }
 
-      console.log('data', data);
-
-      // Debug: Log the first row to see data types
-      if (data.length > 0) {
-        const firstRow = data[0] as any;
-        console.log(
-          'First row data types:',
-          Object.keys(firstRow).map((key) => ({
-            key,
-            value: firstRow[key],
-            type: typeof firstRow[key],
-          })),
-        );
-      }
-
-      // Get headers from first row
       const headers = Object.keys(data[0] as any);
 
       this.logger.log(
@@ -316,21 +302,19 @@ export class JobService implements IJobService {
 
       let jobsCreated = 0;
       const jobs: any[] = [];
-      // Map to store scheduled dates and their job IDs
       const scheduledJobsMap = new Map<string, string[]>();
+      let recurringJobsCreated = 0;
+      const recurringJobs: any[] = [];
 
-      // Process each row
       for (const row of data) {
         const rowData = row as any;
 
         try {
-          // Find related portfolio and sub-portfolio
           let portfolioId = null;
           let subPortfolioId = null;
           let portfolioName = '';
           let subPortfolioName = '';
 
-          // Handle Portfolio - must exist if specified
           if (rowData.Portfolio && rowData.Portfolio.trim() !== '') {
             portfolioName = rowData.Portfolio.toString().trim();
             const existingPortfolio =
@@ -344,7 +328,6 @@ export class JobService implements IJobService {
             portfolioId = existingPortfolio.id;
           }
 
-          // Handle Sub Portfolio - must exist if specified
           if (
             rowData['Sub Portfolio'] &&
             rowData['Sub Portfolio'].trim() !== ''
@@ -371,7 +354,6 @@ export class JobService implements IJobService {
             subPortfolioId = existingSubPortfolio.id;
           }
 
-          // Handle Property - must exist if specified
           let propertyId = null;
           let propertyName = '';
           if (
@@ -394,14 +376,12 @@ export class JobService implements IJobService {
             propertyId = existingProperty.id;
           }
 
-          // Handle Batch - create if doesn't exist (optional field)
           let batchId = null;
           const batchColumn =
             rowData['Batch Name'] || rowData['Batch'] || rowData['Batch name'];
           if (batchColumn && batchColumn.trim() !== '') {
             const batchName = batchColumn.toString().trim();
 
-            // Try to find existing batch by name
             let existingBatch = await this.findBatchByName(batchName);
 
             if (existingBatch) {
@@ -410,14 +390,12 @@ export class JobService implements IJobService {
                 `Using existing batch: ${batchName} (${batchId})`,
               );
             } else {
-              // Create new batch if it doesn't exist
               const newBatch = await this.createBatch({ name: batchName });
               batchId = newBatch.id;
               this.logger.log(`Created new batch: ${batchName} (${batchId})`);
             }
           }
 
-          // Extract start_date and end_date, normalizing Excel date values
           const startDateRaw =
             rowData['From (MM/DD/YYYY)'] || rowData['Start Date'] || null;
           const endDateRaw =
@@ -426,7 +404,6 @@ export class JobService implements IJobService {
           const startDate = this.normalizeExcelDate(startDateRaw);
           const endDate = this.normalizeExcelDate(endDateRaw);
 
-          // Validate MM/DD/YYYY format after normalization
           const mmddyyyyRegex = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/;
 
           if (startDate && !mmddyyyyRegex.test(startDate)) {
@@ -441,114 +418,216 @@ export class JobService implements IJobService {
             );
           }
 
-          // If one of start_date and end_date is provided, set the value in both of them
           const finalStartDate = startDate || endDate || null;
           const finalEndDate = endDate || startDate || null;
 
-          // Create job data
-          const jobData: CreateJobDto = {
-            name: rowData['Job Name'] || `Job ${jobsCreated + 1}`,
-            job_status: rowData['Job Status'] || 'Pending',
-            portfolio_id: portfolioId,
-            sub_portfolio_id: subPortfolioId,
-            property_id: propertyId,
-            user_id: userId,
-            batch_id: batchId,
-            posting_type: this.convertToPostingType(rowData['Posting Type']),
-            portfolio_name: portfolioName,
-            sub_portfolio_name: subPortfolioName,
-            property_name: propertyName,
-            billing_type: (rowData['Billing Type'] || 'DB').toString().trim().toUpperCase(),
-            next_due_date: rowData['Next Due Date']
-              ? new Date(rowData['Next Due Date'])
-              : undefined,
-            ota_provider: rowData['Expedia ID']
-              ? OTAProvider.Expedia
-              : rowData['Booking ID']
-                ? OTAProvider.Booking
-                : rowData['Agoda ID']
-                  ? OTAProvider.Agoda
-                  : OTAProvider.Expedia,
-            remaining_direct_billed: parseFloat(
-              rowData['Remaining Direct Billed'] || '0',
-            ),
-            total_collectable: parseFloat(rowData['Total Collectable'] || '0'),
-            total_amount_confirmed: parseFloat(
-              rowData['Total Amount Confirmed'] || '0',
-            ),
-            execution_type: rowData['Execution Type'] || 'Immediate',
-            retries_attempted: parseInt(rowData['Retries Attempted'] || '0'),
-            max_retries: parseInt(rowData['Max Retries'] || '3'),
-            retry_delay_ms: parseInt(rowData['Retry Delay MS'] || '5000'),
-            priority: parseInt(rowData['Priority'] || '0'),
-            job_backoff_length_loading: parseInt(
-              rowData['Job Backoff Length Loading'] || '50000',
-            ),
-            job_backoff_length_selector: parseInt(
-              rowData['Job Backoff Length Selector'] || '40000',
-            ),
-            queue_name: rowData['Queue Name'] || 'default',
-            worker_assigned: rowData['Worker Assigned'] || null,
-            batch_execution_id: rowData['Batch Execution ID'] || null,
-            start_date: finalStartDate,
-            end_date: finalEndDate,
-            log_link: rowData['Log Link'] || null,
-            live_url: rowData['Live URL'] || null,
-            db_billing_duration: rowData['Billing Duration']
-              ? parseInt(rowData['Billing Duration'])
-              : null,
-            watcher_emails: (() => {
-              const raw =
-                rowData['Watcher Emails'] ||
-                rowData['Watcher Email'] ||
-                null;
-              if (!raw) return [];
-              return raw
-                .toString()
-                .split(',')
-                .map((email: string) => email.trim())
-                .filter((email: string) => email);
-            })(),
-          };
+          // Parse Recurring Date and Duration columns
+          const recurringDateColumn =
+            rowData['Recurring Date'] ||
+            rowData['Recurring'] ||
+            rowData['Recurring Schedule Date'];
+          const recurringDate = this.parseScheduledDate(recurringDateColumn);
 
-          // Handle Scheduled Date - optional field
-          const scheduledDateColumn =
-            rowData['Scheduled Date'] ||
-            rowData['Scheduled'] ||
-            rowData['Schedule Date'];
-          const scheduledDate = this.parseScheduledDate(scheduledDateColumn);
+          const durationColumn =
+            rowData['Duration'] ||
+            rowData['Recurring Duration'] ||
+            rowData['Duration (Months)'];
+          const duration = durationColumn
+            ? parseInt(durationColumn.toString().trim())
+            : 3;
 
-          // Add schedule_date to job data if provided
-          if (scheduledDate) {
-            jobData.schedule_date = scheduledDate;
-          }
+          // If recurring date is provided, create a recurring job instead of a regular job
+          if (recurringDate) {
+            const recurringResult =
+              await this.recurringJobService.createRecurringJob({
+                name: rowData['Job Name'] || `Job ${jobsCreated + 1}`,
+                job_status: rowData['Job Status'] || 'Pending',
+                portfolio_id: portfolioId,
+                sub_portfolio_id: subPortfolioId,
+                property_id: propertyId,
+                user_id: userId,
+                posting_type: this.convertToPostingType(
+                  rowData['Posting Type'],
+                ),
+                portfolio_name: portfolioName,
+                sub_portfolio_name: subPortfolioName,
+                property_name: propertyName,
+                billing_type: (rowData['Billing Type'] || 'DB')
+                  .toString()
+                  .trim()
+                  .toUpperCase(),
+                next_due_date: rowData['Next Due Date']
+                  ? new Date(rowData['Next Due Date'])
+                  : undefined,
+                schedule_date: recurringDate,
+                ota_provider: rowData['Expedia ID']
+                  ? OTAProvider.Expedia
+                  : rowData['Booking ID']
+                    ? OTAProvider.Booking
+                    : rowData['Agoda ID']
+                      ? OTAProvider.Agoda
+                      : OTAProvider.Expedia,
+                remaining_direct_billed: parseFloat(
+                  rowData['Remaining Direct Billed'] || '0',
+                ),
+                total_collectable: parseFloat(
+                  rowData['Total Collectable'] || '0',
+                ),
+                total_amount_confirmed: parseFloat(
+                  rowData['Total Amount Confirmed'] || '0',
+                ),
+                execution_type: rowData['Execution Type'] || 'Immediate',
+                retries_attempted: parseInt(
+                  rowData['Retries Attempted'] || '0',
+                ),
+                max_retries: parseInt(rowData['Max Retries'] || '3'),
+                retry_delay_ms: parseInt(rowData['Retry Delay MS'] || '5000'),
+                priority: parseInt(rowData['Priority'] || '0'),
+                job_backoff_length_loading: parseInt(
+                  rowData['Job Backoff Length Loading'] || '50000',
+                ),
+                job_backoff_length_selector: parseInt(
+                  rowData['Job Backoff Length Selector'] || '40000',
+                ),
+                queue_name: rowData['Queue Name'] || 'default',
+                worker_assigned: rowData['Worker Assigned'] || null,
+                batch_execution_id: rowData['Batch Execution ID'] || null,
+                log_link: rowData['Log Link'] || null,
+                live_url: rowData['Live URL'] || null,
+                db_billing_duration: rowData['Billing Duration']
+                  ? parseInt(rowData['Billing Duration'])
+                  : null,
+                watcher_emails: (() => {
+                  const raw =
+                    rowData['Watcher Emails'] ||
+                    rowData['Watcher Email'] ||
+                    null;
+                  if (!raw) return [];
+                  return raw
+                    .toString()
+                    .split(',')
+                    .map((email: string) => email.trim())
+                    .filter((email: string) => email);
+                })(),
+                duration: duration,
+              });
 
-          // Create job using existing method
-          const newJob = await this.createJob(jobData);
-          jobs.push(newJob);
-          jobsCreated++;
-          this.logger.log(`Created new job: ${newJob.name}`);
-
-          // If scheduled date is provided, add job ID to the map
-          if (scheduledDate) {
-            if (!scheduledJobsMap.has(scheduledDate)) {
-              scheduledJobsMap.set(scheduledDate, []);
-            }
-            scheduledJobsMap.get(scheduledDate)!.push(newJob.id);
+            jobs.push(recurringResult.job);
+            jobsCreated++;
+            recurringJobs.push(recurringResult.recurringJob);
+            recurringJobsCreated++;
             this.logger.log(
-              `Job ${newJob.id} scheduled for date: ${scheduledDate}`,
+              `Created recurring job: ${recurringResult.recurringJob.name} (duration: ${duration} months) with first job: ${recurringResult.job.id}`,
             );
+          } else {
+            // Regular job creation (existing behavior)
+            const jobData: CreateJobDto = {
+              name: rowData['Job Name'] || `Job ${jobsCreated + 1}`,
+              job_status: rowData['Job Status'] || 'Pending',
+              portfolio_id: portfolioId,
+              sub_portfolio_id: subPortfolioId,
+              property_id: propertyId,
+              user_id: userId,
+              batch_id: batchId,
+              posting_type: this.convertToPostingType(rowData['Posting Type']),
+              portfolio_name: portfolioName,
+              sub_portfolio_name: subPortfolioName,
+              property_name: propertyName,
+              billing_type: (rowData['Billing Type'] || 'DB')
+                .toString()
+                .trim()
+                .toUpperCase(),
+              next_due_date: rowData['Next Due Date']
+                ? new Date(rowData['Next Due Date'])
+                : undefined,
+              ota_provider: rowData['Expedia ID']
+                ? OTAProvider.Expedia
+                : rowData['Booking ID']
+                  ? OTAProvider.Booking
+                  : rowData['Agoda ID']
+                    ? OTAProvider.Agoda
+                    : OTAProvider.Expedia,
+              remaining_direct_billed: parseFloat(
+                rowData['Remaining Direct Billed'] || '0',
+              ),
+              total_collectable: parseFloat(
+                rowData['Total Collectable'] || '0',
+              ),
+              total_amount_confirmed: parseFloat(
+                rowData['Total Amount Confirmed'] || '0',
+              ),
+              execution_type: rowData['Execution Type'] || 'Immediate',
+              retries_attempted: parseInt(
+                rowData['Retries Attempted'] || '0',
+              ),
+              max_retries: parseInt(rowData['Max Retries'] || '3'),
+              retry_delay_ms: parseInt(rowData['Retry Delay MS'] || '5000'),
+              priority: parseInt(rowData['Priority'] || '0'),
+              job_backoff_length_loading: parseInt(
+                rowData['Job Backoff Length Loading'] || '50000',
+              ),
+              job_backoff_length_selector: parseInt(
+                rowData['Job Backoff Length Selector'] || '40000',
+              ),
+              queue_name: rowData['Queue Name'] || 'default',
+              worker_assigned: rowData['Worker Assigned'] || null,
+              batch_execution_id: rowData['Batch Execution ID'] || null,
+              start_date: finalStartDate,
+              end_date: finalEndDate,
+              log_link: rowData['Log Link'] || null,
+              live_url: rowData['Live URL'] || null,
+              db_billing_duration: rowData['Billing Duration']
+                ? parseInt(rowData['Billing Duration'])
+                : null,
+              watcher_emails: (() => {
+                const raw =
+                  rowData['Watcher Emails'] ||
+                  rowData['Watcher Email'] ||
+                  null;
+                if (!raw) return [];
+                return raw
+                  .toString()
+                  .split(',')
+                  .map((email: string) => email.trim())
+                  .filter((email: string) => email);
+              })(),
+            };
+
+            // Handle Scheduled Date - optional field
+            const scheduledDateColumn =
+              rowData['Scheduled Date'] ||
+              rowData['Scheduled'] ||
+              rowData['Schedule Date'];
+            const scheduledDate = this.parseScheduledDate(scheduledDateColumn);
+
+            if (scheduledDate) {
+              jobData.schedule_date = scheduledDate;
+            }
+
+            const newJob = await this.createJob(jobData);
+            jobs.push(newJob);
+            jobsCreated++;
+            this.logger.log(`Created new job: ${newJob.name}`);
+
+            if (scheduledDate) {
+              if (!scheduledJobsMap.has(scheduledDate)) {
+                scheduledJobsMap.set(scheduledDate, []);
+              }
+              scheduledJobsMap.get(scheduledDate)!.push(newJob.id);
+              this.logger.log(
+                `Job ${newJob.id} scheduled for date: ${scheduledDate}`,
+              );
+            }
           }
         } catch (error) {
           this.logger.error(`Error processing job row: ${error.message}`);
-          // Re-throw the error to stop the import process
           throw error;
         }
       }
 
-      this.logger.log(`Job import completed: ${jobsCreated} jobs created`);
+      this.logger.log(`Job import completed: ${jobsCreated} jobs created, ${recurringJobsCreated} recurring job(s) created`);
 
-      // Create scheduled jobs for each date
+      // Create scheduled jobs for each date (only for non-recurring jobs)
       const scheduledJobs: Array<{ date: string; jobIds: string[] }> = [];
       let scheduledJobsCreated = 0;
 
@@ -571,8 +650,6 @@ export class JobService implements IJobService {
           this.logger.error(
             `Error creating scheduled job for date ${date}: ${error.message}`,
           );
-          // Don't throw - continue with other scheduled dates
-          // But log the error so user knows
         }
       }
 
@@ -585,6 +662,8 @@ export class JobService implements IJobService {
         jobs,
         scheduledJobsCreated,
         scheduledJobs,
+        recurringJobsCreated,
+        recurringJobs,
       };
     } catch (error) {
       this.logger.error(
