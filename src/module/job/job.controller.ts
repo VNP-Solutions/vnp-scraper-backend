@@ -183,6 +183,16 @@ export class JobController {
     required: false,
     description: 'End date for filtering by schedule_date (YYYY-MM-DD format)',
   })
+  @ApiQuery({
+    name: 'recurring_id',
+    required: false,
+    description: 'Filter jobs by recurring job ID',
+  })
+  @ApiQuery({
+    name: 'recurring_report_bucket_id',
+    required: false,
+    description: 'Filter jobs by recurring report bucket ID',
+  })
   async getAllJobs(
     @ParseQuery() query: Record<string, any>,
     @Res() response: Response,

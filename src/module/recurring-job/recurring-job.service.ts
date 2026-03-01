@@ -711,4 +711,21 @@ export class RecurringJobService implements IRecurringJobService {
       throw error;
     }
   }
+
+  async getBucketsByRecurringId(
+    recurringId: string,
+  ): Promise<(RecurringReportBucket & { jobs: Job[] })[]> {
+    try {
+      const recurringJob = await this.repository.findById(recurringId);
+      if (!recurringJob) {
+        throw new NotFoundException('Recurring job not found');
+      }
+
+      const buckets = await this.repository.findBucketsByRecurringId(recurringId);
+      return buckets;
+    } catch (error) {
+      this.logger.error('Error getting buckets by recurring id:', error);
+      throw error;
+    }
+  }
 }

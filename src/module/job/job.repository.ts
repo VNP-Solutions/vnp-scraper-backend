@@ -118,6 +118,8 @@ export class JobRepository implements IJobRepository {
         job_type,
         schedule_start_date,
         schedule_end_date,
+        recurring_id,
+        recurring_report_bucket_id,
         ...filters
       } = query || {};
       let allFilters: any = { ...filters };
@@ -239,6 +241,16 @@ export class JobRepository implements IJobRepository {
 
           allFilters.schedule_date = scheduleDateFilter;
         }
+      }
+
+      // Filter by recurring_id
+      if (recurring_id) {
+        allFilters.recurring_id = recurring_id.toString();
+      }
+
+      // Filter by recurring_report_bucket_id
+      if (recurring_report_bucket_id) {
+        allFilters.recurring_report_bucket_id = recurring_report_bucket_id.toString();
       }
 
       const skip = page
