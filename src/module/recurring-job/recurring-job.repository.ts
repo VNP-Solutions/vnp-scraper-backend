@@ -90,13 +90,17 @@ export class RecurringJobRepository implements IRecurringJobRepository {
         sortOrder = 'desc',
         search,
         is_active,
+        duration,
+        portfolio_id,
+        property_id,
+        ota_provider,
         ...filters
       } = query || {};
 
       const skip = (page - 1) * limit;
       const allFilters: any = { ...filters };
 
-      // Search filter
+      // Search filter - searches in recurring job name
       if (search) {
         const searchTerm = search.toString().trim();
         const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(searchTerm);
@@ -113,6 +117,46 @@ export class RecurringJobRepository implements IRecurringJobRepository {
           allFilters.is_active = true;
         } else if (is_active === 'false' || is_active === false) {
           allFilters.is_active = false;
+        }
+      }
+
+      // Duration filter
+      if (duration !== undefined && duration !== null) {
+        allFilters.duration = parseInt(duration.toString());
+      }
+
+      // Portfolio filter - search in jobs
+      if (portfolio_id) {
+        allFilters.jobs = {
+          some: {
+            portfolio_id: portfolio_id.toString(),
+          },
+        };
+      }
+
+      // Property filter - search in jobs
+      if (property_id) {
+        if (allFilters.jobs) {
+          allFilters.jobs.some.property_id = property_id.toString();
+        } else {
+          allFilters.jobs = {
+            some: {
+              property_id: property_id.toString(),
+            },
+          };
+        }
+      }
+
+      // OTA Provider filter - search in jobs
+      if (ota_provider) {
+        if (allFilters.jobs) {
+          allFilters.jobs.some.ota_provider = ota_provider.toString();
+        } else {
+          allFilters.jobs = {
+            some: {
+              ota_provider: ota_provider.toString(),
+            },
+          };
         }
       }
 

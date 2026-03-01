@@ -68,4 +68,7 @@ export interface IRecurringJobService {
     recurringId: string,
     currentScheduleDate: string,
   ): Promise<Job | null>;
+  getBucketsByRecurringId(
+    recurringId: string,
+  ): Promise<(RecurringReportBucket & { jobs: Job[] })[]>;
 }

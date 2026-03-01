@@ -15,6 +15,7 @@ import {
 import {
   ApiBearerAuth,
   ApiOperation,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -117,6 +118,65 @@ export class RecurringJobController {
   @UseGuards(JwtAuthGuard)
   @Get()
   @ApiOperation({ summary: 'Get all recurring jobs' })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    description: 'Search by recurring job ID or name (partial match, case-insensitive)',
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: 'number',
+    description: 'Page number for pagination (default: 1)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: 'number',
+    description: 'Number of items per page (default: 10)',
+  })
+  @ApiQuery({
+    name: 'sortBy',
+    required: false,
+    type: 'string',
+    description: 'Field to sort by (default: createdAt). Options: name, createdAt, updatedAt, schedule_date, duration',
+  })
+  @ApiQuery({
+    name: 'sortOrder',
+    required: false,
+    enum: ['asc', 'desc'],
+    description: 'Sort order (default: desc)',
+  })
+  @ApiQuery({
+    name: 'is_active',
+    required: false,
+    type: 'boolean',
+    description: 'Filter by active status (true/false)',
+  })
+  @ApiQuery({
+    name: 'duration',
+    required: false,
+    type: 'number',
+    description: 'Filter by duration in months (1-12)',
+  })
+  @ApiQuery({
+    name: 'portfolio_id',
+    required: false,
+    type: 'string',
+    description: 'Filter by portfolio ID (searches in related jobs)',
+  })
+  @ApiQuery({
+    name: 'property_id',
+    required: false,
+    type: 'string',
+    description: 'Filter by property ID (searches in related jobs)',
+  })
+  @ApiQuery({
+    name: 'ota_provider',
+    required: false,
+    enum: ['Expedia', 'Booking', 'Agoda'],
+    description: 'Filter by OTA provider (searches in related jobs)',
+  })
   @ApiResponse({
     status: 200,
     description: 'Returns list of recurring jobs',
@@ -263,6 +323,32 @@ export class RecurringJobController {
           statusCode: 200,
           message: 'Recurring job deleted successfully',
           data: recurringJob,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':id/buckets')
+  @ApiOperation({ summary: 'Get all buckets for a recurring job' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of buckets with their jobs retrieved successfully',
+  })
+  @ApiResponse({ status: 404, description: 'Recurring job not found' })
+  async getBucketsByRecurringId(
+    @Param('id') id: string,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const buckets = await this.recurringJobService.getBucketsByRecurringId(id);
+        return {
+          statusCode: 200,
+          message: 'Buckets retrieved successfully',
+          data: buckets,
         };
       },
       this.logger,
