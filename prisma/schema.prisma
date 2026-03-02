@@ -217,8 +217,8 @@ model Job {
   property      Property?      @relation(fields: [property_id], references: [id])
   user          User?          @relation(fields: [user_id], references: [id])
   batch         Batch?              @relation(fields: [batch_id], references: [id])
-  recurringJob  RecurringJob?       @relation(fields: [recurring_id], references: [id])
-  recurringReportBucket RecurringReportBucket? @relation(fields: [recurring_report_bucket_id], references: [id])
+  recurringJob  RecurringJob?       @relation(fields: [recurring_id], references: [id], onDelete: Cascade)
+  recurringReportBucket RecurringReportBucket? @relation(fields: [recurring_report_bucket_id], references: [id], onDelete: Cascade)
   jobItem       JobItem[]
   OtpStatus     OtpStatus[]
   dbData        DbData[]
@@ -228,15 +228,15 @@ model Job {
 }
 
 model RecurringJob {
-  id            String      @id @default(auto()) @map("_id") @db.ObjectId
+  id            String       @id @default(auto()) @map("_id") @db.ObjectId
   name          String
   schedule_date String?
   next_date     String?
-  ota_provider  OTAProvider
-  duration      Int         @default(1) // Number of monthly jobs per cycle
-  is_active     Boolean     @default(true)
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  ota_provider  OTAProvider?
+  duration      Int          @default(1) // Number of monthly jobs per cycle
+  is_active     Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 
   jobs    Job[]
   buckets RecurringReportBucket[]

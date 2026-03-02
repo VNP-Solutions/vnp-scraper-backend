@@ -19,7 +19,7 @@ export class RecurringJobRepository implements IRecurringJobRepository {
         name: data.name,
         schedule_date: data.schedule_date,
         next_date: data.next_date ?? null,
-        ota_provider: data.ota_provider,
+        ota_provider: data.ota_provider ?? null,
         duration: data.duration ?? 1,
         is_active: data.is_active ?? true,
       };
@@ -252,17 +252,27 @@ export class RecurringJobRepository implements IRecurringJobRepository {
 
   async delete(id: string): Promise<RecurringJob> {
     try {
-      // Delete all buckets first (cascade handles job disconnection)
-      await this.db.recurringReportBucket.deleteMany({
-        where: { recurring_id: id },
-      });
-
+      // Cascade delete will automatically remove all buckets
       const recurringJob = await this.db.recurringJob.delete({
         where: { id },
       });
       return recurringJob;
     } catch (error) {
       this.logger.error('Error deleting recurring job:', error);
+      throw error;
+    }
+  }
+
+  async bulkDelete(ids: string[]): Promise<number> {
+    try {
+      // Cascade delete will automatically remove all buckets
+      const result = await this.db.recurringJob.deleteMany({
+        where: { id: { in: ids } },
+      });
+
+      return result.count;
+    } catch (error) {
+      this.logger.error('Error bulk deleting recurring jobs:', error);
       throw error;
     }
   }

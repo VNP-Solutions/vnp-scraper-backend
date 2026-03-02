@@ -31,6 +31,7 @@ import {
   RecurringJobWithBucketsResponseDto,
   UpdateRecurringJobDto,
   UpdateRecurringJobStatusDto,
+  BulkDeleteRecurringJobDto,
 } from './recurring-job.dto';
 import { IRecurringJobService } from './recurring-job.interface';
 import {
@@ -38,6 +39,7 @@ import {
   createRecurringJobSchema,
   updateRecurringJobSchema,
   updateRecurringJobStatusSchema,
+  bulkDeleteRecurringJobSchema,
 } from './recurring-job.validation';
 
 @ApiTags('Recurring Jobs')
@@ -330,8 +332,42 @@ export class RecurringJobController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Get(':id/buckets')
-  @ApiOperation({ summary: 'Get all buckets for a recurring job' })
+  @Get('/:id/buckets')
+  @ApiOperation({ summary: 'Get all buckets for a recurring job with filters' })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: 'number',
+    description: 'Page number for pagination',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: 'number',
+    description: 'Number of items per page',
+  })
+  @ApiQuery({
+    name: 'sortBy',
+    required: false,
+    description: 'Field to sort by (default: bucket_number)',
+  })
+  @ApiQuery({
+    name: 'sortOrder',
+    required: false,
+    enum: ['asc', 'desc'],
+    description: 'Sort order (asc or desc, default: asc)',
+  })
+  @ApiQuery({
+    name: 'bucket_number',
+    required: false,
+    type: 'number',
+    description: 'Filter by specific bucket number',
+  })
+  @ApiQuery({
+    name: 'job_status',
+    required: false,
+    description: 'Filter buckets by job status (Pending, Running, Completed, Failed)',
+  })
   @ApiResponse({
     status: 200,
     description: 'List of buckets with their jobs retrieved successfully',
@@ -339,16 +375,45 @@ export class RecurringJobController {
   @ApiResponse({ status: 404, description: 'Recurring job not found' })
   async getBucketsByRecurringId(
     @Param('id') id: string,
+    @ParseQuery() query: Record<string, any>,
     @Res() response: Response,
   ) {
     return ResponseHandler.handler(
       response,
       async () => {
-        const buckets = await this.recurringJobService.getBucketsByRecurringId(id);
+        const result = await this.recurringJobService.getBucketsByRecurringId(id, query);
         return {
           statusCode: 200,
           message: 'Buckets retrieved successfully',
-          data: buckets,
+          data: result.data,
+          metadata: result.metadata,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/bulk-delete')
+  @ApiOperation({ summary: 'Bulk delete recurring jobs' })
+  @ApiResponse({
+    status: 200,
+    description: 'Recurring jobs deleted successfully',
+  })
+  @ApiResponse({ status: 400, description: 'Invalid request' })
+  @ValidateBody(bulkDeleteRecurringJobSchema)
+  async bulkDeleteRecurringJobs(
+    @Body() body: BulkDeleteRecurringJobDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result = await this.recurringJobService.bulkDeleteRecurringJobs(body.ids);
+        return {
+          statusCode: 200,
+          message: `Successfully deleted ${result.deletedCount} recurring job(s)`,
+          data: result,
         };
       },
       this.logger,

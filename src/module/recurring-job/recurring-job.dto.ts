@@ -197,3 +197,12 @@ export class RecurringJobWithBucketsResponseDto extends RecurringJobResponseDto 
   @ApiProperty({ type: 'array', items: { type: 'object' } })
   jobs: any[];
 }
+
+export class BulkDeleteRecurringJobDto {
+  @ApiProperty({
+    type: [String],
+    description: 'Array of recurring job IDs to delete',
+    example: ['507f1f77bcf86cd799439011', '507f1f77bcf86cd799439012'],
+  })
+  ids: string[];
+}
