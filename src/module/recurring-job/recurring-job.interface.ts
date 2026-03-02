@@ -24,6 +24,7 @@ export interface IRecurringJobRepository {
   }>;
   update(id: string, data: any): Promise<RecurringJob>;
   delete(id: string): Promise<RecurringJob>;
+  bulkDelete(ids: string[]): Promise<number>;
   findJobsByRecurringId(recurringId: string): Promise<Job[]>;
 
   // Bucket methods
@@ -71,5 +72,13 @@ export interface IRecurringJobService {
   ): Promise<Job | null>;
   getBucketsByRecurringId(
     recurringId: string,
-  ): Promise<any[]>;
+    query: Record<string, any>,
+  ): Promise<{
+    data: any[];
+    metadata: any;
+  }>;
+  bulkDeleteRecurringJobs(ids: string[]): Promise<{
+    deletedCount: number;
+    deletedIds: string[];
+  }>;
 }

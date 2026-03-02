@@ -775,24 +775,52 @@ export class RecurringJobService implements IRecurringJobService {
 
   async getBucketsByRecurringId(
     recurringId: string,
-  ): Promise<any[]> {
+    query: Record<string, any>,
+  ): Promise<{
+    data: any[];
+    metadata: any;
+  }> {
     try {
       const recurringJob = await this.repository.findById(recurringId);
       if (!recurringJob) {
         throw new NotFoundException('Recurring job not found');
       }
 
-      const buckets = await this.repository.findBucketsByRecurringId(recurringId);
-      
+      const {
+        page = 1,
+        limit = 10,
+        sortBy = 'bucket_number',
+        sortOrder = 'asc',
+        bucket_number,
+        job_status,
+      } = query;
+
+      let buckets = await this.repository.findBucketsByRecurringId(recurringId);
+
+      // Filter by bucket_number
+      if (bucket_number !== undefined) {
+        buckets = buckets.filter(
+          (bucket) => bucket.bucket_number === parseInt(bucket_number.toString()),
+        );
+      }
+
+      // Filter by job_status
+      if (job_status) {
+        buckets = buckets.filter((bucket) =>
+          bucket.jobs.some((job: Job) => job.job_status === job_status),
+        );
+      }
+
       // Transform buckets to include running and failed counts
       const transformedBuckets = buckets.map((bucket: any) => {
-        const runningCount = bucket.jobs.filter((job: Job) => 
-          job.job_status === JobStatus.Pending || 
-          job.job_status === JobStatus.Running
+        const runningCount = bucket.jobs.filter(
+          (job: Job) =>
+            job.job_status === JobStatus.Pending ||
+            job.job_status === JobStatus.Running,
         ).length;
-        
-        const failedCount = bucket.jobs.filter((job: Job) => 
-          job.job_status === JobStatus.Failed
+
+        const failedCount = bucket.jobs.filter(
+          (job: Job) => job.job_status === JobStatus.Failed,
         ).length;
 
         return {
@@ -802,9 +830,60 @@ export class RecurringJobService implements IRecurringJobService {
         };
       });
 
-      return transformedBuckets;
+      // Sort
+      const sortedBuckets = transformedBuckets.sort((a, b) => {
+        const aValue = a[sortBy] ?? 0;
+        const bValue = b[sortBy] ?? 0;
+        if (sortOrder === 'desc') {
+          return bValue > aValue ? 1 : -1;
+        }
+        return aValue > bValue ? 1 : -1;
+      });
+
+      // Pagination
+      const total = sortedBuckets.length;
+      const skip = (parseInt(page.toString()) - 1) * parseInt(limit.toString());
+      const paginatedBuckets = sortedBuckets.slice(
+        skip,
+        skip + parseInt(limit.toString()),
+      );
+
+      return {
+        data: paginatedBuckets,
+        metadata: {
+          total,
+          page: parseInt(page.toString()),
+          limit: parseInt(limit.toString()),
+          totalPages: Math.ceil(total / parseInt(limit.toString())),
+        },
+      };
     } catch (error) {
       this.logger.error('Error getting buckets by recurring id:', error);
+      throw error;
+    }
+  }
+
+  async bulkDeleteRecurringJobs(
+    ids: string[],
+  ): Promise<{ deletedCount: number; deletedIds: string[] }> {
+    try {
+      if (!ids || ids.length === 0) {
+        throw new BadRequestException('No IDs provided for deletion');
+      }
+
+      // Use deleteMany for efficient bulk deletion
+      const deletedCount = await this.repository.bulkDelete(ids);
+
+      this.logger.log(
+        `Bulk deleted ${deletedCount} recurring job(s) and their associated buckets`,
+      );
+
+      return {
+        deletedCount,
+        deletedIds: ids.slice(0, deletedCount), // Return the IDs that were actually deleted
+      };
+    } catch (error) {
+      this.logger.error('Error bulk deleting recurring jobs:', error);
       throw error;
     }
   }

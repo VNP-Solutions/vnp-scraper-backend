@@ -62,6 +62,10 @@ export const updateRecurringJobStatusSchema = z.object({
   }),
 });
 
+export const bulkDeleteRecurringJobSchema = z.object({
+  ids: z.array(objectIdSchema).min(1, 'At least one ID is required'),
+});
+
 export type CreateRecurringJobType = z.infer<typeof createRecurringJobSchema>;
 export type CreateRecurringJobFromJobType = z.infer<
   typeof createRecurringJobFromJobSchema
@@ -69,4 +73,7 @@ export type CreateRecurringJobFromJobType = z.infer<
 export type UpdateRecurringJobType = z.infer<typeof updateRecurringJobSchema>;
 export type UpdateRecurringJobStatusType = z.infer<
   typeof updateRecurringJobStatusSchema
+>;
+export type BulkDeleteRecurringJobType = z.infer<
+  typeof bulkDeleteRecurringJobSchema
 >;
