@@ -851,10 +851,10 @@ export class RecurringJobService implements IRecurringJobService {
       return {
         data: paginatedBuckets,
         metadata: {
-          total,
-          page: parseInt(page.toString()),
+          totalDocuments: total,
+          currentPage: parseInt(page.toString()),
+          totalPage: Math.ceil(total / parseInt(limit.toString())),
           limit: parseInt(limit.toString()),
-          totalPages: Math.ceil(total / parseInt(limit.toString())),
         },
       };
     } catch (error) {

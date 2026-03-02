@@ -190,10 +190,10 @@ export class RecurringJobRepository implements IRecurringJobRepository {
       return {
         data,
         metadata: {
-          total,
-          page: parseInt(page.toString()),
+          totalDocuments: total,
+          currentPage: parseInt(page.toString()),
+          totalPage: totalPages,
           limit: parseInt(limit.toString()),
-          totalPages,
         },
       };
     } catch (error) {
