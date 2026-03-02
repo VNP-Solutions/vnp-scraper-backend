@@ -174,14 +174,14 @@ export class RecurringReportBucketResponseDto {
   @ApiProperty({ description: 'Auto-generated name, e.g. "Reporting for Start MMM - End MMM YYYY"' })
   name: string;
 
-  @ApiProperty({ type: 'array', items: { type: 'object' } })
-  jobs: any[];
+  @ApiProperty({ description: 'Total count of jobs in this bucket' })
+  job_count: number;
 
-  @ApiProperty({ description: 'Count of running jobs' })
-  running_count?: number;
+  @ApiProperty({ description: 'Count of running jobs (Pending + Running)' })
+  running_count: number;
 
   @ApiProperty({ description: 'Count of failed jobs' })
-  failed_count?: number;
+  failed_count: number;
 
   @ApiProperty()
   createdAt: Date;
