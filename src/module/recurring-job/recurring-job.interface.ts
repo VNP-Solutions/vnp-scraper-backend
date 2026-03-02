@@ -14,6 +14,7 @@ export type RecurringJobWithBucketsAndJobs = RecurringJob & {
 export interface IRecurringJobRepository {
   create(data: any): Promise<RecurringJob>;
   findById(id: string): Promise<RecurringJob | null>;
+  findByName(name: string): Promise<RecurringJob | null>;
   findByIdWithJobs(
     id: string,
   ): Promise<RecurringJobWithBucketsAndJobs | null>;
@@ -49,7 +50,7 @@ export interface IRecurringJobService {
     data: CreateRecurringJobFromJobDto,
   ): Promise<{ recurringJob: RecurringJob; bucket: RecurringReportBucket; job: Job }>;
   getAllRecurringJobs(query: Record<string, any>): Promise<{
-    data: RecurringJob[];
+    data: any[];
     metadata: any;
   }>;
   getRecurringJobById(
@@ -70,5 +71,5 @@ export interface IRecurringJobService {
   ): Promise<Job | null>;
   getBucketsByRecurringId(
     recurringId: string,
-  ): Promise<(RecurringReportBucket & { jobs: Job[] })[]>;
+  ): Promise<any[]>;
 }

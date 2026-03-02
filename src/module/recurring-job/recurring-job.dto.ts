@@ -136,6 +136,12 @@ export class RecurringJobResponseDto {
   @ApiProperty()
   schedule_date: string;
 
+  @ApiProperty({ required: false })
+  next_date?: string;
+
+  @ApiProperty({ enum: OTAProvider })
+  ota_provider: OTAProvider;
+
   @ApiProperty()
   duration: number;
 
@@ -147,6 +153,12 @@ export class RecurringJobResponseDto {
 
   @ApiProperty()
   updatedAt: Date;
+
+  @ApiProperty({ required: false, description: 'Count of buckets' })
+  bucket_count?: number;
+
+  @ApiProperty({ required: false, description: 'Count of jobs' })
+  job_count?: number;
 }
 
 export class RecurringReportBucketResponseDto {
@@ -159,11 +171,17 @@ export class RecurringReportBucketResponseDto {
   @ApiProperty()
   bucket_number: number;
 
-  @ApiProperty({ description: 'Auto-generated name, e.g. "Reporting for April-2026"' })
+  @ApiProperty({ description: 'Auto-generated name, e.g. "Reporting for Start MMM - End MMM YYYY"' })
   name: string;
 
   @ApiProperty({ type: 'array', items: { type: 'object' } })
   jobs: any[];
+
+  @ApiProperty({ description: 'Count of running jobs' })
+  running_count?: number;
+
+  @ApiProperty({ description: 'Count of failed jobs' })
+  failed_count?: number;
 
   @ApiProperty()
   createdAt: Date;

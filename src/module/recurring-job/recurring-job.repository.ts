@@ -18,6 +18,8 @@ export class RecurringJobRepository implements IRecurringJobRepository {
       const recurringJobData: Prisma.RecurringJobCreateInput = {
         name: data.name,
         schedule_date: data.schedule_date,
+        next_date: data.next_date ?? null,
+        ota_provider: data.ota_provider,
         duration: data.duration ?? 1,
         is_active: data.is_active ?? true,
       };
@@ -174,18 +176,6 @@ export class RecurringJobRepository implements IRecurringJobRepository {
           [sortBy]: sortOrder,
         },
         include: {
-          buckets: {
-            orderBy: {
-              bucket_number: 'asc',
-            },
-            include: {
-              jobs: {
-                orderBy: {
-                  createdAt: 'asc',
-                },
-              },
-            },
-          },
           _count: {
             select: {
               buckets: true,
@@ -228,6 +218,10 @@ export class RecurringJobRepository implements IRecurringJobRepository {
         updateData.duration = data.duration;
       }
 
+      if (data.next_date !== undefined) {
+        updateData.next_date = data.next_date;
+      }
+
       if (data.is_active !== undefined) {
         updateData.is_active = data.is_active;
       }
@@ -240,6 +234,18 @@ export class RecurringJobRepository implements IRecurringJobRepository {
       return recurringJob;
     } catch (error) {
       this.logger.error('Error updating recurring job:', error);
+      throw error;
+    }
+  }
+
+  async findByName(name: string): Promise<RecurringJob | null> {
+    try {
+      const recurringJob = await this.db.recurringJob.findFirst({
+        where: { name },
+      });
+      return recurringJob;
+    } catch (error) {
+      this.logger.error('Error finding recurring job by name:', error);
       throw error;
     }
   }
