@@ -231,6 +231,58 @@ export class ScraperController {
   }
 
   /**
+   * Validate that startDate and endDate are not in the future (for DB flow).
+   * Returns true if valid; otherwise sends 400 response and returns false.
+   */
+  private validateDbDatesNotFuture(
+    body: { startDate: string; endDate: string },
+    res: Response,
+  ): boolean {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const parseMmDdYyyy = (dateStr: string): Date | null => {
+      const parts = dateStr.trim().split('/');
+      if (parts.length !== 3) return null;
+      const month = parseInt(parts[0], 10);
+      const day = parseInt(parts[1], 10);
+      const year = parseInt(parts[2], 10);
+      if (isNaN(month) || isNaN(day) || isNaN(year)) return null;
+      const d = new Date(year, month - 1, day);
+      return isNaN(d.getTime()) ? null : d;
+    };
+    const start = parseMmDdYyyy(body.startDate);
+    const end = parseMmDdYyyy(body.endDate);
+    if (!start || !end) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        message:
+          'Invalid date format. Use MM/DD/YYYY for startDate and endDate.',
+        error: 'Invalid date format',
+      });
+      return false;
+    }
+    start.setHours(0, 0, 0, 0);
+    end.setHours(0, 0, 0, 0);
+    if (start > today) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        message: 'startDate must not be a future date.',
+        error: 'startDate is in the future',
+      });
+      return false;
+    }
+    if (end > today) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        message: 'endDate must not be a future date.',
+        error: 'endDate is in the future',
+      });
+      return false;
+    }
+    return true;
+  }
+
+  /**
    * Get API path based on OTA provider and job type
    */
   private getApiPathByOtaProvider(
@@ -1060,6 +1112,10 @@ export class ScraperController {
           });
         }
 
+        if (!this.validateDbDatesNotFuture(body, res)) {
+          return;
+        }
+
         // Add the selected URL to the request body
         const enhancedBody = {
           ...body,
@@ -1859,6 +1915,10 @@ export class ScraperController {
               'No Expedia DB server URL configured (EXPEDIA_DB_SERVER_URL)',
             error: 'Expedia DB server URL not configured',
           });
+        }
+
+        if (!this.validateDbDatesNotFuture(body, res)) {
+          return;
         }
 
         // Add the selected URL to the request body
