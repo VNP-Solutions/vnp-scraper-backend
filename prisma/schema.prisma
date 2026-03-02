@@ -634,6 +634,7 @@ model DbEntry {
   requested_taxes                 Float
   requested_total                 Float
   requested_total_currency       String
+  gearbox_queue_ids              String[] @default([])
   created_at                      DateTime @default(now())
   updated_at                      DateTime @updatedAt
 
