@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Job, JobStatus, RecurringJob, RecurringReportBucket } from '@prisma/client';
+import { DatabaseService } from '../database/database.service';
 import { IJobRepository } from '../job/job.interface';
 import { IScheduledJobService } from '../scraper/scheduled-job.interface';
 import {
@@ -35,6 +36,7 @@ export class RecurringJobService implements IRecurringJobService {
     private readonly jobRepository: IJobRepository,
     @Inject('IScheduledJobService')
     private readonly scheduledJobService: IScheduledJobService,
+    private readonly db: DatabaseService,
     private readonly logger: Logger,
   ) {}
 
@@ -255,7 +257,7 @@ export class RecurringJobService implements IRecurringJobService {
       let hotel_id = null;
 
       if (data.property_id && ota_provider) {
-        const property = await this.jobRepository.db.property.findUnique({
+        const property = await this.db.property.findUnique({
           where: { id: data.property_id },
           select: {
             expedia_id: true,
@@ -378,7 +380,7 @@ export class RecurringJobService implements IRecurringJobService {
       let hotel_id = null;
 
       if (existingJob.property_id && existingJob.ota_provider) {
-        const property = await this.jobRepository.db.property.findUnique({
+        const property = await this.db.property.findUnique({
           where: { id: existingJob.property_id },
           select: {
             expedia_id: true,
