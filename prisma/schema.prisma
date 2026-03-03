@@ -606,16 +606,17 @@ model RetrievalItem {
 }
 
 model DbData {
-  id                String    @id @default(auto()) @map("_id") @db.ObjectId
-  job_id            String    @db.ObjectId
-  property_name     String
-  property_id       String
-  date_range        DateRange
-  gearbox_queue_ids String[]  @default([])
-  total_invoice_amount Float?
+  id                         String    @id @default(auto()) @map("_id") @db.ObjectId
+  job_id                     String    @db.ObjectId
+  property_name              String
+  property_id                String
+  date_range                 DateRange?
+  reservation_ids            String[]  @default([])
+  gearbox_queue_ids          String[]  @default([])
+  total_invoice_amount       Float?
   total_invoice_amount_currency String?
-  created_at        DateTime  @default(now())
-  updated_at        DateTime  @updatedAt
+  created_at                 DateTime  @default(now())
+  updated_at                 DateTime  @updatedAt
 
   job Job @relation(fields: [job_id], references: [id], onDelete: Cascade)
   dbEntries DbEntry[]
