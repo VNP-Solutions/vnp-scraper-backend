@@ -814,9 +814,7 @@ export class RecurringJobService implements IRecurringJobService {
       // Transform buckets to include running and failed counts, remove jobs
       const transformedBuckets = buckets.map((bucket: any) => {
         const runningCount = bucket.jobs.filter(
-          (job: Job) =>
-            job.job_status === JobStatus.Pending ||
-            job.job_status === JobStatus.Running,
+          (job: Job) => job.job_status === JobStatus.Running,
         ).length;
 
         const failedCount = bucket.jobs.filter(
