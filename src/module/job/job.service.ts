@@ -890,14 +890,13 @@ export class JobService implements IJobService {
       // Transform the response to include gearbox_queue_ids and portfolio_name as flat properties
       return dbEntries.map((entry: any) => {
         const gearboxQueueIds = entry.dbData?.gearbox_queue_ids || [];
-        const gearboxQueueIdsString = gearboxQueueIds.join(', ');
         const portfolioName = entry.job?.portfolio_name || null;
 
         // Remove dbData from the response and add gearbox_queue_ids and portfolio_name as flat properties
         const { dbData, ...entryWithoutDbData } = entry;
         return {
           ...entryWithoutDbData,
-          gearbox_queue_ids: gearboxQueueIdsString,
+          gearbox_queue_ids: gearboxQueueIds,
           portfolio_name: portfolioName,
         };
       });
