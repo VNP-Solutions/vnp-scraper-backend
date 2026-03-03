@@ -147,6 +147,7 @@ model Portfolio {
   jobs                         Job[]
   userFeatureAccessPermissions UserFeatureAccessPermission[]
   property                     Property[]
+  recurringJobs                RecurringJob[]
 
   @@map("portfolios")
 }
@@ -296,6 +297,7 @@ model Property {
   credentials                  PropertyCredentials[]
   userFeatureAccessPermissions UserFeatureAccessPermission[]
   jobItem                      JobItem[]
+  recurringJobs                RecurringJob[]
 
   @@map("properties")
 }
