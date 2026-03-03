@@ -253,8 +253,10 @@ export class RecurringJobService implements IRecurringJobService {
       // This represents when the latest job will run
       const nextDate = schedule_date;
 
-      // Get hotel_id based on OTA provider
+      // Get property details including portfolio if not provided
       let hotel_id = null;
+      let portfolio_id = data.portfolio_id;
+      let portfolio_name = data.portfolio_name;
 
       if (data.property_id && ota_provider) {
         const property = await this.db.property.findUnique({
@@ -263,6 +265,12 @@ export class RecurringJobService implements IRecurringJobService {
             expedia_id: true,
             agoda_id: true,
             booking_id: true,
+            portfolio_id: true,
+            portfolio: {
+              select: {
+                name: true,
+              },
+            },
           },
         });
         
@@ -279,6 +287,12 @@ export class RecurringJobService implements IRecurringJobService {
               hotel_id = property.booking_id;
               break;
           }
+
+          // If portfolio not provided, get it from property
+          if (!portfolio_id && property.portfolio_id) {
+            portfolio_id = property.portfolio_id;
+            portfolio_name = property.portfolio?.name;
+          }
         }
       }
 
@@ -290,8 +304,8 @@ export class RecurringJobService implements IRecurringJobService {
         ota_provider: ota_provider,
         duration: durationValue,
         is_active: true,
-        portfolio_id: data.portfolio_id,
-        portfolio_name: data.portfolio_name,
+        portfolio_id,
+        portfolio_name,
         property_id: data.property_id,
         property_name: property_name,
         hotel_id,
@@ -376,8 +390,10 @@ export class RecurringJobService implements IRecurringJobService {
       // This represents when the latest job will run
       const nextDate = schedule_date;
 
-      // Get hotel_id based on OTA provider
+      // Get property details including portfolio if not provided in existingJob
       let hotel_id = null;
+      let portfolio_id = existingJob.portfolio_id;
+      let portfolio_name = existingJob.portfolio_name;
 
       if (existingJob.property_id && existingJob.ota_provider) {
         const property = await this.db.property.findUnique({
@@ -386,6 +402,12 @@ export class RecurringJobService implements IRecurringJobService {
             expedia_id: true,
             agoda_id: true,
             booking_id: true,
+            portfolio_id: true,
+            portfolio: {
+              select: {
+                name: true,
+              },
+            },
           },
         });
         
@@ -402,6 +424,12 @@ export class RecurringJobService implements IRecurringJobService {
               hotel_id = property.booking_id;
               break;
           }
+
+          // If portfolio not provided in existingJob, get it from property
+          if (!portfolio_id && property.portfolio_id) {
+            portfolio_id = property.portfolio_id;
+            portfolio_name = property.portfolio?.name;
+          }
         }
       }
 
@@ -413,8 +441,8 @@ export class RecurringJobService implements IRecurringJobService {
         ota_provider: existingJob.ota_provider,
         duration: durationValue,
         is_active: true,
-        portfolio_id: existingJob.portfolio_id,
-        portfolio_name: existingJob.portfolio_name,
+        portfolio_id,
+        portfolio_name,
         property_id: existingJob.property_id,
         property_name: existingJob.property_name,
         hotel_id,
