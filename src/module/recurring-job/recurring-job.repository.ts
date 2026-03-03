@@ -368,6 +368,25 @@ export class RecurringJobRepository implements IRecurringJobRepository {
     }
   }
 
+  async findBucketWithJobs(
+    bucketId: string,
+  ): Promise<(RecurringReportBucket & { jobs: Job[] }) | null> {
+    try {
+      const bucket = await this.db.recurringReportBucket.findUnique({
+        where: { id: bucketId },
+        include: {
+          jobs: {
+            orderBy: { createdAt: 'asc' },
+          },
+        },
+      });
+      return bucket;
+    } catch (error) {
+      this.logger.error('Error finding bucket with jobs:', error);
+      throw error;
+    }
+  }
+
   async countJobsInBucket(bucketId: string): Promise<number> {
     try {
       const count = await this.db.job.count({

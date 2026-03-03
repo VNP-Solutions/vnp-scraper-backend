@@ -419,4 +419,30 @@ export class RecurringJobController {
       this.logger,
     );
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('bucket/:bucketId/jobs')
+  @ApiOperation({ summary: 'Get all jobs in a specific bucket' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of all jobs in the bucket retrieved successfully',
+  })
+  @ApiResponse({ status: 404, description: 'Bucket not found' })
+  async getBucketJobs(
+    @Param('bucketId') bucketId: string,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const jobs = await this.recurringJobService.getBucketJobs(bucketId);
+        return {
+          statusCode: 200,
+          message: 'Jobs retrieved successfully',
+          data: jobs,
+        };
+      },
+      this.logger,
+    );
+  }
 }

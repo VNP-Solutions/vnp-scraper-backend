@@ -40,6 +40,9 @@ export interface IRecurringJobRepository {
   findLatestBucketByRecurringId(
     recurringId: string,
   ): Promise<(RecurringReportBucket & { jobs: Job[] }) | null>;
+  findBucketWithJobs(
+    bucketId: string,
+  ): Promise<(RecurringReportBucket & { jobs: Job[] }) | null>;
   countJobsInBucket(bucketId: string): Promise<number>;
 }
 
@@ -81,4 +84,5 @@ export interface IRecurringJobService {
     deletedCount: number;
     deletedIds: string[];
   }>;
+  getBucketJobs(bucketId: string): Promise<Job[]>;
 }
