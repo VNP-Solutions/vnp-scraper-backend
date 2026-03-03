@@ -28,8 +28,8 @@ export class ScheduledJobSchedulerService {
     private readonly configService: ConfigService,
   ) {}
 
-  // @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
-  @Cron("0 44 16 19 2 *") // 4:45 PM on February 19, 2026
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  // @Cron("0 38 17 3 3 *") // 5:35 PM on March 3, 2026
   async handleScheduledJobs() {
     this.logger.log('Starting scheduled jobs execution...');
 
