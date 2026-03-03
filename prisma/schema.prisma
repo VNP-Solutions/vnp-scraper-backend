@@ -235,11 +235,23 @@ model RecurringJob {
   ota_provider  OTAProvider?
   duration      Int          @default(1) // Number of monthly jobs per cycle
   is_active     Boolean      @default(true)
+  
+  // Portfolio and Property information
+  portfolio_id  String?      @db.ObjectId
+  portfolio_name String?
+  property_id   String?      @db.ObjectId
+  property_name String?
+  
+  // Hotel ID (based on OTA provider)
+  hotel_id      Int?
+  
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
-  jobs    Job[]
-  buckets RecurringReportBucket[]
+  portfolio Portfolio? @relation(fields: [portfolio_id], references: [id])
+  property  Property?  @relation(fields: [property_id], references: [id])
+  jobs      Job[]
+  buckets   RecurringReportBucket[]
 
   @@map("recurring_jobs")
 }

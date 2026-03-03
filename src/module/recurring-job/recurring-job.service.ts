@@ -251,6 +251,35 @@ export class RecurringJobService implements IRecurringJobService {
       // This represents when the latest job will run
       const nextDate = schedule_date;
 
+      // Get hotel_id based on OTA provider
+      let hotel_id = null;
+
+      if (data.property_id && ota_provider) {
+        const property = await this.jobRepository.db.property.findUnique({
+          where: { id: data.property_id },
+          select: {
+            expedia_id: true,
+            agoda_id: true,
+            booking_id: true,
+          },
+        });
+        
+        if (property) {
+          // Select the appropriate ID based on OTA provider
+          switch (ota_provider) {
+            case 'Expedia':
+              hotel_id = property.expedia_id;
+              break;
+            case 'Agoda':
+              hotel_id = property.agoda_id;
+              break;
+            case 'Booking':
+              hotel_id = property.booking_id;
+              break;
+          }
+        }
+      }
+
       // Create the recurring job
       const recurringJob = await this.repository.create({
         name: recurringJobName,
@@ -259,6 +288,11 @@ export class RecurringJobService implements IRecurringJobService {
         ota_provider: ota_provider,
         duration: durationValue,
         is_active: true,
+        portfolio_id: data.portfolio_id,
+        portfolio_name: data.portfolio_name,
+        property_id: data.property_id,
+        property_name: property_name,
+        hotel_id,
       });
 
       // Create first bucket
@@ -340,6 +374,35 @@ export class RecurringJobService implements IRecurringJobService {
       // This represents when the latest job will run
       const nextDate = schedule_date;
 
+      // Get hotel_id based on OTA provider
+      let hotel_id = null;
+
+      if (existingJob.property_id && existingJob.ota_provider) {
+        const property = await this.jobRepository.db.property.findUnique({
+          where: { id: existingJob.property_id },
+          select: {
+            expedia_id: true,
+            agoda_id: true,
+            booking_id: true,
+          },
+        });
+        
+        if (property) {
+          // Select the appropriate ID based on OTA provider
+          switch (existingJob.ota_provider) {
+            case 'Expedia':
+              hotel_id = property.expedia_id;
+              break;
+            case 'Agoda':
+              hotel_id = property.agoda_id;
+              break;
+            case 'Booking':
+              hotel_id = property.booking_id;
+              break;
+          }
+        }
+      }
+
       // Create the recurring job
       const recurringJob = await this.repository.create({
         name: recurringJobName,
@@ -348,6 +411,11 @@ export class RecurringJobService implements IRecurringJobService {
         ota_provider: existingJob.ota_provider,
         duration: durationValue,
         is_active: true,
+        portfolio_id: existingJob.portfolio_id,
+        portfolio_name: existingJob.portfolio_name,
+        property_id: existingJob.property_id,
+        property_name: existingJob.property_name,
+        hotel_id,
       });
 
       // Create first bucket

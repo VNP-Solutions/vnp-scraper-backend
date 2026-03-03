@@ -148,6 +148,21 @@ export class RecurringJobResponseDto {
   @ApiProperty()
   is_active: boolean;
 
+  @ApiProperty({ required: false })
+  portfolio_id?: string;
+
+  @ApiProperty({ required: false })
+  portfolio_name?: string;
+
+  @ApiProperty({ required: false })
+  property_id?: string;
+
+  @ApiProperty({ required: false })
+  property_name?: string;
+
+  @ApiProperty({ required: false, description: 'Hotel ID based on OTA provider' })
+  hotel_id?: number;
+
   @ApiProperty()
   createdAt: Date;
 
