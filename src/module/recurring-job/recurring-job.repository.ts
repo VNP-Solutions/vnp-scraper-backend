@@ -22,6 +22,15 @@ export class RecurringJobRepository implements IRecurringJobRepository {
         ota_provider: data.ota_provider ?? null,
         duration: data.duration ?? 1,
         is_active: data.is_active ?? true,
+        portfolio_name: data.portfolio_name ?? null,
+        property_name: data.property_name ?? null,
+        hotel_id: data.hotel_id ?? null,
+        portfolio: data.portfolio_id
+          ? { connect: { id: data.portfolio_id } }
+          : undefined,
+        property: data.property_id
+          ? { connect: { id: data.property_id } }
+          : undefined,
       };
 
       const recurringJob = await this.db.recurringJob.create({
