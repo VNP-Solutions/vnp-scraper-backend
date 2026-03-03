@@ -19,6 +19,7 @@ import { Response } from 'express';
 import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { ResponseHandler } from 'src/common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { DbDataResponseDto } from './db-data.dto';
 import { IDbDataService } from './db-data.interface';
 
 @ApiTags('DbData')
@@ -34,7 +35,11 @@ export class DbDataController {
   @Get()
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get all DbData with filters' })
-  @ApiResponse({ status: 200, description: 'Returns list of DbData' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns list of DbData',
+    type: [DbDataResponseDto],
+  })
   @ApiQuery({
     name: 'search',
     required: false,
@@ -113,6 +118,7 @@ export class DbDataController {
   @ApiResponse({
     status: 200,
     description: 'Returns list of DbData for the job',
+    type: [DbDataResponseDto],
   })
   async getAllDbDataByJobId(
     @Param('job_id') jobId: string,
@@ -162,7 +168,11 @@ export class DbDataController {
   @Get('/:id')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get DbData by ID' })
-  @ApiResponse({ status: 200, description: 'Returns a DbData' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns a DbData',
+    type: DbDataResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'DbData not found' })
   async getDbDataById(@Param('id') id: string, @Res() response: Response) {
     return ResponseHandler.handler(
