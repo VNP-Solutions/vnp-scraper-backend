@@ -111,14 +111,16 @@ export class RecurringJobRepository implements IRecurringJobRepository {
       const skip = (page - 1) * limit;
       const allFilters: any = { ...filters };
 
-      // Search filter - searches in recurring job name
+      // Search filter - searches in recurring job name or hotel_id
       if (search) {
         const searchTerm = search.toString().trim();
         const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(searchTerm);
+        const isNumeric = /^\d+$/.test(searchTerm);
 
         allFilters.OR = [
           ...(isValidObjectId ? [{ id: searchTerm }] : []),
           { name: { contains: searchTerm, mode: 'insensitive' } },
+          ...(isNumeric ? [{ hotel_id: parseInt(searchTerm) }] : []),
         ];
       }
 
@@ -136,39 +138,19 @@ export class RecurringJobRepository implements IRecurringJobRepository {
         allFilters.duration = parseInt(duration.toString());
       }
 
-      // Portfolio filter - search in jobs
+      // Portfolio filter - direct filter on RecurringJob
       if (portfolio_id) {
-        allFilters.jobs = {
-          some: {
-            portfolio_id: portfolio_id.toString(),
-          },
-        };
+        allFilters.portfolio_id = portfolio_id.toString();
       }
 
-      // Property filter - search in jobs
+      // Property filter - direct filter on RecurringJob
       if (property_id) {
-        if (allFilters.jobs) {
-          allFilters.jobs.some.property_id = property_id.toString();
-        } else {
-          allFilters.jobs = {
-            some: {
-              property_id: property_id.toString(),
-            },
-          };
-        }
+        allFilters.property_id = property_id.toString();
       }
 
-      // OTA Provider filter - search in jobs
+      // OTA Provider filter - direct filter on RecurringJob
       if (ota_provider) {
-        if (allFilters.jobs) {
-          allFilters.jobs.some.ota_provider = ota_provider.toString();
-        } else {
-          allFilters.jobs = {
-            some: {
-              ota_provider: ota_provider.toString(),
-            },
-          };
-        }
+        allFilters.ota_provider = ota_provider.toString();
       }
 
       // Get total count

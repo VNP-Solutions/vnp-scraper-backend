@@ -123,7 +123,7 @@ export class RecurringJobController {
   @ApiQuery({
     name: 'search',
     required: false,
-    description: 'Search by recurring job ID or name (partial match, case-insensitive)',
+    description: 'Search by recurring job ID, name (partial match, case-insensitive), or hotel_id',
   })
   @ApiQuery({
     name: 'page',
@@ -165,19 +165,19 @@ export class RecurringJobController {
     name: 'portfolio_id',
     required: false,
     type: 'string',
-    description: 'Filter by portfolio ID (searches in related jobs)',
+    description: 'Filter by portfolio ID',
   })
   @ApiQuery({
     name: 'property_id',
     required: false,
     type: 'string',
-    description: 'Filter by property ID (searches in related jobs)',
+    description: 'Filter by property ID',
   })
   @ApiQuery({
     name: 'ota_provider',
     required: false,
     enum: ['Expedia', 'Booking', 'Agoda'],
-    description: 'Filter by OTA provider (searches in related jobs)',
+    description: 'Filter by OTA provider',
   })
   @ApiResponse({
     status: 200,
