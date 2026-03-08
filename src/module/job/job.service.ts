@@ -79,7 +79,16 @@ export class JobService implements IJobService {
   ): Promise<{ data: Job[]; metadata: any }> {
     try {
       const result = await this.repository.findAll(query);
-      return result;
+      // Normalize so log_link, failed_reason, screenshot_urls are always present (array/string for older docs)
+      const data = (result.data || []).map((job: any) => ({
+        ...job,
+        log_link: job.log_link ?? null,
+        failed_reason: job.failed_reason ?? '',
+        screenshot_urls: Array.isArray(job.screenshot_urls)
+          ? job.screenshot_urls
+          : [],
+      }));
+      return { ...result, data };
     } catch (error) {
       this.logger.error(`Error getting jobs: ${error.message}`, error.stack);
       throw error;

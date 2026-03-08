@@ -93,6 +93,18 @@ type DateRange {
   end_date   String
 }
 
+enum ScreenshotUrlType {
+  step
+  error
+}
+
+type JobScreenshotUrl {
+  step      String
+  url       String
+  timestamp String
+  type      ScreenshotUrlType
+}
+
 model User {
   id              String    @id @default(auto()) @map("_id") @db.ObjectId
   email           String    @unique
@@ -204,6 +216,8 @@ model Job {
   start_date                  String?
   end_date                    String?
   log_link                    String?
+  failed_reason               String?
+  screenshot_urls             JobScreenshotUrl[]
   live_url                    String?
   current_url                 String?
   case_open                   Boolean?    @default(false)
