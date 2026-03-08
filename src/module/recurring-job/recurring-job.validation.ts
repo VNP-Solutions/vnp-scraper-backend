@@ -42,12 +42,14 @@ export const createRecurringJobSchema = z.object({
   db_billing_duration: z.number().int().optional().nullable(),
   duration: z.number().int().min(1).max(12).default(1),
   watcher_emails: z.array(z.string()).optional(),
+  initial_date: dateStringSchema.nullable().optional(),
 });
 
 export const createRecurringJobFromJobSchema = z.object({
   job_id: objectIdSchema,
   schedule_date: dateStringSchema,
   duration: z.number().int().min(1).max(12).default(1),
+  initial_date: dateStringSchema.nullable().optional(),
 });
 
 export const updateRecurringJobSchema = z.object({

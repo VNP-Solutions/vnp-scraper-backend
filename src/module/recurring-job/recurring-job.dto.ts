@@ -97,6 +97,9 @@ export class CreateRecurringJobDto {
 
   @ApiProperty({ required: false, default: 1, description: 'Duration in months (default: 1)' })
   duration?: number;
+
+  @ApiProperty({ required: false, description: 'Initial date to start from (YYYY-MM-DD format). If provided, creates historical jobs from this date to the current month.' })
+  initial_date?: string;
 }
 
 export class CreateRecurringJobFromJobDto {
@@ -108,6 +111,9 @@ export class CreateRecurringJobFromJobDto {
 
   @ApiProperty({ required: false, default: 1, description: 'Duration in months (default: 1)' })
   duration?: number;
+
+  @ApiProperty({ required: false, description: 'Initial date to start from (YYYY-MM-DD format). If provided, creates historical jobs from this date to the current month.' })
+  initial_date?: string;
 }
 
 export class UpdateRecurringJobDto {
