@@ -259,7 +259,7 @@ export class RecurringJobService implements IRecurringJobService {
    */
   async createRecurringJob(
     data: CreateRecurringJobDto,
-  ): Promise<{ recurringJob: RecurringJob; bucket: RecurringReportBucket; job: Job; historicalJobs?: Job[] }> {
+  ): Promise<{ recurringJob: RecurringJob; bucket: RecurringReportBucket; job: Job; historicalJobs?: Job[]; buckets?: RecurringReportBucket[] }> {
     try {
       const { schedule_date, user_id, duration, ota_provider, property_name, initial_date, ...jobData } = data;
       const durationValue = duration ?? 1;
@@ -341,6 +341,7 @@ export class RecurringJobService implements IRecurringJobService {
       });
 
       const historicalJobs: Job[] = [];
+      const createdBuckets: RecurringReportBucket[] = [];
 
       // Handle historical jobs if initial_date is provided
       if (initial_date) {
@@ -364,6 +365,9 @@ export class RecurringJobService implements IRecurringJobService {
               name: bucketName,
             });
             
+            createdBuckets.push(currentBucket);
+            this.logger.log(`Created bucket ${currentBucket.id} (${bucketName}) for recurring job ${recurringJob.id}`);
+            
             bucketNumber++;
             jobsInCurrentBucket = 0;
           }
@@ -375,24 +379,32 @@ export class RecurringJobService implements IRecurringJobService {
           const endDate = `${year}-${month}-${String(lastDay).padStart(2, '0')}`;
 
           // Create job for this historical month with the schedule_date for execution
-          const historicalJob = await this.jobRepository.create({
-            ...jobData,
-            property_name,
-            ota_provider,
-            user_id,
-            recurring_id: recurringJob.id,
-            recurring_report_bucket_id: currentBucket!.id,
-            start_date: startDate,
-            end_date: endDate,
-            schedule_date: schedule_date, // All historical jobs will run on the same schedule_date
-            name: `${recurringJobName} - ${startDate} to ${endDate}`,
-            next_due_date: jobData.next_due_date
-              ? new Date(jobData.next_due_date)
-              : null,
-          });
+          try {
+            const historicalJob = await this.jobRepository.create({
+              ...jobData,
+              job_status: jobData.job_status || JobStatus.Pending,
+              property_name,
+              ota_provider,
+              user_id,
+              recurring_id: recurringJob.id,
+              recurring_report_bucket_id: currentBucket!.id,
+              start_date: startDate,
+              end_date: endDate,
+              schedule_date: schedule_date, // All historical jobs will run on the same schedule_date
+              name: `${recurringJobName} - ${startDate} to ${endDate}`,
+              next_due_date: jobData.next_due_date
+                ? new Date(jobData.next_due_date)
+                : null,
+            });
 
-          historicalJobs.push(historicalJob);
-          jobsInCurrentBucket++;
+            this.logger.log(`Created historical job ${historicalJob.id} for period ${startDate} to ${endDate} in bucket ${currentBucket.id}`);
+            
+            historicalJobs.push(historicalJob);
+            jobsInCurrentBucket++;
+          } catch (jobError) {
+            this.logger.error(`Failed to create historical job for period ${startDate} to ${endDate}:`, jobError);
+            throw jobError;
+          }
         }
 
         // Add all historical jobs to the scheduler
@@ -403,11 +415,17 @@ export class RecurringJobService implements IRecurringJobService {
         );
 
         this.logger.log(
-          `Created recurring job ${recurringJob.id} with ${historicalJobs.length} historical jobs, all scheduled for ${schedule_date}`,
+          `Created recurring job ${recurringJob.id} with ${createdBuckets.length} buckets and ${historicalJobs.length} jobs, all scheduled for ${schedule_date}`,
         );
 
-        // Return the last bucket and last historical job
-        return { recurringJob, bucket: currentBucket!, job: historicalJobs[historicalJobs.length - 1], historicalJobs };
+        // Return the first bucket and first job, with all historical jobs
+        return { 
+          recurringJob, 
+          bucket: createdBuckets[0], 
+          job: historicalJobs[0], 
+          historicalJobs,
+          buckets: createdBuckets 
+        };
       }
 
       // Normal flow without historical jobs
@@ -449,7 +467,7 @@ export class RecurringJobService implements IRecurringJobService {
         `Created recurring job ${recurringJob.id} with bucket "${bucketName}" and initial job ${job.id} covering ${startDate} to ${endDate}`,
       );
 
-      return { recurringJob, bucket, job };
+      return { recurringJob, bucket, job, buckets: [bucket] };
     } catch (error) {
       this.logger.error('Error creating recurring job:', error);
       throw error;
@@ -461,7 +479,7 @@ export class RecurringJobService implements IRecurringJobService {
    */
   async createRecurringJobFromJob(
     data: CreateRecurringJobFromJobDto,
-  ): Promise<{ recurringJob: RecurringJob; bucket: RecurringReportBucket; job: Job; historicalJobs?: Job[] }> {
+  ): Promise<{ recurringJob: RecurringJob; bucket: RecurringReportBucket; job: Job; historicalJobs?: Job[]; buckets?: RecurringReportBucket[] }> {
     try {
       const { job_id, schedule_date, duration, initial_date } = data;
       const durationValue = duration ?? 1;
@@ -549,6 +567,7 @@ export class RecurringJobService implements IRecurringJobService {
       });
 
       const historicalJobs: Job[] = [];
+      const createdBuckets: RecurringReportBucket[] = [];
 
       // Handle historical jobs if initial_date is provided
       if (initial_date) {
@@ -572,6 +591,9 @@ export class RecurringJobService implements IRecurringJobService {
               name: bucketName,
             });
             
+            createdBuckets.push(currentBucket);
+            this.logger.log(`Created bucket ${currentBucket.id} (${bucketName}) for recurring job ${recurringJob.id}`);
+            
             bucketNumber++;
             jobsInCurrentBucket = 0;
           }
@@ -583,17 +605,24 @@ export class RecurringJobService implements IRecurringJobService {
           const endDate = `${year}-${month}-${String(lastDay).padStart(2, '0')}`;
 
           // Create job for this historical month with the schedule_date for execution
-          const historicalJob = await this.createJobFromTemplate(existingJob, {
-            recurring_id: recurringJob.id,
-            bucket_id: currentBucket!.id,
-            schedule_date: schedule_date, // All historical jobs will run on the same schedule_date
-            start_date: startDate,
-            end_date: endDate,
-            name: `${recurringJobName} - ${startDate} to ${endDate}`,
-          });
+          try {
+            const historicalJob = await this.createJobFromTemplate(existingJob, {
+              recurring_id: recurringJob.id,
+              bucket_id: currentBucket!.id,
+              schedule_date: schedule_date, // All historical jobs will run on the same schedule_date
+              start_date: startDate,
+              end_date: endDate,
+              name: `${recurringJobName} - ${startDate} to ${endDate}`,
+            });
 
-          historicalJobs.push(historicalJob);
-          jobsInCurrentBucket++;
+            this.logger.log(`Created historical job ${historicalJob.id} for period ${startDate} to ${endDate} in bucket ${currentBucket.id}`);
+
+            historicalJobs.push(historicalJob);
+            jobsInCurrentBucket++;
+          } catch (jobError) {
+            this.logger.error(`Failed to create historical job for period ${startDate} to ${endDate}:`, jobError);
+            throw jobError;
+          }
         }
 
         // Add all historical jobs to the scheduler
@@ -604,11 +633,17 @@ export class RecurringJobService implements IRecurringJobService {
         );
 
         this.logger.log(
-          `Created recurring job ${recurringJob.id} from job ${job_id} with ${historicalJobs.length} historical jobs, all scheduled for ${schedule_date}`,
+          `Created recurring job ${recurringJob.id} from job ${job_id} with ${createdBuckets.length} buckets and ${historicalJobs.length} jobs, all scheduled for ${schedule_date}`,
         );
 
-        // Return the last bucket and last historical job
-        return { recurringJob, bucket: currentBucket!, job: historicalJobs[historicalJobs.length - 1], historicalJobs };
+        // Return the first bucket and first job, with all historical jobs
+        return { 
+          recurringJob, 
+          bucket: createdBuckets[0], 
+          job: historicalJobs[0], 
+          historicalJobs,
+          buckets: createdBuckets 
+        };
       }
 
       // Normal flow without historical jobs
@@ -643,7 +678,7 @@ export class RecurringJobService implements IRecurringJobService {
         `Created recurring job ${recurringJob.id} from job ${job_id} with bucket "${bucketName}" and initial job ${job.id}`,
       );
 
-      return { recurringJob, bucket, job };
+      return { recurringJob, bucket, job, buckets: [bucket] };
     } catch (error) {
       this.logger.error('Error creating recurring job from job:', error);
       throw error;
