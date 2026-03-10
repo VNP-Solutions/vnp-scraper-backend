@@ -806,10 +806,20 @@ export class RetrievalService implements IRetrievalService {
     query: Record<string, any>,
   ): Promise<{ data: Retrieval[]; metadata: any }> {
     try {
-      return await this.repository.findRetrievalsByParentRetrievalId(
-        parentRetrievalId,
-        query,
-      );
+      const result =
+        await this.repository.findRetrievalsByParentRetrievalId(
+          parentRetrievalId,
+          query,
+        );
+      // Normalize so failed_reason and screenshot_urls are always present
+      const data = (result.data || []).map((retrieval: any) => ({
+        ...retrieval,
+        failed_reason: retrieval.failed_reason ?? '',
+        screenshot_urls: Array.isArray(retrieval.screenshot_urls)
+          ? retrieval.screenshot_urls
+          : [],
+      }));
+      return { ...result, data };
     } catch (error) {
       this.logger.error(
         `Error getting retrievals by parent retrieval ID: ${error.message}`,
