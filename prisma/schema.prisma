@@ -558,6 +558,8 @@ model Retrieval {
   start_date                  String?
   end_date                    String?
   log_link                    String?
+  failed_reason               String?
+  screenshot_urls             JobScreenshotUrl[]
   live_url                    String?
   current_url                 String?
   case_open                   Boolean?    @default(false)
