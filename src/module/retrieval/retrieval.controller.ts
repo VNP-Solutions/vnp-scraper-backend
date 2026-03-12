@@ -483,16 +483,25 @@ export class RetrievalController {
           parentRetrievalId,
         );
 
-      const fileName = `${parentRetrieval.name}.xlsx`;
+      // Safe filename: avoid characters that break Content-Disposition
+      const baseName =
+        (parentRetrieval.name || `retrieval-${parentRetrievalId}`)
+          .replace(/[^\w\s.-]/g, '')
+          .replace(/\s+/g, '_')
+          .trim() || 'export';
+      const fileName = `${baseName}.xlsx`;
+      const encodedFileName = encodeURIComponent(fileName);
 
       response.setHeader(
         'Content-Type',
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       );
+      response.setHeader('Content-Length', String(buffer.length));
       response.setHeader(
         'Content-Disposition',
-        `attachment; filename="${fileName}"`,
+        `attachment; filename="${fileName}"; filename*=UTF-8''${encodedFileName}`,
       );
+      response.setHeader('Cache-Control', 'no-store');
       response.send(buffer);
     } catch (error) {
       this.logger.error(
