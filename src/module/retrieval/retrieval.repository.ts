@@ -365,8 +365,12 @@ export class RetrievalRepository implements IRetrievalRepository {
       const retrievalsColl =
         db.collection<Record<string, unknown>>('retrievals');
 
+      // Prisma stores @db.ObjectId fields as BSON ObjectId in MongoDB; query with ObjectId so the filter matches
+      const parentIdFilter = ObjectId.isValid(parentRetrievalId)
+        ? new ObjectId(parentRetrievalId)
+        : parentRetrievalId;
       const rawItems = await itemsColl
-        .find({ parent_retrieval_id: parentRetrievalId })
+        .find({ parent_retrieval_id: parentIdFilter })
         .sort({ createdAt: 1 })
         .toArray();
 
