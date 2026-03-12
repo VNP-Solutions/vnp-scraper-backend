@@ -21,6 +21,10 @@ export function sanitizeForExport<T>(value: T): T {
   if (typeof value === 'string') {
     return sanitizeString(value) as T;
   }
+  // Preserve Date (and other non-plain-objects); otherwise they get turned into {} by the object branch
+  if (value instanceof Date) {
+    return value;
+  }
   if (Array.isArray(value)) {
     return value.map((item) => sanitizeForExport(item)) as T;
   }
