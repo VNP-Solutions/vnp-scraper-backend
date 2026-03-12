@@ -5,6 +5,8 @@ import {
   Retrieval,
   RetrievalItem,
 } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
+import { MongoClient, ObjectId } from 'mongodb';
 import { DatabaseService } from '../database/database.service';
 import {
   CreateBatchDto,
@@ -15,10 +17,40 @@ import {
   UpdateRetrievalDto,
 } from './retrieval.dto';
 import { IRetrievalRepository } from './retrieval.interface';
+import { sanitizeForExport } from './sanitize.util';
+
+function mapRawDocToRetrieval(doc: Record<string, unknown>): Partial<Retrieval> {
+  const id = doc._id instanceof ObjectId ? doc._id.toString() : String(doc._id);
+  return {
+    id,
+    name: doc.name != null ? String(doc.name) : undefined,
+    portfolio_id: doc.portfolio_id != null ? String(doc.portfolio_id) : undefined,
+    property_id: doc.property_id != null ? String(doc.property_id) : undefined,
+    user_id: String(doc.user_id ?? ''),
+    batch_id: doc.batch_id != null ? String(doc.batch_id) : undefined,
+    parent_retrieval_id: String(doc.parent_retrieval_id ?? ''),
+    posting_type: doc.posting_type as Retrieval['posting_type'],
+    portfolio_name: doc.portfolio_name != null ? String(doc.portfolio_name) : undefined,
+    property_name: String(doc.property_name ?? ''),
+    ota_provider: (doc.OTA ?? doc.ota_provider) as Retrieval['ota_provider'],
+    remaining_direct_billed: Number(doc.remaining_direct_billed) || 0,
+    total_collectable: Number(doc.total_collectable) || 0,
+    total_amount_confirmed: Number(doc.total_amount_confirmed) || 0,
+    execution_type: String(doc.execution_type ?? ''),
+    job_backoff_length_loading: Number(doc.job_backoff_length_loading) || 0,
+    job_backoff_length_selector: Number(doc.job_backoff_length_selector) || 0,
+    reservations: Array.isArray(doc.reservations) ? doc.reservations.map(String) : [],
+    createdAt: doc.createdAt instanceof Date ? doc.createdAt : new Date(String(doc.createdAt ?? 0)),
+    updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt : new Date(String(doc.updatedAt ?? 0)),
+  } as Partial<Retrieval>;
+}
 
 @Injectable()
 export class RetrievalRepository implements IRetrievalRepository {
-  constructor(private readonly prisma: DatabaseService) {}
+  constructor(
+    private readonly prisma: DatabaseService,
+    private readonly configService: ConfigService,
+  ) {}
 
   async createParentRetrieval(
     data: CreateParentRetrievalDto,
@@ -311,6 +343,117 @@ export class RetrievalRepository implements IRetrievalRepository {
         createdAt: 'asc',
       },
     });
+  }
+
+  /**
+   * Fetches retrieval items for export using the native MongoDB driver and sanitizes
+   * all string fields. Use this for export to avoid Prisma "Failed to convert rust
+   * String into napi string" when the DB contains invalid UTF-8 or problematic characters.
+   */
+  async findRetrievalItemsByParentRetrievalIdForExport(
+    parentRetrievalId: string,
+  ): Promise<(RetrievalItem & { retrieval: Retrieval })[]> {
+    const url = this.configService.get<string>('DATABASE_URL');
+    if (!url) {
+      throw new Error('DATABASE_URL is not configured');
+    }
+    const client = new MongoClient(url);
+    try {
+      await client.connect();
+      const db = client.db();
+      const itemsColl = db.collection<Record<string, unknown>>('retrieval_items');
+      const retrievalsColl =
+        db.collection<Record<string, unknown>>('retrievals');
+
+      const rawItems = await itemsColl
+        .find({ parent_retrieval_id: parentRetrievalId })
+        .sort({ createdAt: 1 })
+        .toArray();
+
+      if (rawItems.length === 0) {
+        return [];
+      }
+
+      const retrievalIds = [
+        ...new Set(
+          rawItems.map((doc) => {
+            const rid = doc.retrieval_id;
+            return rid instanceof ObjectId ? rid.toString() : String(rid ?? '');
+          }),
+        ),
+      ].filter(Boolean);
+
+      const retrievalObjectIds = retrievalIds
+        .filter((id) => ObjectId.isValid(id))
+        .map((id) => new ObjectId(id));
+      const rawRetrievals =
+        retrievalObjectIds.length > 0
+          ? await retrievalsColl
+              .find({ _id: { $in: retrievalObjectIds } })
+              .toArray()
+          : [];
+
+      const retrievalMap = new Map<string, Retrieval>();
+      for (const r of rawRetrievals) {
+        const id = r._id instanceof ObjectId ? r._id.toString() : String(r._id);
+        retrievalMap.set(id, mapRawDocToRetrieval(r) as Retrieval);
+      }
+
+      const toRetrievalItem = (
+        doc: Record<string, unknown>,
+      ): RetrievalItem & { retrieval: Retrieval } => {
+        const id =
+          doc._id instanceof ObjectId ? doc._id.toString() : String(doc._id);
+        const retrievalId =
+          doc.retrieval_id instanceof ObjectId
+            ? doc.retrieval_id.toString()
+            : String(doc.retrieval_id ?? '');
+        const retrieval: Retrieval =
+          retrievalMap.get(retrievalId) ?? ({} as Retrieval);
+
+        return {
+          id,
+          retrieval_id: retrievalId,
+          parent_retrieval_id: String(doc.parent_retrieval_id ?? ''),
+          property_id: String(doc.property_id ?? ''),
+          guest_name: String(doc.guest_name ?? ''),
+          reservation_id: doc.reservation_id != null ? String(doc.reservation_id) : null,
+          confirmation_number:
+            doc.confirmation_number != null
+              ? String(doc.confirmation_number)
+              : null,
+          check_in_date: doc.check_in_date instanceof Date ? doc.check_in_date : new Date(String(doc.check_in_date)),
+          check_out_date: doc.check_out_date instanceof Date ? doc.check_out_date : new Date(String(doc.check_out_date)),
+          room_type: String(doc.room_type ?? ''),
+          booking_amount:
+            typeof doc.booking_amount === 'number' ? doc.booking_amount : null,
+          booked_date: doc.booked_date instanceof Date ? doc.booked_date : new Date(String(doc.booked_date)),
+          has_card_info: Boolean(doc.has_card_info),
+          card_info:
+            doc.card_info && typeof doc.card_info === 'object'
+              ? (doc.card_info as Record<string, unknown>)
+              : null,
+          has_payment_info: Boolean(doc.has_payment_info),
+          payment_info:
+            doc.payment_info && typeof doc.payment_info === 'object'
+              ? (doc.payment_info as Record<string, unknown>)
+              : null,
+          reservation_status: String(doc.reservation_status ?? ''),
+          additional_text:
+            doc.additional_text != null ? String(doc.additional_text) : null,
+          createdAt: doc.createdAt instanceof Date ? doc.createdAt : new Date(String(doc.createdAt)),
+          updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt : new Date(String(doc.updatedAt)),
+          retrieval,
+        } as RetrievalItem & { retrieval: Retrieval };
+      };
+
+      const items = rawItems.map((doc) => toRetrievalItem(doc));
+      return sanitizeForExport(items) as (RetrievalItem & {
+        retrieval: Retrieval;
+      })[];
+    } finally {
+      await client.close();
+    }
   }
 
   async findRetrievalItemsByRetrievalId(

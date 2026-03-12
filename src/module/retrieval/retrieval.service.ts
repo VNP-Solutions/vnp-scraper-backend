@@ -607,9 +607,10 @@ export class RetrievalService implements IRetrievalService {
         throw new BadRequestException('Parent retrieval not found');
       }
 
-      // Get all retrieval items for this parent retrieval
+      // Get all retrieval items for this parent retrieval (use raw MongoDB path
+      // to avoid Prisma "Failed to convert rust String into napi string" on invalid UTF-8)
       const retrievalItems =
-        await this.repository.findRetrievalItemsByParentRetrievalId(
+        await this.repository.findRetrievalItemsByParentRetrievalIdForExport(
           parentRetrievalId,
         );
 
