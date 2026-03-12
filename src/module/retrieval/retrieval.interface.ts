@@ -95,6 +95,9 @@ export interface IRetrievalRepository {
   findRetrievalItemsByParentRetrievalId(
     parentRetrievalId: string,
   ): Promise<RetrievalItem[]>;
+  findRetrievalItemsByParentRetrievalIdForExport(
+    parentRetrievalId: string,
+  ): Promise<(RetrievalItem & { retrieval: Retrieval })[]>;
   findRetrievalItemsByRetrievalId(
     retrievalId: string,
     query: Record<string, any>,
