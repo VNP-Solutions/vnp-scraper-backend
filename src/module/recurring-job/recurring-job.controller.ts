@@ -10,10 +10,14 @@ import {
   Put,
   Req,
   Res,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiOperation,
   ApiQuery,
   ApiResponse,
@@ -22,6 +26,7 @@ import {
 import { Response } from 'express';
 import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
+import { ExcelFileInterceptor } from 'src/common/interceptors/excel-file.interceptor';
 import { ResponseHandler } from 'src/common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
@@ -110,6 +115,81 @@ export class RecurringJobController {
         return {
           statusCode: 201,
           message: 'Recurring job created from existing job successfully',
+          data: result,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Post('/import-excel')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(ExcelFileInterceptor)
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description: 'Excel file containing recurring jobs data',
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Excel file (.xlsx, .xls)',
+        },
+      },
+    },
+  })
+  @ApiOperation({ 
+    summary: 'Import recurring jobs from Excel file',
+    description: 'Upload an Excel file to import multiple recurring jobs. Required columns: Posting Type, Property Name, Expedia ID/Agoda ID/Booking ID, Billing Type, Recurring Date, Duration. Optional columns: Portfolio, Initial Recurring Date (or Initial Date) for creating historical jobs, and credential columns (Expedia Username/Password, Agoda Username/Password, Booking Username/Password).',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Recurring jobs imported successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 201 },
+        message: { type: 'string' },
+        data: {
+          type: 'object',
+          properties: {
+            recurringJobsCreated: { type: 'number' },
+            recurringJobs: { type: 'array' },
+            errors: { 
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  row: { type: 'number' },
+                  error: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid file or data' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async importRecurringJobsFromExcel(
+    @UploadedFile() file: Express.Multer.File,
+    @Req() request: any,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const userId = request.user?.userId;
+        const result =
+          await this.recurringJobService.importRecurringJobsFromExcel(
+            file,
+            userId,
+          );
+        return {
+          statusCode: 201,
+          message: `Successfully imported ${result.recurringJobsCreated} recurring job(s)${result.errors.length > 0 ? ` with ${result.errors.length} error(s)` : ''}`,
           data: result,
         };
       },

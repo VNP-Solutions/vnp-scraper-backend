@@ -85,4 +85,12 @@ export interface IRecurringJobService {
     deletedIds: string[];
   }>;
   getBucketJobs(bucketId: string): Promise<Job[]>;
+  importRecurringJobsFromExcel(
+    file: Express.Multer.File,
+    userId: string,
+  ): Promise<{
+    recurringJobsCreated: number;
+    recurringJobs: any[];
+    errors: Array<{ row: number; error: string }>;
+  }>;
 }

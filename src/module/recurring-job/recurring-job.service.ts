@@ -5,7 +5,8 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Job, JobStatus, RecurringJob, RecurringReportBucket } from '@prisma/client';
+import { Job, JobStatus, OTAProvider, PostingType, RecurringJob, RecurringReportBucket } from '@prisma/client';
+import * as XLSX from 'xlsx';
 import { DatabaseService } from '../database/database.service';
 import { IJobRepository } from '../job/job.interface';
 import { IScheduledJobService } from '../scraper/scheduled-job.interface';
@@ -1199,6 +1200,296 @@ export class RecurringJobService implements IRecurringJobService {
       return bucket.jobs;
     } catch (error) {
       this.logger.error('Error getting bucket jobs:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Helper: Parse date from Excel (supports flexible formats with or without leading zeros)
+   * Accepts: M/D/YYYY, M/DD/YYYY, MM/D/YYYY, MM/DD/YYYY, YYYY-M-D, YYYY-MM-DD
+   */
+  private parseExcelDate(dateValue: any): string | null {
+    if (!dateValue || dateValue.toString().trim() === '') {
+      return null;
+    }
+
+    const dateStr = dateValue.toString().trim();
+
+    // Try M/D/YYYY, M/DD/YYYY, MM/D/YYYY, or MM/DD/YYYY format (flexible with leading zeros)
+    const mmddyyyyRegex = /^(0?[1-9]|1[0-2])\/(0?[1-9]|[12]\d|3[01])\/(\d{4})$/;
+    const mmddMatch = dateStr.match(mmddyyyyRegex);
+    if (mmddMatch) {
+      const [_, month, day, year] = mmddMatch;
+      // Pad with leading zeros for YYYY-MM-DD format
+      const paddedMonth = month.padStart(2, '0');
+      const paddedDay = day.padStart(2, '0');
+      return `${year}-${paddedMonth}-${paddedDay}`;
+    }
+
+    // Try YYYY-MM-DD or YYYY-M-D format (flexible with leading zeros)
+    const yyyymmddRegex = /^(\d{4})-(0?[1-9]|1[0-2])-(0?[1-9]|[12]\d|3[01])$/;
+    const yyyymmddMatch = dateStr.match(yyyymmddRegex);
+    if (yyyymmddMatch) {
+      const [_, year, month, day] = yyyymmddMatch;
+      // Pad with leading zeros for consistency
+      const paddedMonth = month.padStart(2, '0');
+      const paddedDay = day.padStart(2, '0');
+      return `${year}-${paddedMonth}-${paddedDay}`;
+    }
+
+    return null;
+  }
+
+  /**
+   * Helper: Determine OTA provider from Excel row
+   */
+  private determineOTAProvider(row: any): OTAProvider {
+    if (row['Expedia ID'] && row['Expedia ID'].toString().trim() !== '') {
+      return OTAProvider.Expedia;
+    }
+    if (row['Agoda ID'] && row['Agoda ID'].toString().trim() !== '') {
+      return OTAProvider.Agoda;
+    }
+    if (row['Booking ID'] && row['Booking ID'].toString().trim() !== '') {
+      return OTAProvider.Booking;
+    }
+    return OTAProvider.Expedia; // Default
+  }
+
+  /**
+   * Helper: Convert posting type string to enum
+   */
+  private convertToPostingType(value: string): PostingType {
+    const normalized = value?.toString().trim().toLowerCase();
+    switch (normalized) {
+      case 'ota':
+      case 'manual':
+        return PostingType.OTA;
+      case 'ota_plus':
+      case 'ota plus':
+      case 'automatic':
+        return PostingType.OTA_PLUS;
+      default:
+        return PostingType.OTA;
+    }
+  }
+
+  /**
+   * Import recurring jobs from Excel file
+   */
+  async importRecurringJobsFromExcel(
+    file: Express.Multer.File,
+    userId: string,
+  ): Promise<{
+    recurringJobsCreated: number;
+    recurringJobs: any[];
+    errors: Array<{ row: number; error: string }>;
+  }> {
+    try {
+      if (!file.buffer) {
+        throw new BadRequestException('File buffer is empty');
+      }
+
+      const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+
+      const data = XLSX.utils.sheet_to_json(worksheet, {
+        raw: false,
+        defval: '',
+      });
+
+      if (!data || data.length === 0) {
+        throw new BadRequestException('Excel file is empty or invalid');
+      }
+
+      const headers = Object.keys(data[0] as any);
+      this.logger.log(
+        `Starting recurring job import for ${data.length} rows with headers: ${headers.join(', ')}`,
+      );
+
+      let recurringJobsCreated = 0;
+      const recurringJobs: any[] = [];
+      const errors: Array<{ row: number; error: string }> = [];
+
+      for (let i = 0; i < data.length; i++) {
+        const row = data[i] as any;
+        const rowNumber = i + 2; // Excel row number (header is row 1)
+
+        try {
+          // Validate required fields
+          if (!row['Property Name'] || row['Property Name'].trim() === '') {
+            throw new Error('Property Name is required');
+          }
+
+          if (!row['Recurring Date'] || row['Recurring Date'].trim() === '') {
+            throw new Error('Recurring Date is required');
+          }
+
+          // Parse Recurring Date
+          const recurringDate = this.parseExcelDate(row['Recurring Date']);
+          if (!recurringDate) {
+            throw new Error(`Invalid Recurring Date format: ${row['Recurring Date']}`);
+          }
+
+          // Parse Initial Date (optional) - support multiple column names
+          const initialDateColumn = 
+            row['Initial Recurring Date'] || 
+            row['Initial Date'];
+          
+          const initialDate = initialDateColumn 
+            ? this.parseExcelDate(initialDateColumn)
+            : null;
+
+          // Get or Create Portfolio
+          let portfolioId = null;
+          let portfolioName = null;
+          if (row['Portfolio'] && row['Portfolio'].trim() !== '') {
+            portfolioName = row['Portfolio'].toString().trim();
+            let portfolio = await this.db.portfolio.findFirst({
+              where: { name: portfolioName },
+            });
+            
+            if (!portfolio) {
+              // Create portfolio if it doesn't exist
+              this.logger.log(`Creating portfolio: ${portfolioName}`);
+              portfolio = await this.db.portfolio.create({
+                data: {
+                  name: portfolioName,
+                },
+              });
+              this.logger.log(`Created portfolio ${portfolio.id}: ${portfolioName}`);
+            }
+            portfolioId = portfolio.id;
+          }
+
+          // Get or Create Property
+          const propertyName = row['Property Name'].toString().trim();
+          let property = await this.db.property.findFirst({
+            where: { name: propertyName },
+          });
+          
+          if (!property) {
+            // Determine OTA Provider to set the appropriate ID
+            const otaProvider = this.determineOTAProvider(row);
+            
+            // Get OTA ID value
+            const expediaId = row['Expedia ID'] ? parseInt(row['Expedia ID'].toString().trim()) : null;
+            const agodaId = row['Agoda ID'] ? parseInt(row['Agoda ID'].toString().trim()) : null;
+            const bookingId = row['Booking ID'] ? parseInt(row['Booking ID'].toString().trim()) : null;
+            
+            // Create property if it doesn't exist
+            this.logger.log(`Creating property: ${propertyName}`);
+            property = await this.db.property.create({
+              data: {
+                name: propertyName,
+                expedia_id: expediaId,
+                agoda_id: agodaId,
+                booking_id: bookingId,
+                portfolio: portfolioId ? { connect: { id: portfolioId } } : undefined,
+              },
+            });
+            this.logger.log(`Created property ${property.id}: ${propertyName}`);
+          }
+
+          // If portfolio not provided, get from property
+          if (!portfolioId && property.portfolio_id) {
+            portfolioId = property.portfolio_id;
+            const portfolio = await this.db.portfolio.findUnique({
+              where: { id: property.portfolio_id },
+            });
+            portfolioName = portfolio?.name || null;
+          }
+
+          // Determine OTA Provider
+          const otaProvider = this.determineOTAProvider(row);
+
+          // Parse Duration
+          const duration = row['Duration'] 
+            ? parseInt(row['Duration'].toString().trim())
+            : 1;
+
+          if (isNaN(duration) || duration < 1 || duration > 12) {
+            throw new Error(`Invalid Duration: ${row['Duration']}. Must be between 1-12`);
+          }
+
+          // Create recurring job
+          const recurringJobData: CreateRecurringJobDto = {
+            job_status: JobStatus.Pending,
+            portfolio_id: portfolioId,
+            sub_portfolio_id: null,
+            property_id: property.id,
+            user_id: userId,
+            posting_type: this.convertToPostingType(row['Posting Type']),
+            portfolio_name: portfolioName,
+            sub_portfolio_name: null,
+            property_name: propertyName,
+            billing_type: (row['Billing Type'] || 'VCC').toString().trim().toUpperCase(),
+            next_due_date: null,
+            schedule_date: recurringDate,
+            ota_provider: otaProvider,
+            remaining_direct_billed: parseFloat(row['Remaining Direct Billed'] || '0'),
+            total_collectable: parseFloat(row['Total Collectable'] || '0'),
+            total_amount_confirmed: parseFloat(row['Total Amount Confirmed'] || '0'),
+            execution_type: row['Execution Type'] || 'scheduled',
+            retries_attempted: 0,
+            max_retries: parseInt(row['Max Retries'] || '3'),
+            retry_delay_ms: parseInt(row['Retry Delay MS'] || '5000'),
+            priority: parseInt(row['Priority'] || '0'),
+            job_backoff_length_loading: parseInt(row['Job Backoff Length Loading'] || '50000'),
+            job_backoff_length_selector: parseInt(row['Job Backoff Length Selector'] || '40000'),
+            queue_name: row['Queue Name'] || 'default',
+            worker_assigned: row['Worker Assigned'] || null,
+            batch_execution_id: row['Batch Execution ID'] || null,
+            log_link: row['Log Link'] || null,
+            live_url: row['Live URL'] || null,
+            db_billing_duration: row['DB Billing Duration'] 
+              ? parseInt(row['DB Billing Duration'])
+              : null,
+            watcher_emails: row['Watcher Emails']
+              ? row['Watcher Emails']
+                  .toString()
+                  .split(',')
+                  .map((email: string) => email.trim())
+                  .filter((email: string) => email)
+              : [],
+            duration: duration,
+            initial_date: initialDate,
+          };
+
+          const result = await this.createRecurringJob(recurringJobData);
+
+          recurringJobs.push({
+            recurringJob: result.recurringJob,
+            bucketsCount: result.buckets?.length || 1,
+            jobsCount: result.historicalJobs ? result.historicalJobs.length : 1,
+          });
+          recurringJobsCreated++;
+
+          this.logger.log(
+            `Row ${rowNumber}: Created recurring job "${result.recurringJob.name}" with ${result.buckets?.length || 1} bucket(s) and ${result.historicalJobs ? result.historicalJobs.length : 1} job(s)`,
+          );
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          this.logger.error(`Row ${rowNumber}: Failed to create recurring job - ${errorMessage}`);
+          errors.push({
+            row: rowNumber,
+            error: errorMessage,
+          });
+        }
+      }
+
+      this.logger.log(
+        `Recurring job import completed: ${recurringJobsCreated} created, ${errors.length} errors`,
+      );
+
+      return {
+        recurringJobsCreated,
+        recurringJobs,
+        errors,
+      };
+    } catch (error) {
+      this.logger.error('Error importing recurring jobs from Excel:', error);
       throw error;
     }
   }
