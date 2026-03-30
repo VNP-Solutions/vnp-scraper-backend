@@ -77,25 +77,17 @@ export class RecurringJobService implements IRecurringJobService {
    * The bucket name reflects the data period covered by all jobs in the bucket.
    * Each bucket contains `duration` jobs, each covering 1 month.
    *
-   * Example: first schedule_date = 2026-03-15, duration = 2
+   * Example: dataStartDate = 2026-02-01, duration = 2
    *   - Jobs cover: Feb 2026, Mar 2026 (data months)
    *   - Bucket name: "Reporting for Feb - Mar 2026"
    */
   private generateBucketName(
-    firstScheduleDate: string,
+    dataStartDate: string,
     duration: number,
   ): string {
-    const date = new Date(firstScheduleDate);
-    const scheduleMonth = date.getMonth(); // 0-indexed
-    const scheduleYear = date.getFullYear();
-
-    // First job covers the previous month
-    let startMonth = scheduleMonth - 1;
-    let startYear = scheduleYear;
-    if (startMonth < 0) {
-      startMonth = 11;
-      startYear -= 1;
-    }
+    const date = new Date(dataStartDate);
+    const startMonth = date.getMonth(); // 0-indexed, this is the actual data start month
+    const startYear = date.getFullYear();
 
     // Last job covers (startMonth + duration - 1)
     let endMonth = startMonth + duration - 1;
@@ -149,7 +141,7 @@ export class RecurringJobService implements IRecurringJobService {
   /**
    * Generate a list of month-year strings from initial_date to schedule_date (excluding schedule_date month)
    * Example: initial_date = 2026-01-15, schedule_date = 2026-06-05
-   * Returns: ['2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05']
+   * Returns: ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05']
    */
   private getHistoricalMonths(initial_date: string, schedule_date: string): string[] {
     const initialDate = new Date(initial_date);
@@ -157,8 +149,8 @@ export class RecurringJobService implements IRecurringJobService {
     
     const months: string[] = [];
     
-    // Start from the month before the initial_date month
-    const currentDate = new Date(initialDate.getFullYear(), initialDate.getMonth() - 1, 1);
+    // Start from the initial_date month itself
+    const currentDate = new Date(initialDate.getFullYear(), initialDate.getMonth(), 1);
     
     // End at the month before schedule_date month
     const endDate = new Date(scheduleDate.getFullYear(), scheduleDate.getMonth() - 1, 1);
@@ -431,15 +423,15 @@ export class RecurringJobService implements IRecurringJobService {
 
       // Normal flow without historical jobs
       // Create first bucket
-      const bucketName = this.generateBucketName(schedule_date, durationValue);
+      // Get the 1-month date range for the first job
+      const { startDate, endDate } = this.getMonthlyDateRange(schedule_date);
+      
+      const bucketName = this.generateBucketName(startDate, durationValue);
       const bucket = await this.repository.createBucket({
         recurring_id: recurringJob.id,
         bucket_number: 1,
         name: bucketName,
       });
-
-      // Get the 1-month date range for the first job
-      const { startDate, endDate } = this.getMonthlyDateRange(schedule_date);
 
       // Create the first job linked to this recurring job and bucket
       const job = await this.jobRepository.create({
@@ -649,15 +641,15 @@ export class RecurringJobService implements IRecurringJobService {
 
       // Normal flow without historical jobs
       // Create first bucket
-      const bucketName = this.generateBucketName(schedule_date, durationValue);
+      // Get 1-month date range for the first job
+      const { startDate, endDate } = this.getMonthlyDateRange(schedule_date);
+      
+      const bucketName = this.generateBucketName(startDate, durationValue);
       const bucket = await this.repository.createBucket({
         recurring_id: recurringJob.id,
         bucket_number: 1,
         name: bucketName,
       });
-
-      // Get 1-month date range for the first job
-      const { startDate, endDate } = this.getMonthlyDateRange(schedule_date);
 
       // Create the first job linked to the bucket
       const job = await this.createJobFromTemplate(existingJob, {
@@ -792,7 +784,7 @@ export class RecurringJobService implements IRecurringJobService {
             let targetBucket = latestBucket;
 
             if (!targetBucket) {
-              const bucketName = this.generateBucketName(newScheduleDate, duration);
+              const bucketName = this.generateBucketName(startDate, duration);
               const newBucket = await this.repository.createBucket({
                 recurring_id: id,
                 bucket_number: 1,
@@ -870,7 +862,7 @@ export class RecurringJobService implements IRecurringJobService {
 
               if (!targetBucket || latestBucket.jobs.length >= duration) {
                 const bucketNumber = targetBucket ? targetBucket.bucket_number + 1 : 1;
-                const bucketName = this.generateBucketName(scheduleDate, duration);
+                const bucketName = this.generateBucketName(startDate, duration);
                 const newBucket = await this.repository.createBucket({
                   recurring_id: id,
                   bucket_number: bucketNumber,
@@ -1004,7 +996,7 @@ export class RecurringJobService implements IRecurringJobService {
 
       if (!latestBucket) {
         // No bucket exists (legacy data), create one
-        const bucketName = this.generateBucketName(nextScheduleDate, duration);
+        const bucketName = this.generateBucketName(startDate, duration);
         const newBucket = await this.repository.createBucket({
           recurring_id: recurringId,
           bucket_number: 1,
@@ -1014,7 +1006,7 @@ export class RecurringJobService implements IRecurringJobService {
       } else if (latestBucket.jobs.length >= duration) {
         // Current bucket is full, create a new one
         const newBucketNumber = latestBucket.bucket_number + 1;
-        const bucketName = this.generateBucketName(nextScheduleDate, duration);
+        const bucketName = this.generateBucketName(startDate, duration);
         const newBucket = await this.repository.createBucket({
           recurring_id: recurringId,
           bucket_number: newBucketNumber,
@@ -1413,6 +1405,18 @@ export class RecurringJobService implements IRecurringJobService {
             throw new Error(`Invalid Duration: ${row['Duration']}. Must be between 1-12`);
           }
 
+          // Parse Active column (optional)
+          // If value is "No", set to inactive. Otherwise (Yes, empty, or any other value), set to active
+          const activeColumn = row['Active'];
+          let isActive = true; // Default to active
+          
+          if (activeColumn) {
+            const normalized = activeColumn.toString().trim().toLowerCase();
+            if (normalized === 'no') {
+              isActive = false;
+            }
+          }
+
           // Create recurring job
           const recurringJobData: CreateRecurringJobDto = {
             job_status: JobStatus.Pending,
@@ -1459,6 +1463,13 @@ export class RecurringJobService implements IRecurringJobService {
 
           const result = await this.createRecurringJob(recurringJobData);
 
+          // Update is_active status if needed (createRecurringJob always creates with is_active=true)
+          if (!isActive && result.recurringJob) {
+            await this.repository.update(result.recurringJob.id, { is_active: false });
+            result.recurringJob.is_active = false;
+            this.logger.log(`Set recurring job ${result.recurringJob.id} to inactive`);
+          }
+
           recurringJobs.push({
             recurringJob: result.recurringJob,
             bucketsCount: result.buckets?.length || 1,
@@ -1467,7 +1478,7 @@ export class RecurringJobService implements IRecurringJobService {
           recurringJobsCreated++;
 
           this.logger.log(
-            `Row ${rowNumber}: Created recurring job "${result.recurringJob.name}" with ${result.buckets?.length || 1} bucket(s) and ${result.historicalJobs ? result.historicalJobs.length : 1} job(s)`,
+            `Row ${rowNumber}: Created recurring job "${result.recurringJob.name}" (is_active: ${result.recurringJob.is_active}) with ${result.buckets?.length || 1} bucket(s) and ${result.historicalJobs ? result.historicalJobs.length : 1} job(s)`,
           );
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);

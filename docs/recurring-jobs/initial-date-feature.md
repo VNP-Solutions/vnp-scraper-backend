@@ -48,21 +48,20 @@ When `initial_date` is provided, the system creates jobs for all months between 
 ```
 
 **What happens:**
-1. **Calculates historical months**: From the month BEFORE `initial_date` up to the month BEFORE `schedule_date`
-   - December 2025, January 2026, February 2026, March 2026, April 2026, May 2026
+1. **Calculates historical months**: From the `initial_date` month up to the month BEFORE `schedule_date`
+   - January 2026, February 2026, March 2026, April 2026, May 2026
 
 2. **Creates buckets**: Based on `duration` setting
-   - Bucket 1: December 2025 - January 2026 (2 jobs)
-   - Bucket 2: February 2026 - March 2026 (2 jobs)
-   - Bucket 3: April 2026 - May 2026 (2 jobs)
+   - Bucket 1: January 2026 - February 2026 (2 jobs)
+   - Bucket 2: March 2026 - April 2026 (2 jobs)
+   - Bucket 3: May 2026 (1 job)
 
 3. **Creates jobs**: 
-   - Job 1: Dec 1-31, 2025 (data range) → scheduled for June 5, 2026
-   - Job 2: Jan 1-31, 2026 (data range) → scheduled for June 5, 2026
-   - Job 3: Feb 1-28, 2026 (data range) → scheduled for June 5, 2026
-   - Job 4: Mar 1-31, 2026 (data range) → scheduled for June 5, 2026
-   - Job 5: Apr 1-30, 2026 (data range) → scheduled for June 5, 2026
-   - Job 6: May 1-31, 2026 (data range) → scheduled for June 5, 2026
+   - Job 1: Jan 1-31, 2026 (data range) → scheduled for June 5, 2026
+   - Job 2: Feb 1-28, 2026 (data range) → scheduled for June 5, 2026
+   - Job 3: Mar 1-31, 2026 (data range) → scheduled for June 5, 2026
+   - Job 4: Apr 1-30, 2026 (data range) → scheduled for June 5, 2026
+   - Job 5: May 1-31, 2026 (data range) → scheduled for June 5, 2026
 
 4. **All jobs run on the same date**: June 5, 2026
 
@@ -126,12 +125,12 @@ Content-Type: application/json
     "historicalJobs": [
       {
         "id": "...",
-        "name": "DoubleTree South Charlotte - Expedia - 2025-12-01 to 2025-12-31",
-        "start_date": "2025-12-01",
-        "end_date": "2025-12-31",
+        "name": "DoubleTree South Charlotte - Expedia - 2026-01-01 to 2026-01-31",
+        "start_date": "2026-01-01",
+        "end_date": "2026-01-31",
         "schedule_date": "2026-06-05"
       },
-      // ... 4 more historical jobs (Jan-May 2026)
+      // ... 4 more historical jobs (Feb-May 2026)
     ]
   }
 }
@@ -167,7 +166,7 @@ A hotel just signed up and needs reports for the past 6 months, all to be proces
   ...
 }
 ```
-This creates 6 historical jobs (Dec 2025 - May 2026), all scheduled to run on June 5, 2026. After they run, the cron will create the June 2026 job to run on July 5, 2026.
+This creates 5 historical jobs (Jan - May 2026), all scheduled to run on June 5, 2026. After they run, the cron will create the June 2026 job to run on July 5, 2026.
 
 ### Use Case 2: Catch-up After Outage
 System was down for 3 months, and you need to catch up on missed reports.
@@ -180,7 +179,7 @@ System was down for 3 months, and you need to catch up on missed reports.
   ...
 }
 ```
-Creates 4 jobs (Feb-May historical) to process the missed months, all scheduled to run on June 5, 2026. After they run, the cron will create June 2026 job for July 5, 2026.
+Creates 3 jobs (Feb-May historical) to process the missed months, all scheduled to run on June 5, 2026. After they run, the cron will create June 2026 job for July 5, 2026.
 
 ## Implementation Details
 
@@ -237,12 +236,11 @@ Example: `"DoubleTree South Charlotte - Expedia - 2026-01-01 to 2026-01-31"`
 ```
 
 **Expected Result:**
-- 3 jobs created:
-  - Dec 2025 (2025-12-01 to 2025-12-31)
+- 2 jobs created:
   - Jan 2026 (2026-01-01 to 2026-01-31)
   - Feb 2026 (2026-02-01 to 2026-02-28)
 - All scheduled for: March 15, 2026
-- 3 buckets created (one per job)
+- 2 buckets created (one per job)
 - After the cron runs on March 15, it will create the March 2026 job, scheduled to run on April 15, 2026
 
 ### Test Scenario 2: Multi-Month Duration
@@ -255,11 +253,10 @@ Example: `"DoubleTree South Charlotte - Expedia - 2026-01-01 to 2026-01-31"`
 ```
 
 **Expected Result:**
-- 3 jobs created (same as above)
-- 2 buckets created:
-  - Bucket 1: Dec 2025, Jan 2026
-  - Bucket 2: Feb 2026
-- After the cron runs on March 15, it will create the March 2026 job in Bucket 2, scheduled to run on April 15, 2026
+- 2 jobs created (same as above)
+- 1 bucket created:
+  - Bucket 1: Jan 2026, Feb 2026
+- After the cron runs on March 15, it will create the March 2026 job in a new bucket, scheduled to run on April 15, 2026
 
 ## Notes
 
