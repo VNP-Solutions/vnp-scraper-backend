@@ -37,6 +37,7 @@ At least one of these OTA ID columns must be provided:
 | Portfolio | String | Portfolio name (fetched from property if not provided) | `Crescent Hotels & Resorts` |
 | Initial Recurring Date | Date | Initial date for historical jobs (flexible: M/D/YYYY, M/DD/YYYY, MM/D/YYYY, MM/DD/YYYY, YYYY-M-D, YYYY-MM-DD) | `3/5/2026`, `03/05/2026`, `2026-3-5`, or `2026-03-05` |
 | Initial Date | Date | Alternative name for Initial Recurring Date | `1/1/2026` |
+| Active | String | Whether the recurring job is active. Use "No" for inactive, anything else (Yes, empty, etc.) is active | `Yes`, `No`, or empty |
 | Expedia Username | String | Expedia credentials | `user@example.com` |
 | Expedia Password | String | Expedia credentials | `password123` |
 | Agoda Username | String | Agoda credentials | `user@example.com` |
@@ -47,6 +48,7 @@ At least one of these OTA ID columns must be provided:
 **Note:** 
 - Credentials columns are accepted but not currently used in the recurring job creation logic. They may be used in future enhancements.
 - For the initial date, you can use either "Initial Recurring Date" or "Initial Date" - the system will check both.
+- For the active status, use the "Active" column. Set to "No" for inactive, anything else (Yes, empty, etc.) defaults to active.
 - If Portfolio or Property don't exist in the database, they will be automatically created.
 
 ## How It Works
@@ -76,11 +78,11 @@ If no initial date column is provided:
 
 ## Example Excel File
 
-| Posting Type | Portfolio | Property Name | Expedia ID | Agoda ID | Booking ID | Billing Type | Initial Recurring Date | Recurring Date | Duration |
-|--------------|-----------|---------------|------------|----------|------------|--------------|------------------------|----------------|----------|
-| OTA | Crescent Hotels | DoubleTree South Charlotte | 12345 | | | VCC | 01/01/2026 | 06/05/2026 | 2 |
-| OTA | | Hampton Inn Downtown | | 67890 | | DB | | 03/15/2026 | 1 |
-| OTA_PLUS | Marriott Group | Courtyard Atlanta | | | 11223 | VCC | 02/01/2026 | 04/10/2026 | 3 |
+| Posting Type | Portfolio | Property Name | Expedia ID | Agoda ID | Booking ID | Billing Type | Initial Recurring Date | Recurring Date | Duration | Is Active |
+|--------------|-----------|---------------|------------|----------|------------|--------------|------------------------|----------------|----------|-----------|
+| OTA | Crescent Hotels | DoubleTree South Charlotte | 12345 | | | VCC | 01/01/2026 | 06/05/2026 | 2 | true |
+| OTA | | Hampton Inn Downtown | | 67890 | | DB | | 03/15/2026 | 1 | false |
+| OTA_PLUS | Marriott Group | Courtyard Atlanta | | | 11223 | VCC | 02/01/2026 | 04/10/2026 | 3 | active |
 
 ## Request Example
 
@@ -170,6 +172,7 @@ If not provided in Excel, the following defaults are used:
 | Billing Type | `VCC` |
 | Posting Type | `OTA` |
 | Duration | `1` |
+| Is Active | `true` |
 | Execution Type | `scheduled` |
 | Max Retries | `3` |
 | Retry Delay MS | `5000` |
@@ -215,5 +218,7 @@ Upload an Excel file with multiple properties to onboard many hotels at once wit
 3. **Auto-Create Portfolio & Property**: If portfolio or property don't exist, they will be automatically created
 4. **Portfolio Auto-Fetch**: If portfolio is not in Excel, it's automatically fetched from the property
 5. **Hotel ID Auto-Select**: The system automatically selects the appropriate hotel_id based on which OTA ID column is filled
-6. **Credentials**: While username/password columns are accepted, they're not currently used in recurring job creation
-7. **Column Name Flexibility**: The system accepts two column names for the initial date: "Initial Recurring Date" or "Initial Date"
+6. **Active Status**: Only "No" (case-insensitive) makes the job inactive. Any other value (Yes, empty, etc.) keeps it active.
+7. **Credentials**: While username/password columns are accepted, they're not currently used in recurring job creation
+8. **Column Name Flexibility**: 
+   - Initial date: "Initial Recurring Date" or "Initial Date"
