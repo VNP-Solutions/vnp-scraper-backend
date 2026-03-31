@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Property, RoleEnum } from '@prisma/client';
+import { PhoneNumberSlotStatus, Property, RoleEnum } from '@prisma/client';
 import { EncryptionUtil } from 'src/common/utils/encryption.util';
 import * as XLSX from 'xlsx';
+import { getPhoneLastThreeDigitsKey } from '../phone-number-slot/phone-number-slot.utils';
 import { DatabaseService } from '../database/database.service';
 import { CreatePropertyDto, UpdatePropertyDto } from './property.dto';
 import { IPropertyRepository } from './property.interface';
@@ -36,6 +37,18 @@ export class PropertyRepository implements IPropertyRepository {
     }
     if (data.agoda_id) {
       propertyData.agoda_id = data.agoda_id;
+    }
+    if (data.phone_number !== undefined && data.phone_number !== null) {
+      propertyData.phone_number = data.phone_number;
+    }
+    if (data.slot !== undefined && data.slot !== null) {
+      propertyData.slot = data.slot;
+    }
+    if (
+      data.phone_number_slot_id !== undefined &&
+      data.phone_number_slot_id !== null
+    ) {
+      propertyData.phone_number_slot_id = data.phone_number_slot_id;
     }
 
     try {
@@ -133,6 +146,7 @@ export class PropertyRepository implements IPropertyRepository {
           where: allFilters,
           include: {
             credentials: true,
+            phoneNumberSlot: true,
             portfolio: true,
             subPortfolio: {
               include: {
@@ -168,6 +182,7 @@ export class PropertyRepository implements IPropertyRepository {
         },
         include: {
           credentials: true,
+          phoneNumberSlot: true,
         },
       });
       return property;
@@ -220,6 +235,7 @@ export class PropertyRepository implements IPropertyRepository {
         data,
         include: {
           credentials: true,
+          phoneNumberSlot: true,
         },
       });
       return property;
@@ -446,6 +462,7 @@ export class PropertyRepository implements IPropertyRepository {
         where: whereCondition,
         include: {
           credentials: true,
+          phoneNumberSlot: true,
           portfolio: true,
           subPortfolio: {
             include: {
@@ -509,6 +526,7 @@ export class PropertyRepository implements IPropertyRepository {
         include: {
           subPortfolio: true,
           credentials: true,
+          phoneNumberSlot: true,
         },
       });
     } catch (error) {
@@ -524,6 +542,7 @@ export class PropertyRepository implements IPropertyRepository {
       },
       include: {
         credentials: true,
+        phoneNumberSlot: true,
       },
     });
   }
@@ -663,6 +682,7 @@ export class PropertyRepository implements IPropertyRepository {
         return await this.db.property.findMany({
           include: {
             credentials: true,
+            phoneNumberSlot: true,
             portfolio: true,
             subPortfolio: {
               include: {
@@ -717,6 +737,8 @@ export class PropertyRepository implements IPropertyRepository {
           },
         },
         include: {
+          credentials: true,
+          phoneNumberSlot: true,
           portfolio: true,
           subPortfolio: true,
         },
@@ -1030,11 +1052,153 @@ export class PropertyRepository implements IPropertyRepository {
   }
 
   /**
+   * Parse optional "Phone Number" and optional "Slot".
+   * - Phone only: slot null → link by finding PhoneNumberSlot with same last-3-digit key.
+   * - Phone + slot: match or create pool row as before.
+   */
+  private parsePhoneNumberAndSlotFromRow(rowData: any): {
+    phone: string;
+    slot: number | null;
+  } | null {
+    const rawPhone = rowData['Phone Number'];
+    if (
+      rawPhone === undefined ||
+      rawPhone === null ||
+      String(rawPhone).trim() === ''
+    ) {
+      return null;
+    }
+    const phone = String(rawPhone).trim();
+    const rawSlot = rowData['Slot'];
+    const slotEmpty =
+      rawSlot === undefined ||
+      rawSlot === null ||
+      String(rawSlot).trim() === '';
+    if (slotEmpty) {
+      return { phone, slot: null };
+    }
+    const slotNum = parseInt(String(rawSlot).trim(), 10);
+    if (Number.isNaN(slotNum)) {
+      this.logger.warn(
+        `Import: invalid Slot "${rawSlot}" for row "${rowData['Property Name'] ?? ''}"; resolving slot from pool by last 3 digits of phone`,
+      );
+      return { phone, slot: null };
+    }
+    return { phone, slot: slotNum };
+  }
+
+  /**
+   * Import row gave phone but no slot: pick an existing PhoneNumberSlot whose number shares
+   * the same last-3-digit key. Prefers exact digit-string match with the imported phone;
+   * if several share only the last 3, uses the lowest slot and logs a warning.
+   */
+  private async resolveExistingPhoneNumberSlotIdByPhoneDigits(
+    phone: string,
+    contextLabel: string,
+  ): Promise<{ id: string; slot: number } | null> {
+    const key = getPhoneLastThreeDigitsKey(phone);
+    if (!key) {
+      this.logger.warn(
+        `${contextLabel}: cannot resolve slot — no digits in phone "${phone}"`,
+      );
+      return null;
+    }
+    const rows = await this.db.phoneNumberSlot.findMany({
+      select: { id: true, phone_number: true, slot: true },
+    });
+    const matches = rows.filter(
+      (r) => getPhoneLastThreeDigitsKey(r.phone_number) === key,
+    );
+    if (matches.length === 0) {
+      this.logger.warn(
+        `${contextLabel}: no PhoneNumberSlot found for last 3 digits "${key}"`,
+      );
+      return null;
+    }
+    const importDigits = phone.replace(/\D/g, '');
+    if (importDigits.length > 0) {
+      const exact = matches.find(
+        (r) => r.phone_number.replace(/\D/g, '') === importDigits,
+      );
+      if (exact) {
+        return { id: exact.id, slot: exact.slot };
+      }
+    }
+    if (matches.length === 1) {
+      return { id: matches[0].id, slot: matches[0].slot };
+    }
+    const sorted = [...matches].sort((a, b) => a.slot - b.slot);
+    const chosen = sorted[0];
+    this.logger.warn(
+      `${contextLabel}: ${matches.length} PhoneNumberSlots share last 3 digits "${key}"; using slot ${chosen.slot}`,
+    );
+    return { id: chosen.id, slot: chosen.slot };
+  }
+
+  private async resolvePhoneNumberSlotLinkForImport(
+    parsed: { phone: string; slot: number | null },
+    contextLabel: string,
+  ): Promise<{ slotId: string; phone: string; slot: number } | null> {
+    if (parsed.slot != null) {
+      const slotId = await this.resolveOrCreatePhoneNumberSlotForImport(
+        parsed.phone,
+        parsed.slot,
+      );
+      return slotId
+        ? { slotId, phone: parsed.phone, slot: parsed.slot }
+        : null;
+    }
+    const found = await this.resolveExistingPhoneNumberSlotIdByPhoneDigits(
+      parsed.phone,
+      contextLabel,
+    );
+    return found
+      ? { slotId: found.id, phone: parsed.phone, slot: found.slot }
+      : null;
+  }
+
+  /**
+   * If a PhoneNumberSlot exists with the same slot and same last-3-digit key, reuse its id.
+   * Otherwise create a new pool row (Released, no job).
+   */
+  private async resolveOrCreatePhoneNumberSlotForImport(
+    phone: string,
+    slot: number,
+  ): Promise<string | null> {
+    const key = getPhoneLastThreeDigitsKey(phone);
+    if (!key) {
+      this.logger.warn(
+        `Skipping phone slot link: no digits in phone "${phone}"`,
+      );
+      return null;
+    }
+    const candidates = await this.db.phoneNumberSlot.findMany({
+      where: { slot },
+    });
+    const existing = candidates.find(
+      (c) => getPhoneLastThreeDigitsKey(c.phone_number) === key,
+    );
+    if (existing) {
+      return existing.id;
+    }
+    const created = await this.db.phoneNumberSlot.create({
+      data: {
+        phone_number: phone,
+        slot,
+        status: PhoneNumberSlotStatus.Released,
+        job_id: null,
+      },
+    });
+    return created.id;
+  }
+
+  /**
    * Import properties from Excel file
    *
    * Expected Excel format:
    * - Required columns: "Property Name"
    * - Optional columns: "Portfolio", "Sub Portfolio", "email", "password"
+   * - Optional MFA pool: "Phone Number"; optional "Slot" — with slot: match by last 3 digits + slot or create pool row; phone only: find existing PhoneNumberSlot by last 3 digits (exact digit match preferred if several)
    * - OTA columns: "Expedia ID", "Expedia Status", "Booking ID", "Booking Status", "Agoda ID", "Agoda Status"
    * - Credential columns: "Expedia Username", "Expedia Password", "Agoda Username", "Agoda Password", "Booking Username", "Booking Password", "Expedia Email Associated", "Property Contact Email", "Portfolio Contact Email"
    *
@@ -1279,6 +1443,25 @@ export class PropertyRepository implements IPropertyRepository {
               propertyData.agoda_id = Number(rowData['Agoda ID']);
             }
 
+            const parsedPhoneSlot = this.parsePhoneNumberAndSlotFromRow(rowData);
+            if (parsedPhoneSlot) {
+              try {
+                const resolved = await this.resolvePhoneNumberSlotLinkForImport(
+                  parsedPhoneSlot,
+                  `Phone slot (new property "${rowData['Property Name']}")`,
+                );
+                if (resolved) {
+                  propertyData.phone_number = resolved.phone;
+                  propertyData.slot = resolved.slot;
+                  propertyData.phone_number_slot_id = resolved.slotId;
+                }
+              } catch (phoneSlotError: any) {
+                this.logger.warn(
+                  `Phone slot link skipped for new property ${rowData['Property Name']}: ${phoneSlotError?.message}`,
+                );
+              }
+            }
+
             // Create property using repository method
             const newProperty = await this.create(propertyData);
             properties.push(newProperty);
@@ -1480,6 +1663,26 @@ export class PropertyRepository implements IPropertyRepository {
             }
             if (rowData['Agoda ID']) {
               propertyUpdateData.agoda_id = Number(rowData['Agoda ID']);
+            }
+
+            const parsedPhoneSlotExisting =
+              this.parsePhoneNumberAndSlotFromRow(rowData);
+            if (parsedPhoneSlotExisting) {
+              try {
+                const resolved = await this.resolvePhoneNumberSlotLinkForImport(
+                  parsedPhoneSlotExisting,
+                  `Phone slot (existing property "${existingProperty.name}")`,
+                );
+                if (resolved) {
+                  propertyUpdateData.phone_number = resolved.phone;
+                  propertyUpdateData.slot = resolved.slot;
+                  propertyUpdateData.phone_number_slot_id = resolved.slotId;
+                }
+              } catch (phoneSlotError: any) {
+                this.logger.warn(
+                  `Phone slot link skipped for existing property ${existingProperty.name}: ${phoneSlotError?.message}`,
+                );
+              }
             }
 
             // Update property if there are IDs to update

@@ -6,6 +6,7 @@ import { firstValueFrom } from 'rxjs';
 import { IJobService } from '../job/job.interface';
 import { IRecurringJobService } from '../recurring-job/recurring-job.interface';
 import { IRetrievalService } from '../retrieval/retrieval.interface';
+import { BookingBulkDispatchService } from './booking-bulk-dispatch.service';
 import { IScheduledJobService } from './scheduled-job.interface';
 import { IScraperJobItemService } from './scraper-job-item.interface';
 
@@ -26,6 +27,7 @@ export class ScheduledJobSchedulerService {
     private readonly recurringJobService: IRecurringJobService,
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
+    private readonly bookingBulkDispatchService: BookingBulkDispatchService,
   ) {}
 
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
@@ -74,7 +76,7 @@ export class ScheduledJobSchedulerService {
 
       // Execute batch jobs
       if (jobs.length > 0) {
-        await this.executeBatchJobs(jobs, dateString);
+        await this.executeBatchJobs(jobs, dateString, scheduledJob.id);
       }
 
       // Execute batch retrieval jobs
@@ -123,7 +125,7 @@ export class ScheduledJobSchedulerService {
       );
 
       if (jobs.length > 0) {
-        await this.executeBatchJobs(jobs, date);
+        await this.executeBatchJobs(jobs, date, scheduledJob.id);
       }
 
       if (retrievalJobs.length > 0) {
@@ -147,7 +149,11 @@ export class ScheduledJobSchedulerService {
     }
   }
 
-  private async executeBatchJobs(jobs: Array<{ jobId: string }>, date: string) {
+  private async executeBatchJobs(
+    jobs: Array<{ jobId: string }>,
+    date: string,
+    scheduledJobRecordId?: string,
+  ) {
     try {
       if (!jobs || jobs.length === 0) {
         this.logger.warn('No jobs provided for batch execution');
@@ -160,7 +166,10 @@ export class ScheduledJobSchedulerService {
       const expediaDbJobs: Array<{ jobId: string }> = [];
       const expediaJobs: Array<{ jobId: string }> = [];
       const agodaJobs: Array<{ jobId: string }> = [];
-      const bookingJobs: Array<{ jobId: string }> = [];
+      const bookingJobs: Array<{
+        jobId: string;
+        propertyId: string | null;
+      }> = [];
 
       // Fetch OTA providers and billing types for all jobs
       for (const jobRequest of jobs) {
@@ -176,7 +185,10 @@ export class ScheduledJobSchedulerService {
           } else if (otaProvider === 'Agoda') {
             agodaJobs.push(jobRequest);
           } else if (otaProvider === 'Booking') {
-            bookingJobs.push(jobRequest);
+            bookingJobs.push({
+              jobId: jobRequest.jobId,
+              propertyId: job.property_id,
+            });
           } else {
             processedResults.push({
               jobId: jobRequest.jobId,
@@ -505,99 +517,39 @@ export class ScheduledJobSchedulerService {
         }
       }
 
-      // Process Booking jobs using bulk API
+      // Process Booking jobs (credential-grouped bulk + scheduled_job_id)
       if (bookingJobs.length > 0) {
-        try {
-          const bookingUrl = this.getUrlByOtaProvider('Booking');
+        const bookingUrl = this.getUrlByOtaProvider('Booking');
 
-          if (!bookingUrl) {
-            // Mark all Booking jobs as failed
-            for (const jobRequest of bookingJobs) {
-              processedResults.push({
-                jobId: jobRequest.jobId,
-                otaProvider: 'Booking',
-                status: HttpStatus.SERVICE_UNAVAILABLE,
-                message: `No Booking server URL configured (BOOKING_SERVER_URL)`,
-                success: false,
-                error: 'Booking server URL not configured',
-              });
-            }
-          } else {
-            // Collect all Booking job IDs
-            const jobIds = bookingJobs.map((job) => job.jobId);
-
-            this.logger.log(
-              `[Scheduled Batch] Processing ${bookingJobs.length} Booking jobs using bulk API`,
-            );
-
-            // Call bulk property run job API
-            const bulkRequestBody = {
-              job_ids: jobIds,
-            };
-
-            const response = await firstValueFrom(
-              this.httpService.post(
-                `${bookingUrl}/api/booking/bulk-property-run-job`,
-                bulkRequestBody,
-                {
-                  headers: {
-                    'Content-Type': 'application/json',
-                    Accept: 'application/json',
-                  },
-                  timeout: 300000, // 5 minute timeout
-                },
-              ),
-            );
-
-            // Process bulk response
-            if (
-              response.data?.results &&
-              Array.isArray(response.data.results)
-            ) {
-              for (const result of response.data.results) {
-                processedResults.push({
-                  jobId: result.jobId || result.job_id,
-                  otaProvider: 'Booking',
-                  status: result.status || response.status,
-                  message: result.message || 'Job run successfully',
-                  success: result.success !== false,
-                  data: result.data,
-                  error: result.error,
-                });
-              }
-            } else {
-              // If bulk API doesn't return individual results, mark all as successful
-              for (const jobRequest of bookingJobs) {
-                processedResults.push({
-                  jobId: jobRequest.jobId,
-                  otaProvider: 'Booking',
-                  status: response.status,
-                  message:
-                    response.data?.message || 'Bulk job run successfully',
-                  success: true,
-                  data: response.data,
-                });
-              }
-            }
-          }
-        } catch (error: any) {
-          const status =
-            error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
-          const errorMessage =
-            error.response?.data?.message ||
-            error.message ||
-            'Unknown error occurred';
-
-          // Mark all Booking jobs as failed
+        if (!bookingUrl) {
           for (const jobRequest of bookingJobs) {
             processedResults.push({
               jobId: jobRequest.jobId,
               otaProvider: 'Booking',
-              status,
-              message: errorMessage,
+              status: HttpStatus.SERVICE_UNAVAILABLE,
+              message: `No Booking server URL configured (BOOKING_SERVER_URL)`,
               success: false,
-              error: errorMessage,
+              error: 'Booking server URL not configured',
             });
+          }
+        } else {
+          this.logger.log(
+            `[Scheduled Batch] Processing ${bookingJobs.length} Booking job(s) via grouped bulk API (scheduled_job_id: ${scheduledJobRecordId ?? 'none'})`,
+          );
+
+          const bookingRows =
+            await this.bookingBulkDispatchService.dispatchGroupedBulkRuns(
+              bookingJobs.map((j) => ({
+                jobId: j.jobId,
+                propertyId: j.propertyId,
+              })),
+              bookingUrl,
+              (jobId, url) => this.jobItemService.updateJobCurrentUrl(jobId, url),
+              { scheduledJobId: scheduledJobRecordId },
+            );
+
+          for (const row of bookingRows) {
+            processedResults.push(row);
           }
         }
       }

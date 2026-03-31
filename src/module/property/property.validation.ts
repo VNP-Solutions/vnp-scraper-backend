@@ -15,6 +15,9 @@ export const createPropertySchema = z.object({
   booking_status: z.string().optional().nullable(),
   agoda_id: z.number().optional().nullable(),
   agoda_status: z.string().optional().nullable(),
+  phone_number: z.string().optional().nullable(),
+  slot: z.coerce.number().int().optional().nullable(),
+  phone_number_slot_id: objectIdSchema.optional().nullable(),
 });
 
 export const updatePropertySchema = createPropertySchema;
