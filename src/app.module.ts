@@ -15,6 +15,7 @@ import { JobModule } from './module/job/job.module';
 import { NotificationModule } from './module/notification/notification.module';
 import { OtpLogModule } from './module/otp-log/otp-log.module';
 import { OtpStatusModule } from './module/otp-status/otp-status.module';
+import { PhoneNumberSlotModule } from './module/phone-number-slot/phone-number-slot.module';
 import { PortfolioModule } from './module/portfolio/portfolio.module';
 import { PropertyCredentialsModule } from './module/property-credentials/property-credentials.module';
 import { PropertyModule } from './module/property/property.module';
@@ -51,6 +52,7 @@ import { UserModule } from './module/user/user.module';
     ScraperModule,
     AgodaModule,
     OtpStatusModule,
+    PhoneNumberSlotModule,
     RetrievalModule,
     DbDataModule,
     NotificationModule,

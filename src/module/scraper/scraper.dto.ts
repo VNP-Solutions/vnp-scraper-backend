@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class HealthResponseDto {
   @ApiProperty({ example: 'Connection established' })
@@ -244,6 +244,13 @@ export class BatchPropertyRunJobRequestDto {
       'List of jobs to execute. Each job will be routed to the appropriate scraper based on its OTA provider (Expedia, Agoda, Booking).',
   })
   jobs: BatchPropertyJobDto[];
+
+  @ApiPropertyOptional({
+    example: '507f1f77bcf86cd799439011',
+    description:
+      'Optional ScheduledJob document id (e.g. from /scraper/scheduled). Forwarded to the Booking scraper on credential-grouped bulk runs as scheduled_job_id.',
+  })
+  scheduled_job_id?: string;
 }
 
 export class BatchJobResultDto {

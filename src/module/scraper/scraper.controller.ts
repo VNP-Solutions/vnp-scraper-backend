@@ -33,6 +33,7 @@ import { ResponseHandler } from '../../common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { IJobService } from '../job/job.interface';
 import { IRetrievalService } from '../retrieval/retrieval.interface';
+import { BookingBulkDispatchService } from './booking-bulk-dispatch.service';
 import { IScheduledJobService } from './scheduled-job.interface';
 import {
     createScheduledJobSchema,
@@ -85,6 +86,7 @@ export class ScraperController {
     private readonly retrievalService: IRetrievalService,
     @Inject('IScheduledJobService')
     private readonly scheduledJobService: IScheduledJobService,
+    private readonly bookingBulkDispatchService: BookingBulkDispatchService,
   ) {
     // No need for base URL anymore - using OTA-specific URLs
   }
@@ -1230,6 +1232,48 @@ export class ScraperController {
     @Res() res: Response,
     @Body() body: BatchPropertyRunJobRequestDto,
   ) {
+    return this.runBatchPropertyRunJobResponse(res, body, {
+      bookingGroupByCredentials: false,
+    });
+  }
+
+  @Post('/api/batch-property-run-job-by-booking-credentials')
+  @ApiOperation({
+    summary: 'Start batch property jobs (Booking grouped by credentials)',
+    description:
+      'Same request shape as batch-property-run-job, plus optional scheduled_job_id (ScheduledJob Mongo id). Expedia, Agoda, and Expedia DB unchanged. Booking: grouped POST includes scheduled_job_id at top and on each credential_groups item, with job_ids, phone_number, slot, booking_username, booking_password. Path: BOOKING_GROUPED_BULK_API_PATH.',
+  })
+  @ApiBody({ type: BatchPropertyRunJobRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Batch property scraping jobs completed',
+    type: BatchPropertyRunJobResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid request body or missing job data',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Error processing batch jobs',
+    type: ErrorResponseDto,
+  })
+  async batchPropertyRunJobByBookingCredentials(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Body() body: BatchPropertyRunJobRequestDto,
+  ) {
+    return this.runBatchPropertyRunJobResponse(res, body, {
+      bookingGroupByCredentials: true,
+    });
+  }
+
+  private async runBatchPropertyRunJobResponse(
+    res: Response,
+    body: BatchPropertyRunJobRequestDto,
+    options: { bookingGroupByCredentials: boolean },
+  ) {
     try {
       if (!body.jobs || body.jobs.length === 0) {
         return res.status(HttpStatus.BAD_REQUEST).json({
@@ -1245,7 +1289,11 @@ export class ScraperController {
       const expediaDbJobs = [];
       const expediaJobs = [];
       const agodaJobs = [];
-      const bookingJobs = [];
+      const bookingJobs: Array<{
+        jobId: string;
+        otaProvider: string;
+        propertyId?: string | null;
+      }> = [];
 
       // Fetch job details and group them
       for (const jobRequest of body.jobs) {
@@ -1262,7 +1310,11 @@ export class ScraperController {
           } else if (otaProvider === 'Agoda') {
             agodaJobs.push({ ...jobRequest, otaProvider });
           } else if (otaProvider === 'Booking') {
-            bookingJobs.push({ ...jobRequest, otaProvider });
+            bookingJobs.push({
+              jobId: jobRequest.jobId,
+              otaProvider,
+              propertyId: job.property_id,
+            });
           } else {
             processedResults.push({
               jobId: jobRequest.jobId,
@@ -1442,30 +1494,98 @@ export class ScraperController {
 
       // Process Booking Jobs
       if (bookingJobs.length > 0) {
-         try {
-           const bookingUrl = this.getUrlByOtaProvider('Booking');
-           if (!bookingUrl) {
-              for (const job of bookingJobs) processedResults.push({ jobId: job.jobId, otaProvider: 'Booking', status: HttpStatus.SERVICE_UNAVAILABLE, success: false, message: 'Booking URL invalid' });
-           } else {
-              for (const job of bookingJobs) this.jobItemService.updateJobCurrentUrl(job.jobId, bookingUrl).catch(e => console.error(e));
-
-              const bulkRequestBody = { job_ids: bookingJobs.map(j => j.jobId) };
-              const response = await firstValueFrom(
-                this.httpService.post(`${bookingUrl}/api/booking/bulk-property-run-job`, bulkRequestBody, {
-                  headers: {'Content-Type': 'application/json', Accept: 'application/json'},
-                  timeout: 300000
-                })
+        if (options.bookingGroupByCredentials) {
+          const bookingUrl = this.getUrlByOtaProvider('Booking');
+          if (!bookingUrl) {
+            for (const job of bookingJobs) {
+              processedResults.push({
+                jobId: job.jobId,
+                otaProvider: 'Booking',
+                status: HttpStatus.SERVICE_UNAVAILABLE,
+                success: false,
+                message: 'Booking URL invalid',
+              });
+            }
+          } else {
+            const bookingRows =
+              await this.bookingBulkDispatchService.dispatchGroupedBulkRuns(
+                bookingJobs.map((j) => ({
+                  jobId: j.jobId,
+                  propertyId: j.propertyId,
+                })),
+                bookingUrl,
+                (jobId, url) =>
+                  this.jobItemService.updateJobCurrentUrl(jobId, url),
+                { scheduledJobId: body.scheduled_job_id },
               );
-              if (response.data?.results && Array.isArray(response.data.results)) {
-                 processedResults.push(...response.data.results);
-              } else {
-                 for (const job of bookingJobs) processedResults.push({ jobId: job.jobId, otaProvider: 'Booking', status: response.status, success: true, message: 'Bulk Booking run success' });
+            processedResults.push(...bookingRows);
+          }
+        } else {
+          try {
+            const bookingUrl = this.getUrlByOtaProvider('Booking');
+            if (!bookingUrl) {
+              for (const job of bookingJobs) {
+                processedResults.push({
+                  jobId: job.jobId,
+                  otaProvider: 'Booking',
+                  status: HttpStatus.SERVICE_UNAVAILABLE,
+                  success: false,
+                  message: 'Booking URL invalid',
+                });
               }
-           }
-         } catch (error: any) {
+            } else {
+              for (const job of bookingJobs) {
+                this.jobItemService
+                  .updateJobCurrentUrl(job.jobId, bookingUrl)
+                  .catch((e) => console.error(e));
+              }
+
+              const bulkRequestBody = {
+                job_ids: bookingJobs.map((j) => j.jobId),
+              };
+              const response = await firstValueFrom(
+                this.httpService.post(
+                  `${bookingUrl}/api/booking/bulk-property-run-job`,
+                  bulkRequestBody,
+                  {
+                    headers: {
+                      'Content-Type': 'application/json',
+                      Accept: 'application/json',
+                    },
+                    timeout: 300000,
+                  },
+                ),
+              );
+              if (
+                response.data?.results &&
+                Array.isArray(response.data.results)
+              ) {
+                processedResults.push(...response.data.results);
+              } else {
+                for (const job of bookingJobs) {
+                  processedResults.push({
+                    jobId: job.jobId,
+                    otaProvider: 'Booking',
+                    status: response.status,
+                    success: true,
+                    message: 'Bulk Booking run success',
+                  });
+                }
+              }
+            }
+          } catch (error: any) {
             const status = error.response?.status || 500;
-            for (const job of bookingJobs) processedResults.push({ jobId: job.jobId, otaProvider: 'Booking', status, success: false, message: error.message });
-         }
+            for (const job of bookingJobs) {
+              processedResults.push({
+                jobId: job.jobId,
+                otaProvider: 'Booking',
+                status,
+                success: false,
+                message: error.message,
+              });
+            }
+          }
+        }
       }
 
       const successfulJobs = processedResults.filter(

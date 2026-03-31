@@ -4,8 +4,10 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import * as https from 'https';
 import { DatabaseService } from '../database/database.service';
 import { JobModule } from '../job/job.module';
+import { PropertyCredentialsModule } from '../property-credentials/property-credentials.module';
 import { RecurringJobModule } from '../recurring-job/recurring-job.module';
 import { RetrievalModule } from '../retrieval/retrieval.module';
+import { BookingBulkDispatchService } from './booking-bulk-dispatch.service';
 import { ScheduledJobSchedulerService } from './scheduled-job-scheduler.service';
 import { ScheduledJobRepository } from './scheduled-job.repository';
 import { ScheduledJobService } from './scheduled-job.service';
@@ -34,6 +36,7 @@ import { ScraperController } from './scraper.controller';
     forwardRef(() => JobModule),
     forwardRef(() => RecurringJobModule),
     RetrievalModule,
+    PropertyCredentialsModule,
   ],
   controllers: [ScraperController],
   providers: [
@@ -56,6 +59,7 @@ import { ScraperController } from './scraper.controller';
     DatabaseService,
     Logger,
     ScheduledJobSchedulerService,
+    BookingBulkDispatchService,
   ],
   exports: ['IScheduledJobService'],
 })

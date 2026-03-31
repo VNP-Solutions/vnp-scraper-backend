@@ -60,6 +60,11 @@ enum OtpStatusValue {
   Released
 }
 
+enum PhoneNumberSlotStatus {
+  Occupied
+  Released
+}
+
 enum OtpPlatform {
   expedia
   agoda
@@ -235,7 +240,8 @@ model Job {
   recurringJob  RecurringJob?       @relation(fields: [recurring_id], references: [id], onDelete: Cascade)
   recurringReportBucket RecurringReportBucket? @relation(fields: [recurring_report_bucket_id], references: [id], onDelete: Cascade)
   jobItem       JobItem[]
-  OtpStatus     OtpStatus[]
+  OtpStatus         OtpStatus[]
+  phoneNumberSlots  PhoneNumberSlot[]
   dbData        DbData[]
   dbEntries     DbEntry[]
 
@@ -306,6 +312,12 @@ model Property {
   booking_trusted_status       String? @default("not_trusted")
   booking_last_login           DateTime?
 
+  phone_number            String?
+  slot                    Int?
+  phone_number_slot_id    String?  @db.ObjectId
+
+  phoneNumberSlot PhoneNumberSlot? @relation(fields: [phone_number_slot_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
   jobs                         Job[]
   files                        File[]
   credentials                  PropertyCredentials[]
@@ -313,6 +325,7 @@ model Property {
   jobItem                      JobItem[]
   recurringJobs                RecurringJob[]
 
+  @@index([phone_number_slot_id])
   @@map("properties")
 }
 
@@ -497,6 +510,26 @@ model OtpStatus {
   job Job? @relation(fields: [job_id], references: [id])
 
   @@map("otp_statuses")
+}
+
+model PhoneNumberSlot {
+  id            String                 @id @default(auto()) @map("_id") @db.ObjectId
+  phone_number  String
+  slot          Int
+  status        PhoneNumberSlotStatus  @default(Released)
+  job_id        String?                @db.ObjectId
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  job Job? @relation(fields: [job_id], references: [id])
+
+  properties Property[]
+
+  @@index([job_id])
+  @@index([phone_number])
+  @@index([status])
+  @@index([phone_number, slot])
+  @@map("phone_number_slots")
 }
 
 model Batch {

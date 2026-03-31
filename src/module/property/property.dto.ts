@@ -45,6 +45,21 @@ export class CreatePropertyDto {
     description: 'Agoda Status',
   })
   agoda_status?: string;
+
+  @ApiPropertyOptional({
+    description: 'Assigned phone number (often matches linked PhoneNumberSlot)',
+  })
+  phone_number?: string;
+
+  @ApiPropertyOptional({
+    description: 'Slot index (often matches linked PhoneNumberSlot.slot)',
+  })
+  slot?: number;
+
+  @ApiPropertyOptional({
+    description: 'PhoneNumberSlot document id — which pool row this property uses',
+  })
+  phone_number_slot_id?: string;
 }
 
 export class UpdatePropertyDto {
@@ -93,6 +108,21 @@ export class UpdatePropertyDto {
     description: 'Agoda Status',
   })
   agoda_status?: string;
+
+  @ApiPropertyOptional({
+    description: 'Assigned phone number (often matches linked PhoneNumberSlot)',
+  })
+  phone_number?: string;
+
+  @ApiPropertyOptional({
+    description: 'Slot index (often matches linked PhoneNumberSlot.slot)',
+  })
+  slot?: number;
+
+  @ApiPropertyOptional({
+    description: 'PhoneNumberSlot document id — which pool row this property uses',
+  })
+  phone_number_slot_id?: string;
 }
 
 export class ImportPropertiesResponseDto {
