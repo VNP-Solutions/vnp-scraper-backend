@@ -76,8 +76,8 @@ export class BookingBulkDispatchService {
   }
 
   /**
-   * Groups Booking jobs by decrypted bookingUsername + bookingPassword (internal only),
-   * then calls the Booking scraper once with all groups in one body:
+   * Groups Booking jobs by decrypted bookingUsername + bookingPassword + property portfolio
+   * (same credentials in different portfolios → separate groups), then one POST to Booking.
    * Body includes optional scheduled_job_id (top-level and repeated per credential_groups item).
    */
   async dispatchGroupedBulkRuns(
@@ -312,6 +312,24 @@ export class BookingBulkDispatchService {
     const failedJobs: Array<{ jobId: string; message: string }> = [];
     const map = new Map<string, CredentialGroupBucket>();
 
+    const uniquePropertyIds = [
+      ...new Set(
+        bookingJobs
+          .map((j) => j.propertyId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    const portfolioByPropertyId = new Map<string, string | null>();
+    if (uniquePropertyIds.length > 0) {
+      const props = await this.db.property.findMany({
+        where: { id: { in: uniquePropertyIds } },
+        select: { id: true, portfolio_id: true },
+      });
+      for (const p of props) {
+        portfolioByPropertyId.set(p.id, p.portfolio_id ?? null);
+      }
+    }
+
     for (const { jobId, propertyId } of bookingJobs) {
       if (!propertyId) {
         failedJobs.push({
@@ -348,7 +366,9 @@ export class BookingBulkDispatchService {
         continue;
       }
 
-      const key = `${username}\u0000${passwordPlain}`;
+      const portfolioId = portfolioByPropertyId.get(propertyId) ?? null;
+      const portfolioKey = portfolioId ?? '';
+      const key = `${username}\u0000${passwordPlain}\u0000${portfolioKey}`;
       let bucket = map.get(key);
       if (!bucket) {
         bucket = {
