@@ -52,6 +52,11 @@ export const createJobSchema = z.object({
   batch_id: z.union([objectIdSchema, z.null(), z.undefined()]).optional(),
   recurring_id: z.union([objectIdSchema, z.null(), z.undefined()]).optional(),
   db_billing_duration: z.number().int().optional().nullable(),
+  booking_vccs_filtered_reservation_count: z
+    .number()
+    .int()
+    .optional()
+    .nullable(),
 });
 
 export const updateJobSchema = createJobSchema.partial();
