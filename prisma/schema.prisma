@@ -228,6 +228,7 @@ model Job {
   case_open                   Boolean?    @default(false)
   watcher_emails              String[]
   db_billing_duration         Int?
+  booking_vccs_filtered_reservation_count Int?
   is_archived                 Boolean     @default(false)
   createdAt                   DateTime    @default(now())
   updatedAt                   DateTime    @updatedAt

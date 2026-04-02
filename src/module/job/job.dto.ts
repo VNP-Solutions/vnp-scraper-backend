@@ -109,6 +109,13 @@ export class CreateJobDto {
 
   @ApiProperty({ required: false })
   db_billing_duration?: number;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Count of reservations after booking VCCs filter (optional metadata)',
+  })
+  booking_vccs_filtered_reservation_count?: number;
 }
 
 export class UpdateJobDto implements Partial<CreateJobDto> {
@@ -174,6 +181,13 @@ export class UpdateJobDto implements Partial<CreateJobDto> {
 
   @ApiProperty({ required: false, default: false })
   is_archived?: boolean;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Count of reservations after booking VCCs filter (optional metadata)',
+  })
+  booking_vccs_filtered_reservation_count?: number;
 }
 
 export class ImportJobsResponseDto {
@@ -202,6 +216,7 @@ export class ImportJobsResponseDto {
         createdAt: { type: 'string', format: 'date-time' },
         updatedAt: { type: 'string', format: 'date-time' },
         db_billing_duration: { type: 'number' },
+        booking_vccs_filtered_reservation_count: { type: 'number' },
       },
     },
   })
