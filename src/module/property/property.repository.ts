@@ -1749,6 +1749,165 @@ export class PropertyRepository implements IPropertyRepository {
   }
 
   /**
+   * Reads an Excel sheet with columns Expedia ID, Expedia Username, Expedia Password
+   * (header matching is case-insensitive; expedia_id style also accepted).
+   * For each row: finds all Properties with that expedia_id, then upserts
+   * PropertyCredentials for each (passwords encrypted like other credential updates).
+   */
+  async importExpediaCredentialsFromExcel(
+    file: Express.Multer.File,
+  ): Promise<{
+    updated: number;
+    propertyNotFound: number;
+    rowsSkippedInvalid: number;
+    failures: Array<{ row: number; expediaId?: number; reason: string }>;
+  }> {
+    const normalizeHeader = (h: string) =>
+      h.trim().toLowerCase().replace(/\s+/g, ' ');
+
+    const getCell = (
+      row: Record<string, unknown>,
+      aliases: string[],
+    ): unknown => {
+      for (const key of Object.keys(row)) {
+        const nk = normalizeHeader(key);
+        for (const a of aliases) {
+          if (nk === normalizeHeader(a)) {
+            return row[key];
+          }
+        }
+      }
+      return undefined;
+    };
+
+    const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const data = XLSX.utils.sheet_to_json(worksheet) as Record<
+      string,
+      unknown
+    >[];
+
+    if (!data?.length) {
+      throw new Error('Excel file is empty or invalid');
+    }
+
+    let updated = 0;
+    let propertyNotFound = 0;
+    let rowsSkippedInvalid = 0;
+    const failures: Array<{ row: number; expediaId?: number; reason: string }> =
+      [];
+
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i];
+      const excelRow = i + 2;
+
+      const expediaRaw = getCell(row, [
+        'Expedia ID',
+        'expedia_id',
+        'expedia id',
+      ]);
+      if (
+        expediaRaw === undefined ||
+        expediaRaw === null ||
+        (typeof expediaRaw === 'string' && expediaRaw.trim() === '')
+      ) {
+        rowsSkippedInvalid++;
+        failures.push({ row: excelRow, reason: 'Missing Expedia ID' });
+        continue;
+      }
+
+      const expediaId = Number(expediaRaw);
+      if (!Number.isFinite(expediaId)) {
+        rowsSkippedInvalid++;
+        failures.push({ row: excelRow, reason: 'Invalid Expedia ID' });
+        continue;
+      }
+
+      const usernameRaw = getCell(row, [
+        'Expedia Username',
+        'expedia_username',
+        'expedia username',
+      ]);
+      const passwordRaw = getCell(row, [
+        'Expedia Password',
+        'expedia_password',
+        'expedia password',
+      ]);
+
+      const expediaUsername =
+        usernameRaw !== undefined && usernameRaw !== null
+          ? String(usernameRaw).trim()
+          : '';
+      const expediaPassword =
+        passwordRaw !== undefined && passwordRaw !== null
+          ? String(passwordRaw).trim()
+          : '';
+
+      if (!expediaUsername && !expediaPassword) {
+        rowsSkippedInvalid++;
+        failures.push({
+          row: excelRow,
+          expediaId,
+          reason: 'Expedia Username and Password are both empty',
+        });
+        continue;
+      }
+
+      const properties = await this.db.property.findMany({
+        where: { expedia_id: expediaId },
+        select: { id: true },
+      });
+
+      if (!properties.length) {
+        propertyNotFound++;
+        failures.push({
+          row: excelRow,
+          expediaId,
+          reason: 'No property found for this Expedia ID',
+        });
+        continue;
+      }
+
+      const credentialsPayload: {
+        expediaUsername?: string;
+        expediaPassword?: string;
+      } = {};
+      if (expediaUsername) {
+        credentialsPayload.expediaUsername = expediaUsername;
+      }
+      if (expediaPassword) {
+        credentialsPayload.expediaPassword = expediaPassword;
+      }
+
+      for (const property of properties) {
+        try {
+          await this.updatePropertyCredentials(
+            property.id,
+            credentialsPayload,
+          );
+          updated++;
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : 'Update failed';
+          failures.push({
+            row: excelRow,
+            expediaId,
+            reason: `${message} (property_id: ${property.id})`,
+          });
+        }
+      }
+    }
+
+    return {
+      updated,
+      propertyNotFound,
+      rowsSkippedInvalid,
+      failures,
+    };
+  }
+
+  /**
    * Encrypts a raw password
    * @param rawPassword - The plain text password to encrypt
    * @returns The encrypted password as a JSON string

@@ -220,4 +220,30 @@ export class PropertyService implements IPropertyService {
       throw error;
     }
   }
+
+  async importExpediaCredentialsFromExcel(
+    file: Express.Multer.File,
+  ): Promise<{
+    updated: number;
+    propertyNotFound: number;
+    rowsSkippedInvalid: number;
+    failures: Array<{ row: number; expediaId?: number; reason: string }>;
+  }> {
+    try {
+      this.logger.log('Starting Expedia credentials Excel import');
+      const result =
+        await this.repository.importExpediaCredentialsFromExcel(file);
+      this.logger.log(
+        `Expedia credentials import finished: ${result.updated} updated`,
+      );
+      return result;
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error(
+        `Error importing Expedia credentials from Excel: ${err.message}`,
+        err.stack,
+      );
+      throw error;
+    }
+  }
 }

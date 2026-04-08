@@ -31,6 +31,7 @@ import { ResponseHandler } from 'src/common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
   CreatePropertyDto,
+  ImportExpediaCredentialsResponseDto,
   ImportPropertiesResponseDto,
   UpdatePropertyDto,
 } from './property.dto';
@@ -579,6 +580,84 @@ export class PropertyController {
         return {
           statusCode: 200,
           message: `Import completed successfully: ${result.portfoliosCreated} portfolios, ${result.subPortfoliosCreated} sub-portfolios, ${result.propertiesCreated} properties, and ${result.credentialsCreated} credentials created`,
+          data: result,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Post('/import-bulk-credentials')
+  @ApiOperation({
+    summary: 'Bulk update Expedia credentials from Excel',
+    description:
+      'Upload a spreadsheet with columns: Expedia ID, Expedia Username, Expedia Password. Each row finds every property with that expedia_id and updates (or creates) property_credentials expediaUsername and expediaPassword for each. Header names are matched case-insensitively.',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description: 'Excel file with Expedia ID, Username, Password columns',
+    type: 'multipart/form-data',
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Excel file (.xlsx, .xls, .csv)',
+        },
+      },
+      required: ['file'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Import finished; see counts and per-row failures in data',
+    type: ImportExpediaCredentialsResponseDto,
+  })
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(ExcelFileInterceptor)
+  async importExpediaCredentials(
+    @Req() request: Request,
+    @UploadedFile() file: Express.Multer.File,
+    @Res() response: Response,
+  ) {
+    const { user } = request as any;
+    if (user.role !== 'admin') {
+      return ResponseHandler.handler(
+        response,
+        async () => {
+          return {
+            statusCode: 403,
+            message: 'You are not authorized to import Expedia credentials',
+            data: null,
+          };
+        },
+        this.logger,
+      );
+    }
+
+    if (!file) {
+      return ResponseHandler.handler(
+        response,
+        async () => {
+          return {
+            statusCode: 400,
+            message: 'Excel file is required',
+            data: null,
+          };
+        },
+        this.logger,
+      );
+    }
+
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result =
+          await this.propertyService.importExpediaCredentialsFromExcel(file);
+        return {
+          statusCode: 200,
+          message: `Expedia credentials import completed: ${result.updated} updated, ${result.propertyNotFound} property not found, ${result.rowsSkippedInvalid} rows skipped`,
           data: result,
         };
       },
