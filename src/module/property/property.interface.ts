@@ -67,6 +67,12 @@ export interface IPropertyRepository {
     subPortfolios: any[];
     properties: any[];
   }>;
+  importExpediaCredentialsFromExcel(file: Express.Multer.File): Promise<{
+    updated: number;
+    propertyNotFound: number;
+    rowsSkippedInvalid: number;
+    failures: Array<{ row: number; expediaId?: number; reason: string }>;
+  }>;
 }
 
 export interface IPropertyService {
@@ -104,5 +110,11 @@ export interface IPropertyService {
     portfolios: any[];
     subPortfolios: any[];
     properties: any[];
+  }>;
+  importExpediaCredentialsFromExcel(file: Express.Multer.File): Promise<{
+    updated: number;
+    propertyNotFound: number;
+    rowsSkippedInvalid: number;
+    failures: Array<{ row: number; expediaId?: number; reason: string }>;
   }>;
 }
