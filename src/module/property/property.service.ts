@@ -2,7 +2,9 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Property } from '@prisma/client';
 import { EncryptionUtil } from 'src/common/utils/encryption.util';
 import { CreatePropertyDto, UpdatePropertyDto } from './property.dto';
+import type { RevealOtaCredentialsBody } from './property.validation';
 import { IPropertyRepository, IPropertyService } from './property.interface';
+import type { UpdateOtaCredentialsBody } from './property.validation';
 
 @Injectable()
 export class PropertyService implements IPropertyService {
@@ -241,6 +243,56 @@ export class PropertyService implements IPropertyService {
       const err = error instanceof Error ? error : new Error(String(error));
       this.logger.error(
         `Error importing Expedia credentials from Excel: ${err.message}`,
+        err.stack,
+      );
+      throw error;
+    }
+  }
+
+  async updateOtaCredentials(
+    body: UpdateOtaCredentialsBody,
+  ): Promise<{
+    updated: number;
+    propertyNotFound: boolean;
+    failures: Array<{ reason: string; property_id?: string }>;
+  }> {
+    try {
+      this.logger.log(
+        `Updating OTA credentials for property_id=${body.property_id}, provider=${body.ota_provider}`,
+      );
+      const result = await this.repository.updateOtaCredentials(body);
+      this.logger.log(
+        `OTA credentials update finished: ${result.updated} updated, propertyNotFound=${result.propertyNotFound}`,
+      );
+      return result;
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error(
+        `Error updating OTA credentials: ${err.message}`,
+        err.stack,
+      );
+      throw error;
+    }
+  }
+
+  async getOtaCredentialsReveal(body: RevealOtaCredentialsBody): Promise<{
+    propertyNotFound: boolean;
+    credentialsNotFound: boolean;
+    username: string;
+    password: string;
+  }> {
+    try {
+      this.logger.log(
+        `Reveal OTA credentials for property_id=${body.property_id}, provider=${body.ota_provider}`,
+      );
+      return await this.repository.getOtaCredentialsReveal(
+        body.property_id,
+        body.ota_provider,
+      );
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error(
+        `Error revealing OTA credentials: ${err.message}`,
         err.stack,
       );
       throw error;

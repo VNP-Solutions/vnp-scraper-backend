@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { OTAProvider } from '@prisma/client';
 
 export class CreatePropertyDto {
   @ApiProperty({
@@ -238,4 +239,90 @@ export class ImportExpediaCredentialsResponseDto {
     type: [ImportExpediaCredentialsFailureDto],
   })
   failures: ImportExpediaCredentialsFailureDto[];
+}
+
+export class UpdateOtaCredentialsDto {
+  @ApiProperty({
+    description: 'Mongo ObjectId of the property',
+    example: '507f1f77bcf86cd799439011',
+  })
+  property_id: string;
+
+  @ApiProperty({ enum: OTAProvider })
+  ota_provider: OTAProvider;
+
+  @ApiPropertyOptional({
+    description: 'Login username for that OTA on property_credentials',
+  })
+  username?: string;
+
+  @ApiPropertyOptional({
+    description: 'Login password for that OTA (stored encrypted)',
+  })
+  password?: string;
+}
+
+export class UpdateOtaCredentialsFailureDto {
+  @ApiPropertyOptional({
+    description: 'Property id when a per-property credential update failed',
+  })
+  property_id?: string;
+
+  @ApiProperty({ description: 'Error detail' })
+  reason: string;
+}
+
+export class UpdateOtaCredentialsResponseDto {
+  @ApiProperty({
+    description: '1 if credentials were updated, 0 otherwise',
+    example: 1,
+  })
+  updated: number;
+
+  @ApiProperty({
+    description: 'True when no property exists with the given property_id',
+    example: false,
+  })
+  propertyNotFound: boolean;
+
+  @ApiProperty({
+    description: 'Per-property update errors (empty when all succeeded)',
+    type: [UpdateOtaCredentialsFailureDto],
+  })
+  failures: UpdateOtaCredentialsFailureDto[];
+}
+
+export class RevealOtaCredentialsDto {
+  @ApiProperty({
+    description: 'Mongo ObjectId of the property',
+    example: '507f1f77bcf86cd799439011',
+  })
+  property_id: string;
+
+  @ApiProperty({ enum: OTAProvider })
+  ota_provider: OTAProvider;
+}
+
+export class RevealOtaCredentialsResponseDto {
+  @ApiProperty({
+    description: 'True when no property exists with the given property_id',
+  })
+  propertyNotFound: boolean;
+
+  @ApiProperty({
+    description:
+      'True when the property exists but has no property_credentials row yet',
+  })
+  credentialsNotFound: boolean;
+
+  @ApiProperty({
+    description: 'Plaintext username for the requested OTA (empty if unset)',
+  })
+  username: string;
+
+  @ApiProperty({
+    description:
+      'Decrypted password for the requested OTA (empty if unset or decryption failed)',
+  })
+  password: string;
 }

@@ -6,7 +6,6 @@ import {
 } from '@nestjs/common';
 import { Batch, Job, OTAProvider, PostingType } from '@prisma/client';
 import * as XLSX from 'xlsx';
-import { IPropertyRepository } from '../property/property.interface';
 import { IRecurringJobService } from '../recurring-job/recurring-job.interface';
 import { IScheduledJobService } from '../scraper/scheduled-job.interface';
 import {
@@ -23,8 +22,6 @@ export class JobService implements IJobService {
   constructor(
     @Inject('IJobRepository')
     private readonly repository: IJobRepository,
-    @Inject('IPropertyRepository')
-    private readonly propertyRepository: IPropertyRepository,
     @Inject('IScheduledJobService')
     private readonly scheduledJobService: IScheduledJobService,
     @Inject('IRecurringJobService')
@@ -917,4 +914,5 @@ export class JobService implements IJobService {
       throw error;
     }
   }
+
 }
