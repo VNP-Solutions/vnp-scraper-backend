@@ -33,10 +33,20 @@ import {
   CreatePropertyDto,
   ImportExpediaCredentialsResponseDto,
   ImportPropertiesResponseDto,
+  RevealOtaCredentialsDto,
+  RevealOtaCredentialsResponseDto,
+  UpdateOtaCredentialsDto,
+  UpdateOtaCredentialsResponseDto,
   UpdatePropertyDto,
 } from './property.dto';
 import { IPropertyService } from './property.interface';
-import { createPropertySchema } from './property.validation';
+import {
+  createPropertySchema,
+  revealOtaCredentialsSchema,
+  type RevealOtaCredentialsBody,
+  updateOtaCredentialsSchema,
+  type UpdateOtaCredentialsBody,
+} from './property.validation';
 
 @ApiTags('Properties')
 @ApiBearerAuth('JWT-auth')
@@ -658,6 +668,81 @@ export class PropertyController {
         return {
           statusCode: 200,
           message: `Expedia credentials import completed: ${result.updated} updated, ${result.propertyNotFound} property not found, ${result.rowsSkippedInvalid} rows skipped`,
+          data: result,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Post('/ota-credentials/reveal')
+  @UseGuards(JwtAuthGuard)
+  @ValidateBody(revealOtaCredentialsSchema)
+  @ApiOperation({
+    summary: 'Read decrypted OTA username and password for a property',
+    description:
+      'Returns plaintext username and decrypted password for the given `property_id` and `ota_provider`. Sensitive: use only for trusted operators over HTTPS.',
+  })
+  @ApiBody({ type: RevealOtaCredentialsDto })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Check propertyNotFound / credentialsNotFound; username and password may be empty',
+    type: RevealOtaCredentialsResponseDto,
+  })
+  async revealOtaCredentials(
+    @Body() body: RevealOtaCredentialsBody,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const data = await this.propertyService.getOtaCredentialsReveal(body);
+        let message = 'Credentials retrieved';
+        if (data.propertyNotFound) {
+          message = 'No property found with this property_id';
+        } else if (data.credentialsNotFound) {
+          message = 'No property_credentials row for this property';
+        }
+        return {
+          statusCode: 200,
+          message,
+          data,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Post('/ota-credentials')
+  @UseGuards(JwtAuthGuard)
+  @ValidateBody(updateOtaCredentialsSchema)
+  @ApiOperation({
+    summary: 'Update property credentials by property id and OTA',
+    description:
+      '`property_id` (Mongo ObjectId), `ota_provider` (Expedia, Agoda, or Booking), plus `username` and/or `password`. Updates that OTA’s fields on property_credentials for that property only.',
+  })
+  @ApiBody({ type: UpdateOtaCredentialsDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Update finished; see updated count and failures in data',
+    type: UpdateOtaCredentialsResponseDto,
+  })
+  async updateOtaCredentials(
+    @Body() body: UpdateOtaCredentialsBody,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result = await this.propertyService.updateOtaCredentials(body);
+        return {
+          statusCode: 200,
+          message: result.propertyNotFound
+            ? 'No property found with this property_id'
+            : result.updated > 0
+              ? 'Credentials updated successfully'
+              : 'Credentials were not updated; see failures in data',
           data: result,
         };
       },

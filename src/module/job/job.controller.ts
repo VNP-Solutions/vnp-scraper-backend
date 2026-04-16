@@ -30,6 +30,12 @@ import { ExcelFileInterceptor } from 'src/common/interceptors/excel-file.interce
 import { ResponseHandler } from 'src/common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
+  RevealOtaCredentialsDto,
+  RevealOtaCredentialsResponseDto,
+  UpdateOtaCredentialsDto,
+  UpdateOtaCredentialsResponseDto,
+} from '../property/property.dto';
+import {
   BatchResponseDto,
   BulkArchiveJobsDto,
   BulkArchiveJobsResponseDto,
@@ -46,7 +52,14 @@ import {
   UpdateBatchDto,
   UpdateJobDto,
 } from './job.dto';
+import { IPropertyService } from '../property/property.interface';
 import { IJobService } from './job.interface';
+import {
+  revealOtaCredentialsSchema,
+  type RevealOtaCredentialsBody,
+  updateOtaCredentialsSchema,
+  type UpdateOtaCredentialsBody,
+} from '../property/property.validation';
 import {
   bulkArchiveJobsSchema,
   bulkDeleteBatchesSchema,
@@ -62,6 +75,8 @@ export class JobController {
   constructor(
     @Inject('IJobService')
     private readonly jobService: IJobService,
+    @Inject('IPropertyService')
+    private readonly propertyService: IPropertyService,
     private readonly logger: Logger,
   ) {}
 
@@ -606,6 +621,81 @@ export class JobController {
         return {
           statusCode: 200,
           message: `Import completed successfully: ${result.jobsCreated} jobs created.${schedulerMessage}${recurringMessage}`,
+          data: result,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Post('/ota-credentials/reveal')
+  @UseGuards(JwtAuthGuard)
+  @ValidateBody(revealOtaCredentialsSchema)
+  @ApiOperation({
+    summary: 'Read decrypted OTA username and password for a property',
+    description:
+      'Same as POST /properties/ota-credentials/reveal. Delegates to the property service.',
+  })
+  @ApiBody({ type: RevealOtaCredentialsDto })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Check propertyNotFound / credentialsNotFound; username and password may be empty',
+    type: RevealOtaCredentialsResponseDto,
+  })
+  async revealOtaCredentials(
+    @Body() body: RevealOtaCredentialsBody,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const data = await this.propertyService.getOtaCredentialsReveal(body);
+        let message = 'Credentials retrieved';
+        if (data.propertyNotFound) {
+          message = 'No property found with this property_id';
+        } else if (data.credentialsNotFound) {
+          message = 'No property_credentials row for this property';
+        }
+        return {
+          statusCode: 200,
+          message,
+          data,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Post('/ota-credentials')
+  @UseGuards(JwtAuthGuard)
+  @ValidateBody(updateOtaCredentialsSchema)
+  @ApiOperation({
+    summary: 'Update property credentials by property id and OTA',
+    description:
+      'Same as POST /properties/ota-credentials: `property_id`, `ota_provider`, and username/password. Delegates to the property service.',
+  })
+  @ApiBody({ type: UpdateOtaCredentialsDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Update finished; see updated count and failures in data',
+    type: UpdateOtaCredentialsResponseDto,
+  })
+  async updateOtaCredentials(
+    @Body() body: UpdateOtaCredentialsBody,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result = await this.propertyService.updateOtaCredentials(body);
+        return {
+          statusCode: 200,
+          message: result.propertyNotFound
+            ? 'No property found with this property_id'
+            : result.updated > 0
+              ? 'Credentials updated successfully'
+              : 'Credentials were not updated; see failures in data',
           data: result,
         };
       },

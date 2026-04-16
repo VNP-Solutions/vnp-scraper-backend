@@ -1,5 +1,9 @@
-import { Property } from '@prisma/client';
+import { OTAProvider, Property } from '@prisma/client';
 import { CreatePropertyDto, UpdatePropertyDto } from './property.dto';
+import type {
+  RevealOtaCredentialsBody,
+  UpdateOtaCredentialsBody,
+} from './property.validation';
 
 export interface IPropertyRepository {
   create(data: CreatePropertyDto): Promise<Property>;
@@ -73,6 +77,22 @@ export interface IPropertyRepository {
     rowsSkippedInvalid: number;
     failures: Array<{ row: number; expediaId?: number; reason: string }>;
   }>;
+  updateOtaCredentials(
+    body: UpdateOtaCredentialsBody,
+  ): Promise<{
+    updated: number;
+    propertyNotFound: boolean;
+    failures: Array<{ reason: string; property_id?: string }>;
+  }>;
+  getOtaCredentialsReveal(
+    propertyId: string,
+    otaProvider: OTAProvider,
+  ): Promise<{
+    propertyNotFound: boolean;
+    credentialsNotFound: boolean;
+    username: string;
+    password: string;
+  }>;
 }
 
 export interface IPropertyService {
@@ -116,5 +136,20 @@ export interface IPropertyService {
     propertyNotFound: number;
     rowsSkippedInvalid: number;
     failures: Array<{ row: number; expediaId?: number; reason: string }>;
+  }>;
+  updateOtaCredentials(
+    body: UpdateOtaCredentialsBody,
+  ): Promise<{
+    updated: number;
+    propertyNotFound: boolean;
+    failures: Array<{ reason: string; property_id?: string }>;
+  }>;
+  getOtaCredentialsReveal(
+    body: RevealOtaCredentialsBody,
+  ): Promise<{
+    propertyNotFound: boolean;
+    credentialsNotFound: boolean;
+    username: string;
+    password: string;
   }>;
 }

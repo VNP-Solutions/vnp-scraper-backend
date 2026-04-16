@@ -1,11 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PhoneNumberSlotStatus, Property, RoleEnum } from '@prisma/client';
+import {
+  OTAProvider,
+  PhoneNumberSlotStatus,
+  Property,
+  RoleEnum,
+} from '@prisma/client';
 import { EncryptionUtil } from 'src/common/utils/encryption.util';
 import * as XLSX from 'xlsx';
 import { getPhoneLastThreeDigitsKey } from '../phone-number-slot/phone-number-slot.utils';
 import { DatabaseService } from '../database/database.service';
 import { CreatePropertyDto, UpdatePropertyDto } from './property.dto';
 import { IPropertyRepository } from './property.interface';
+import type { UpdateOtaCredentialsBody } from './property.validation';
 
 @Injectable()
 export class PropertyRepository implements IPropertyRepository {
@@ -1904,6 +1910,144 @@ export class PropertyRepository implements IPropertyRepository {
       propertyNotFound,
       rowsSkippedInvalid,
       failures,
+    };
+  }
+
+  private buildOtaCredentialsPayloadForOta(
+    provider: OTAProvider,
+    username: string,
+    password: string,
+  ): Record<string, string> {
+    const out: Record<string, string> = {};
+    if (provider === OTAProvider.Expedia) {
+      if (username) out.expediaUsername = username;
+      if (password) out.expediaPassword = password;
+    } else if (provider === OTAProvider.Agoda) {
+      if (username) out.agodaUsername = username;
+      if (password) out.agodaPassword = password;
+    } else if (provider === OTAProvider.Booking) {
+      if (username) out.bookingUsername = username;
+      if (password) out.bookingPassword = password;
+    }
+    return out;
+  }
+
+  /**
+   * Upsert property_credentials for one property; username/password fields depend on `ota_provider`.
+   */
+  async updateOtaCredentials(
+    body: UpdateOtaCredentialsBody,
+  ): Promise<{
+    updated: number;
+    propertyNotFound: boolean;
+    failures: Array<{ reason: string; property_id?: string }>;
+  }> {
+    const { ota_provider, property_id: propertyId } = body;
+    const username = body.username?.trim() ?? '';
+    const password = body.password?.trim() ?? '';
+
+    const failures: Array<{ reason: string; property_id?: string }> = [];
+
+    const property = await this.findById(propertyId);
+    if (!property) {
+      return {
+        updated: 0,
+        propertyNotFound: true,
+        failures: [],
+      };
+    }
+
+    const credentialsPayload = this.buildOtaCredentialsPayloadForOta(
+      ota_provider,
+      username,
+      password,
+    );
+
+    try {
+      await this.updatePropertyCredentials(propertyId, credentialsPayload);
+      return {
+        updated: 1,
+        propertyNotFound: false,
+        failures: [],
+      };
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Update failed';
+      failures.push({
+        property_id: propertyId,
+        reason: message,
+      });
+      return {
+        updated: 0,
+        propertyNotFound: false,
+        failures,
+      };
+    }
+  }
+
+  private tryDecryptStoredPassword(
+    encrypted: string | null | undefined,
+  ): string {
+    if (encrypted == null || String(encrypted).trim() === '') {
+      return '';
+    }
+    try {
+      return this.encryptionUtil.decryptPassword(encrypted);
+    } catch (error) {
+      this.logger.warn(
+        `OTA password decrypt failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return '';
+    }
+  }
+
+  async getOtaCredentialsReveal(
+    propertyId: string,
+    otaProvider: OTAProvider,
+  ): Promise<{
+    propertyNotFound: boolean;
+    credentialsNotFound: boolean;
+    username: string;
+    password: string;
+  }> {
+    const property = await this.findById(propertyId);
+    if (!property) {
+      return {
+        propertyNotFound: true,
+        credentialsNotFound: false,
+        username: '',
+        password: '',
+      };
+    }
+
+    const cred = await this.findPropertyCredentialsByPropertyId(propertyId);
+    if (!cred) {
+      return {
+        propertyNotFound: false,
+        credentialsNotFound: true,
+        username: '',
+        password: '',
+      };
+    }
+
+    let username = '';
+    let encryptedPassword: string | null | undefined;
+    if (otaProvider === OTAProvider.Expedia) {
+      username = cred.expediaUsername?.trim() ?? '';
+      encryptedPassword = cred.expediaPassword;
+    } else if (otaProvider === OTAProvider.Agoda) {
+      username = cred.agodaUsername?.trim() ?? '';
+      encryptedPassword = cred.agodaPassword;
+    } else {
+      username = cred.bookingUsername?.trim() ?? '';
+      encryptedPassword = cred.bookingPassword;
+    }
+
+    return {
+      propertyNotFound: false,
+      credentialsNotFound: false,
+      username,
+      password: this.tryDecryptStoredPassword(encryptedPassword),
     };
   }
 
