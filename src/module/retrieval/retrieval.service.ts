@@ -481,7 +481,14 @@ export class RetrievalService implements IRetrievalService {
                     ? {
                         amount_to_charge_or_refund: amount,
                         amount_to_charge_or_refund_currency:
-                          (row['Currency'] ?? row['Currency'] ?? firstRow['Currency'] ?? firstRow['Currency'])?.toString().trim() || 'USD',
+                          (
+                            row['Currency'] ??
+                            row['Curency'] ??
+                            firstRow['Currency'] ??
+                            firstRow['Curency']
+                          )
+                            ?.toString()
+                            .trim() || 'USD',
                       }
                     : undefined,
                 reservation_status: chargeStatus
