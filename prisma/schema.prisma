@@ -74,8 +74,6 @@ enum OtpPlatform {
   expedia_db
 }
 
-
-
 type CardInfo {
   card_number       String // Store encrypted or masked
   expiry_date       String
@@ -96,6 +94,20 @@ type PaymentInfo {
 type DateRange {
   start_date String
   end_date   String
+}
+
+type MoneyAmount {
+  amount   Float?
+  currency String?
+}
+
+type Authorization {
+  dateTime            DateTime?
+  status              String?
+  authCode            String?
+  declineCode         String?
+  responseDescription String?
+  amount              MoneyAmount?
 }
 
 enum ScreenshotUrlType {
@@ -450,6 +462,9 @@ model JobItem {
   has_payment_info Boolean      @default(false)
   payment_info     PaymentInfo? // Embedded document
 
+  has_card_activity Boolean @default(false)
+  card_activity_id  String? @db.ObjectId
+
   reservation_status String // e.g., 'Active', 'Cancelled'
   additional_text    String? // Additional text field
 
@@ -457,8 +472,9 @@ model JobItem {
   updatedAt DateTime @updatedAt
 
   // Relations
-  job      Job       @relation(fields: [job_id], references: [id], onDelete: Cascade)
-  property Property? @relation(fields: [property_id], references: [id], onDelete: Cascade)
+  job          Job           @relation(fields: [job_id], references: [id], onDelete: Cascade)
+  property     Property?     @relation(fields: [property_id], references: [id], onDelete: Cascade)
+  cardActivity CardActivity?
 
   @@unique([job_id, reservation_id])
   @@index([job_id])
@@ -469,10 +485,29 @@ model JobItem {
   @@index([guest_name])
   @@index([check_in_date])
   @@index([reservation_status])
+  @@index([card_activity_id])
   @@map("job_items")
 }
 
+model CardActivity {
+  id                    String          @id @default(auto()) @map("_id") @db.ObjectId
+  job_item_id           String          @unique @db.ObjectId
+  job_id                String?         @db.ObjectId
+  property_id           String?         @db.ObjectId
+  reservation_id        String?
+  totalSettlementAmount MoneyAmount?
+  authorizations        Authorization[]
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  jobItem JobItem @relation(fields: [job_item_id], references: [id], onDelete: Cascade)
+
+  @@index([job_id])
+  @@index([property_id])
+  @@index([reservation_id])
+  @@map("card_activities")
+}
 
 model ActivityLog {
   id           String   @id @default(auto()) @map("_id") @db.ObjectId
