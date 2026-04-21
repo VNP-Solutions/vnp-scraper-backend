@@ -26,6 +26,7 @@ export class ScraperJobItemRepository implements IScraperJobItemRepository {
               },
             },
           },
+          cardActivity: true,
         },
         orderBy: {
           createdAt: 'desc',
@@ -116,6 +117,7 @@ export class ScraperJobItemRepository implements IScraperJobItemRepository {
           include: {
             job: true,
             property: true,
+            cardActivity: true,
           },
         }),
         this.db.jobItem.count({
