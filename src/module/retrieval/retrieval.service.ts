@@ -669,6 +669,10 @@ export class RetrievalService implements IRetrievalService {
           }
         }
 
+        const isBookingOta = retrieval?.ota_provider === 'Booking';
+        const checkInOutForExport = (date: Date | string | null | undefined) =>
+          date ? new Date(date).toLocaleDateString() : '';
+
         const row = {
           'Hotel ID':
             retrieval?.ota_provider === 'Expedia'
@@ -683,12 +687,12 @@ export class RetrievalService implements IRetrievalService {
           'Hotel Name': property?.name || '',
           'Reservation ID': item.reservation_id || '',
           Name: item.guest_name || '',
-          'Check In': item.check_in_date
-            ? new Date(item.check_in_date).toLocaleDateString()
-            : '',
-          'Check Out': item.check_out_date
-            ? new Date(item.check_out_date).toLocaleDateString()
-            : '',
+          'Check In': isBookingOta
+            ? 'N/A'
+            : checkInOutForExport(item.check_in_date),
+          'Check Out': isBookingOta
+            ? 'N/A'
+            : checkInOutForExport(item.check_out_date),
           'User Name': username,
           Password: password,
           Currency:
