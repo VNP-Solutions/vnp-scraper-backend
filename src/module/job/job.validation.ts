@@ -86,6 +86,12 @@ export const bulkDeleteBatchesSchema = z.object({
   batch_ids: z.array(objectIdSchema).min(1, 'At least one batch ID is required'),
 });
 
+export const exportMasterJobsSchema = z.object({
+  job_ids: z
+    .array(objectIdSchema)
+    .min(1, 'At least one job ID is required'),
+});
+
 export type CreateJobType = z.infer<typeof createJobSchema>;
 export type UpdateJobType = z.infer<typeof updateJobSchema>;
 export type CreateBatchType = z.infer<typeof createBatchSchema>;
@@ -93,3 +99,4 @@ export type UpdateBatchType = z.infer<typeof updateBatchSchema>;
 export type BulkArchiveJobsType = z.infer<typeof bulkArchiveJobsSchema>;
 export type BulkDeleteJobsType = z.infer<typeof bulkDeleteJobsSchema>;
 export type BulkDeleteBatchesType = z.infer<typeof bulkDeleteBatchesSchema>;
+export type ExportMasterJobsType = z.infer<typeof exportMasterJobsSchema>;

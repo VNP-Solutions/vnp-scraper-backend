@@ -47,6 +47,7 @@ import {
   BulkDeleteJobsResponseDto,
   CreateBatchDto,
   CreateJobDto,
+  ExportMasterJobsDto,
   ImportJobsResponseDto,
   JobStatisticsResponseDto,
   UpdateBatchDto,
@@ -66,6 +67,8 @@ import {
   bulkDeleteJobsSchema,
   createBatchSchema,
   createJobSchema,
+  exportMasterJobsSchema,
+  type ExportMasterJobsType,
 } from './job.validation';
 
 @ApiTags('Jobs')
@@ -933,6 +936,56 @@ export class JobController {
       },
       this.logger,
     );
+  }
+
+  @Post('/export-master')
+  @UseGuards(JwtAuthGuard)
+  @ValidateBody(exportMasterJobsSchema)
+  @ApiOperation({
+    summary: 'Export master CSV file for one or more jobs',
+    description:
+      'Accepts an array of job IDs and returns a CSV file with one row per job item. Columns and values are populated according to the OTA provider (Expedia / Booking / Agoda). The response is a CSV file attachment; Card Number, Expiry Date and CVV columns are emitted using the Excel `="..."` text-formula trick so Excel preserves them as text.',
+  })
+  @ApiBody({ type: ExportMasterJobsDto })
+  @ApiResponse({
+    status: 200,
+    description: 'CSV file generated successfully',
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid input' })
+  @ApiResponse({ status: 404, description: 'No jobs / job items found' })
+  async exportMasterJobs(
+    @Body() body: ExportMasterJobsType,
+    @Res() response: Response,
+  ) {
+    try {
+      const { buffer, fileName } = await this.jobService.exportMasterCsv(
+        body.job_ids,
+      );
+
+      response.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      response.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${fileName}"`,
+      );
+      response.send(buffer);
+    } catch (error) {
+      this.logger.error(
+        `Error exporting master CSV: ${error.message}`,
+        error.stack,
+      );
+      return ResponseHandler.handler(
+        response,
+        async () => {
+          const status = error?.status || 500;
+          return {
+            statusCode: status,
+            message: error?.message || 'Failed to export master CSV',
+            data: null,
+          };
+        },
+        this.logger,
+      );
+    }
   }
 
   @Get('/:id/db-entries')

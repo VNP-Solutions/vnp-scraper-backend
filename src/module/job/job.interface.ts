@@ -80,6 +80,7 @@ export interface IJobRepository {
     }>;
   }>;
   findDbEntriesByJobId(jobId: string): Promise<DbEntry[]>;
+  findManyForMasterExport(jobIds: string[]): Promise<any[]>;
 }
 
 export interface IJobService {
@@ -139,4 +140,7 @@ export interface IJobService {
     }>;
   }>;
   getDbEntriesByJobId(jobId: string): Promise<any[]>;
+  exportMasterCsv(
+    jobIds: string[],
+  ): Promise<{ buffer: Buffer; fileName: string }>;
 }
