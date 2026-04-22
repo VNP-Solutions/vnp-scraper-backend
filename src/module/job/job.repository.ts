@@ -1153,6 +1153,37 @@ export class JobRepository implements IJobRepository {
     }
   }
 
+  async findManyForMasterExport(jobIds: string[]): Promise<any[]> {
+    try {
+      const jobs = await this.db.job.findMany({
+        where: { id: { in: jobIds } },
+        include: {
+          batch: { select: { id: true, name: true } },
+          portfolio: { select: { id: true, name: true } },
+          property: {
+            select: {
+              id: true,
+              name: true,
+              expedia_id: true,
+              booking_id: true,
+              agoda_id: true,
+            },
+          },
+          jobItem: {
+            orderBy: { createdAt: 'asc' },
+          },
+        },
+      });
+      return jobs;
+    } catch (error) {
+      this.logger.error(
+        `Error loading jobs for master export: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
   async findDbEntriesByJobId(jobId: string): Promise<DbEntry[]> {
     try {
       const dbEntries = await this.db.dbEntry.findMany({

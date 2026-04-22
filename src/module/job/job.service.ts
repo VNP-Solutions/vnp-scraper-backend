@@ -3,6 +3,7 @@ import {
   Inject,
   Injectable,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { Batch, Job, OTAProvider, PostingType } from '@prisma/client';
 import * as XLSX from 'xlsx';
@@ -16,6 +17,10 @@ import {
   UpdateJobDto,
 } from './job.dto';
 import { IJobRepository, IJobService } from './job.interface';
+import {
+  MASTER_EXPORT_HEADER,
+  buildMasterRows,
+} from './master-export.util';
 
 @Injectable()
 export class JobService implements IJobService {
@@ -883,6 +888,64 @@ export class JobService implements IJobService {
     } catch (error) {
       this.logger.error(
         `Error bulk deleting batches: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async exportMasterCsv(
+    jobIds: string[],
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    try {
+      if (!Array.isArray(jobIds) || jobIds.length === 0) {
+        throw new BadRequestException('job_ids array cannot be empty');
+      }
+
+      const uniqueJobIds = Array.from(new Set(jobIds));
+
+      const jobs = await this.repository.findManyForMasterExport(uniqueJobIds);
+      if (!jobs || jobs.length === 0) {
+        throw new NotFoundException(
+          `No jobs found for the given IDs: ${uniqueJobIds.join(', ')}`,
+        );
+      }
+
+      const foundIds = new Set(jobs.map((j: any) => j.id));
+      const missingIds = uniqueJobIds.filter((id) => !foundIds.has(id));
+      if (missingIds.length > 0) {
+        this.logger.warn(
+          `Master export: ${missingIds.length} job ID(s) not found and will be skipped: ${missingIds.join(', ')}`,
+        );
+      }
+
+      const rows = buildMasterRows(jobs);
+      if (rows.length === 0) {
+        throw new NotFoundException(
+          'No job items found for the given jobs to export',
+        );
+      }
+
+      const worksheet = XLSX.utils.json_to_sheet(rows, {
+        header: MASTER_EXPORT_HEADER,
+      });
+
+      // Convert to CSV and prefix with a UTF-8 BOM so Excel opens the
+      // file correctly (preserves accented characters, formula prefix, etc).
+      const csv = XLSX.utils.sheet_to_csv(worksheet);
+      const buffer = Buffer.from('\uFEFF' + csv, 'utf8');
+
+      const timestamp = new Date()
+        .toISOString()
+        .replace(/[-:]/g, '')
+        .replace(/\..+$/, '')
+        .replace('T', '-');
+      const fileName = `master-export-${timestamp}.csv`;
+
+      return { buffer, fileName };
+    } catch (error) {
+      this.logger.error(
+        `Error exporting master CSV: ${error.message}`,
         error.stack,
       );
       throw error;

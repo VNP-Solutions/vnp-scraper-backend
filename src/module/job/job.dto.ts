@@ -475,6 +475,16 @@ export class BulkDeleteJobsDto {
   job_ids: string[];
 }
 
+export class ExportMasterJobsDto {
+  @ApiProperty({
+    description:
+      'Array of job IDs whose job items should be exported to the Master CSV file',
+    type: [String],
+    example: ['65f0a3c4e2b7a1d2c3e4f5a6'],
+  })
+  job_ids: string[];
+}
+
 export class BulkDeleteJobsResponseDto {
   @ApiProperty({
     description: 'Number of jobs deleted',
