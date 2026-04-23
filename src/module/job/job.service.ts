@@ -1027,10 +1027,10 @@ export class JobService implements IJobService {
   }
 
   private buildHumanReadableTimestamp(d: Date = new Date()): string {
-    // Produces e.g. "22, April 2026-02_45 PM". Colons are replaced with
-    // underscores so the name stays filesystem-safe (Windows disallows ":"
-    // in filenames, macOS Finder maps them to "/"), and the rest of the
-    // format matches the "22, April 2026 - then time" style you asked for.
+    // Produces e.g. "23 April 2026-04.44 PM". A dot is used as the time
+    // separator instead of ":" so the filename is valid on every OS
+    // (Windows / macOS / Linux all disallow or rewrite ":" in filenames,
+    // while "." is always safe and visually very close to a colon).
     const day = d.getDate();
     const month = d.toLocaleString('en-US', { month: 'long' });
     const year = d.getFullYear();
@@ -1040,8 +1040,8 @@ export class JobService implements IJobService {
         minute: '2-digit',
         hour12: true,
       })
-      .replace(':', '_');
-    return `${day}, ${month} ${year}-${time}`;
+      .replace(':', '.');
+    return `${day} ${month} ${year}-${time}`;
   }
 
   private formatDateForFilename(value: string | null | undefined): string {
