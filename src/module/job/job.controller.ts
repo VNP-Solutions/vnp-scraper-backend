@@ -944,7 +944,7 @@ export class JobController {
   @ApiOperation({
     summary: 'Export master CSV files (zipped) for multiple jobs',
     description:
-      'Accepts an array of at least two job IDs and returns a ZIP file containing one CSV per job. Each CSV is named "{OTA}-{property}-{startDate}-{endDate}.csv" and has one row per job item, with columns populated according to the OTA provider (Expedia / Booking / Agoda). Booking rows always have "N/A" for Check In / Check Out. Card Number, Expiry Date and CVV columns use the Excel `="..."` text-formula trick so Excel preserves them as text. The zip itself is named "job-exports-{DD, Month YYYY-HH_MM AM/PM}.zip" (e.g. "job-exports-22, April 2026-02_45 PM.zip"). To export a single job directly as CSV, use GET /jobs/:id/export-master.',
+      'Accepts an array of at least two job IDs and returns a ZIP file containing one CSV per job. Each CSV is named "{OTA}-{property}-{startDate}-{endDate}.csv" and has one row per job item, with columns populated according to the OTA provider (Expedia / Booking / Agoda). Booking rows always have "N/A" for Check In / Check Out. Card Number, Expiry Date and CVV columns use the Excel `="..."` text-formula trick so Excel preserves them as text. The zip itself is named "job-exports-{D Month YYYY-HH.MM AM/PM}.zip" (e.g. "job-exports-23 April 2026-04.44 PM.zip"). A dot is used instead of ":" in the time so the name is valid on Windows, macOS, and Linux. To export a single job directly as CSV, use GET /jobs/:id/export-master.',
   })
   @ApiBody({ type: ExportMasterJobsDto })
   @ApiResponse({
