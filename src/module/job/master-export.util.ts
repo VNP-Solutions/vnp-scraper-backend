@@ -6,13 +6,13 @@ import { OTAProvider, PostingType } from '@prisma/client';
  */
 export const MASTER_EXPORT_HEADER: string[] = [
   'OTA',
-  'OTA Posting Type*',
+  'OTA Posting Type',
   'OTA ID',
   'Batch',
-  'Review Collection Date*',
+  'Review Collection Date',
   'Portfolio',
-  'Property Name*',
-  'Reservation ID*',
+  'Property Name',
+  'Reservation ID',
   'Hotel Confirmation Code',
   'Guest name',
   'Check In',
@@ -167,8 +167,14 @@ export function buildMasterRow(
     ? (item?.confirmation_number ?? '')
     : NA; // Hotel Confirmation Code (Expedia only)
   row[MASTER_EXPORT_HEADER[9]] = item?.guest_name ?? ''; // Guest name
-  row[MASTER_EXPORT_HEADER[10]] = formatDisplayDate(item?.check_in_date); // Check In
-  row[MASTER_EXPORT_HEADER[11]] = formatDisplayDate(item?.check_out_date); // Check Out
+  // Booking.com exports never carry a check-in / check-out date, so those
+  // cells are always "N/A" for that OTA (matches the spec for Booking rows).
+  row[MASTER_EXPORT_HEADER[10]] = isBooking
+    ? NA
+    : formatDisplayDate(item?.check_in_date); // Check In
+  row[MASTER_EXPORT_HEADER[11]] = isBooking
+    ? NA
+    : formatDisplayDate(item?.check_out_date); // Check Out
   row[MASTER_EXPORT_HEADER[12]] = isBooking
     ? (item?.payment_info?.charge_before ?? NA)
     : NA; // Charge Before (Booking only)

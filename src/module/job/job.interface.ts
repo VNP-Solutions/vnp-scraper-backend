@@ -143,4 +143,7 @@ export interface IJobService {
   exportMasterCsv(
     jobIds: string[],
   ): Promise<{ buffer: Buffer; fileName: string }>;
+  exportSingleJobMasterCsv(
+    jobId: string,
+  ): Promise<{ buffer: Buffer; fileName: string }>;
 }
