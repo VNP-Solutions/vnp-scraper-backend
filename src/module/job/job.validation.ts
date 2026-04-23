@@ -89,7 +89,7 @@ export const bulkDeleteBatchesSchema = z.object({
 export const exportMasterJobsSchema = z.object({
   job_ids: z
     .array(objectIdSchema)
-    .min(1, 'At least one job ID is required'),
+    .min(2, 'At least two job IDs are required. Use the single-job export endpoint to export one job.'),
 });
 
 export type CreateJobType = z.infer<typeof createJobSchema>;

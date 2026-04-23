@@ -6,6 +6,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Batch, Job, OTAProvider, PostingType } from '@prisma/client';
+import * as archiver from 'archiver';
+import { PassThrough } from 'stream';
 import * as XLSX from 'xlsx';
 import { IRecurringJobService } from '../recurring-job/recurring-job.interface';
 import { IScheduledJobService } from '../scraper/scheduled-job.interface';
@@ -898,11 +900,18 @@ export class JobService implements IJobService {
     jobIds: string[],
   ): Promise<{ buffer: Buffer; fileName: string }> {
     try {
-      if (!Array.isArray(jobIds) || jobIds.length === 0) {
-        throw new BadRequestException('job_ids array cannot be empty');
+      if (!Array.isArray(jobIds) || jobIds.length < 2) {
+        throw new BadRequestException(
+          'job_ids must contain at least two IDs. Use the single-job export endpoint to export one job.',
+        );
       }
 
       const uniqueJobIds = Array.from(new Set(jobIds));
+      if (uniqueJobIds.length < 2) {
+        throw new BadRequestException(
+          'job_ids must contain at least two distinct IDs. Use the single-job export endpoint to export one job.',
+        );
+      }
 
       const jobs = await this.repository.findManyForMasterExport(uniqueJobIds);
       if (!jobs || jobs.length === 0) {
@@ -919,37 +928,184 @@ export class JobService implements IJobService {
         );
       }
 
-      const rows = buildMasterRows(jobs);
-      if (rows.length === 0) {
+      // Build one CSV buffer per job, keyed by a per-job filename of the
+      // form `{portfolio}-{property}.csv`. Jobs that produce no rows (no
+      // jobItem records) are skipped. Filename collisions are disambiguated
+      // with a numeric suffix so no entry overwrites another in the zip.
+      const usedNames = new Set<string>();
+      const csvEntries: Array<{ name: string; data: Buffer }> = [];
+
+      for (const job of jobs) {
+        const rows = buildMasterRows([job]);
+        if (rows.length === 0) continue;
+
+        const csvBuffer = this.buildMasterCsvBuffer(rows);
+        const csvName = this.ensureUniqueFilename(
+          `${this.buildJobCsvBaseName(job)}.csv`,
+          usedNames,
+        );
+        csvEntries.push({ name: csvName, data: csvBuffer });
+      }
+
+      if (csvEntries.length === 0) {
         throw new NotFoundException(
           'No job items found for the given jobs to export',
         );
       }
 
-      const worksheet = XLSX.utils.json_to_sheet(rows, {
-        header: MASTER_EXPORT_HEADER,
-      });
+      const zipBuffer = await this.zipFiles(csvEntries);
+      const fileName = `${this.buildMasterZipBaseName(jobs)}.zip`;
 
-      // Convert to CSV and prefix with a UTF-8 BOM so Excel opens the
-      // file correctly (preserves accented characters, formula prefix, etc).
-      const csv = XLSX.utils.sheet_to_csv(worksheet);
-      const buffer = Buffer.from('\uFEFF' + csv, 'utf8');
-
-      const timestamp = new Date()
-        .toISOString()
-        .replace(/[-:]/g, '')
-        .replace(/\..+$/, '')
-        .replace('T', '-');
-      const fileName = `master-export-${timestamp}.csv`;
-
-      return { buffer, fileName };
+      return { buffer: zipBuffer, fileName };
     } catch (error) {
       this.logger.error(
-        `Error exporting master CSV: ${error.message}`,
+        `Error exporting master CSV zip: ${error.message}`,
         error.stack,
       );
       throw error;
     }
+  }
+
+  async exportSingleJobMasterCsv(
+    jobId: string,
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    try {
+      if (!jobId) {
+        throw new BadRequestException('jobId is required');
+      }
+
+      const jobs = await this.repository.findManyForMasterExport([jobId]);
+      if (!jobs || jobs.length === 0) {
+        throw new NotFoundException(`Job not found for id: ${jobId}`);
+      }
+
+      const job = jobs[0];
+      const rows = buildMasterRows([job]);
+      if (rows.length === 0) {
+        throw new NotFoundException(
+          `No job items found for job ${jobId} to export`,
+        );
+      }
+
+      const buffer = this.buildMasterCsvBuffer(rows);
+      const fileName = `${this.buildJobCsvBaseName(job)}.csv`;
+
+      return { buffer, fileName };
+    } catch (error) {
+      this.logger.error(
+        `Error exporting single job master CSV: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  private buildMasterCsvBuffer(rows: Record<string, any>[]): Buffer {
+    const worksheet = XLSX.utils.json_to_sheet(rows, {
+      header: MASTER_EXPORT_HEADER,
+    });
+    // Prefix UTF-8 BOM so Excel opens the file correctly (accents, the
+    // ="..." text-formula trick for card numbers, etc.).
+    const csv = XLSX.utils.sheet_to_csv(worksheet);
+    return Buffer.from('\uFEFF' + csv, 'utf8');
+  }
+
+  private buildJobCsvBaseName(job: any): string {
+    const ota = this.sanitizeForFilename(
+      (job?.ota_provider ?? '').toString() || 'OTA',
+    );
+    const property = this.sanitizeForFilename(
+      job?.property_name ?? job?.property?.name ?? 'property',
+    );
+    const startDate = this.formatDateForFilename(job?.start_date);
+    const endDate = this.formatDateForFilename(job?.end_date);
+    return `${ota}-${property}-${startDate}-${endDate}`;
+  }
+
+  private buildMasterZipBaseName(_jobs: any[]): string {
+    return `job-exports-${this.buildHumanReadableTimestamp()}`;
+  }
+
+  private buildHumanReadableTimestamp(d: Date = new Date()): string {
+    // Produces e.g. "22, April 2026-02_45 PM". Colons are replaced with
+    // underscores so the name stays filesystem-safe (Windows disallows ":"
+    // in filenames, macOS Finder maps them to "/"), and the rest of the
+    // format matches the "22, April 2026 - then time" style you asked for.
+    const day = d.getDate();
+    const month = d.toLocaleString('en-US', { month: 'long' });
+    const year = d.getFullYear();
+    const time = d
+      .toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      })
+      .replace(':', '_');
+    return `${day}, ${month} ${year}-${time}`;
+  }
+
+  private formatDateForFilename(value: string | null | undefined): string {
+    const raw = (value ?? '').toString().trim();
+    if (!raw) return 'NA';
+    // Job start_date / end_date are stored as strings like "MM/DD/YYYY".
+    // Replace path/whitespace separators with "-" so the filename stays
+    // readable instead of turning the slashes into underscores.
+    return raw.replace(/[\/\\:*?"<>|\s]+/g, '-');
+  }
+
+  private sanitizeForFilename(value: string): string {
+    const cleaned = (value ?? '')
+      .toString()
+      .trim()
+      .replace(/[\/\\:*?"<>|\x00-\x1f]+/g, '_')
+      .replace(/\s+/g, ' ');
+    return cleaned.length > 0 ? cleaned : 'unknown';
+  }
+
+  private ensureUniqueFilename(name: string, used: Set<string>): string {
+    if (!used.has(name)) {
+      used.add(name);
+      return name;
+    }
+    const dot = name.lastIndexOf('.');
+    const base = dot >= 0 ? name.slice(0, dot) : name;
+    const ext = dot >= 0 ? name.slice(dot) : '';
+    let counter = 2;
+    let candidate = `${base}-${counter}${ext}`;
+    while (used.has(candidate)) {
+      counter += 1;
+      candidate = `${base}-${counter}${ext}`;
+    }
+    used.add(candidate);
+    return candidate;
+  }
+
+  private zipFiles(
+    files: Array<{ name: string; data: Buffer }>,
+  ): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      const archive = archiver('zip', { zlib: { level: 9 } });
+      const chunks: Buffer[] = [];
+      const sink = new PassThrough();
+
+      sink.on('data', (chunk: Buffer) => chunks.push(chunk));
+      sink.on('end', () => resolve(Buffer.concat(chunks)));
+      sink.on('error', reject);
+      archive.on('error', reject);
+      archive.on('warning', (err: any) => {
+        if (err?.code === 'ENOENT') {
+          this.logger.warn(`archiver warning: ${err.message}`);
+        } else {
+          reject(err);
+        }
+      });
+
+      archive.pipe(sink);
+      for (const file of files) {
+        archive.append(file.data, { name: file.name });
+      }
+      void archive.finalize();
+    });
   }
 
   async getDbEntriesByJobId(jobId: string): Promise<any[]> {

@@ -942,16 +942,20 @@ export class JobController {
   @UseGuards(JwtAuthGuard)
   @ValidateBody(exportMasterJobsSchema)
   @ApiOperation({
-    summary: 'Export master CSV file for one or more jobs',
+    summary: 'Export master CSV files (zipped) for multiple jobs',
     description:
-      'Accepts an array of job IDs and returns a CSV file with one row per job item. Columns and values are populated according to the OTA provider (Expedia / Booking / Agoda). The response is a CSV file attachment; Card Number, Expiry Date and CVV columns are emitted using the Excel `="..."` text-formula trick so Excel preserves them as text.',
+      'Accepts an array of at least two job IDs and returns a ZIP file containing one CSV per job. Each CSV is named "{OTA}-{property}-{startDate}-{endDate}.csv" and has one row per job item, with columns populated according to the OTA provider (Expedia / Booking / Agoda). Booking rows always have "N/A" for Check In / Check Out. Card Number, Expiry Date and CVV columns use the Excel `="..."` text-formula trick so Excel preserves them as text. The zip itself is named "job-exports-{DD, Month YYYY-HH_MM AM/PM}.zip" (e.g. "job-exports-22, April 2026-02_45 PM.zip"). To export a single job directly as CSV, use GET /jobs/:id/export-master.',
   })
   @ApiBody({ type: ExportMasterJobsDto })
   @ApiResponse({
     status: 200,
-    description: 'CSV file generated successfully',
+    description: 'ZIP file containing per-job CSV files',
   })
-  @ApiResponse({ status: 400, description: 'Bad request - Invalid input' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Bad request - at least two job IDs are required; use the single-job endpoint for one job',
+  })
   @ApiResponse({ status: 404, description: 'No jobs / job items found' })
   async exportMasterJobs(
     @Body() body: ExportMasterJobsType,
@@ -962,7 +966,7 @@ export class JobController {
         body.job_ids,
       );
 
-      response.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      response.setHeader('Content-Type', 'application/zip');
       response.setHeader(
         'Content-Disposition',
         `attachment; filename="${fileName}"`,
@@ -970,7 +974,7 @@ export class JobController {
       response.send(buffer);
     } catch (error) {
       this.logger.error(
-        `Error exporting master CSV: ${error.message}`,
+        `Error exporting master CSV zip: ${error.message}`,
         error.stack,
       );
       return ResponseHandler.handler(
@@ -979,7 +983,55 @@ export class JobController {
           const status = error?.status || 500;
           return {
             statusCode: status,
-            message: error?.message || 'Failed to export master CSV',
+            message: error?.message || 'Failed to export master CSV zip',
+            data: null,
+          };
+        },
+        this.logger,
+      );
+    }
+  }
+
+  @Get('/:id/export-master')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Export master CSV file for a single job',
+    description:
+      'Returns a CSV file for a single job, named "{OTA}-{property}-{startDate}-{endDate}.csv". The CSV has one row per job item and follows the same columns and OTA-specific rules as the bulk /jobs/export-master endpoint. Card Number, Expiry Date and CVV columns use the Excel `="..."` text-formula trick so Excel preserves them as text.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'CSV file generated successfully',
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - invalid job id' })
+  @ApiResponse({ status: 404, description: 'Job or job items not found' })
+  async exportSingleJobMaster(
+    @Param('id') jobId: string,
+    @Res() response: Response,
+  ) {
+    try {
+      const { buffer, fileName } =
+        await this.jobService.exportSingleJobMasterCsv(jobId);
+
+      response.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      response.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${fileName}"`,
+      );
+      response.send(buffer);
+    } catch (error) {
+      this.logger.error(
+        `Error exporting single job master CSV: ${error.message}`,
+        error.stack,
+      );
+      return ResponseHandler.handler(
+        response,
+        async () => {
+          const status = error?.status || 500;
+          return {
+            statusCode: status,
+            message:
+              error?.message || 'Failed to export single job master CSV',
             data: null,
           };
         },
