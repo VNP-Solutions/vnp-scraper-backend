@@ -900,18 +900,11 @@ export class JobService implements IJobService {
     jobIds: string[],
   ): Promise<{ buffer: Buffer; fileName: string }> {
     try {
-      if (!Array.isArray(jobIds) || jobIds.length < 2) {
-        throw new BadRequestException(
-          'job_ids must contain at least two IDs. Use the single-job export endpoint to export one job.',
-        );
+      if (!Array.isArray(jobIds) || jobIds.length === 0) {
+        throw new BadRequestException('job_ids array cannot be empty');
       }
 
       const uniqueJobIds = Array.from(new Set(jobIds));
-      if (uniqueJobIds.length < 2) {
-        throw new BadRequestException(
-          'job_ids must contain at least two distinct IDs. Use the single-job export endpoint to export one job.',
-        );
-      }
 
       const jobs = await this.repository.findManyForMasterExport(uniqueJobIds);
       if (!jobs || jobs.length === 0) {

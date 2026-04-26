@@ -942,9 +942,9 @@ export class JobController {
   @UseGuards(JwtAuthGuard)
   @ValidateBody(exportMasterJobsSchema)
   @ApiOperation({
-    summary: 'Export master CSV files (zipped) for multiple jobs',
+    summary: 'Export master CSV files (zipped) for one or more jobs',
     description:
-      'Accepts an array of at least two job IDs and returns a ZIP file containing one CSV per job. Each CSV is named "{OTA}-{property}-{startDate}-{endDate}.csv" and has one row per job item, with columns populated according to the OTA provider (Expedia / Booking / Agoda). Booking rows always have "N/A" for Check In / Check Out. Card Number, Expiry Date and CVV columns use the Excel `="..."` text-formula trick so Excel preserves them as text. The zip itself is named "job-exports-{D Month YYYY-HH.MM AM/PM}.zip" (e.g. "job-exports-23 April 2026-04.44 PM.zip"). A dot is used instead of ":" in the time so the name is valid on Windows, macOS, and Linux. To export a single job directly as CSV, use GET /jobs/:id/export-master.',
+      'Accepts an array of one or more job IDs and returns a ZIP file containing one CSV per job. Each CSV is named "{OTA}-{property}-{startDate}-{endDate}.csv" and has one row per job item, with columns populated according to the OTA provider (Expedia / Booking / Agoda). Booking rows always have "N/A" for Check In / Check Out. Card Number, Expiry Date and CVV columns use the Excel `="..."` text-formula trick so Excel preserves them as text. The zip itself is named "job-exports-{D Month YYYY-HH.MM AM/PM}.zip" (e.g. "job-exports-23 April 2026-04.44 PM.zip"). A dot is used instead of ":" in the time so the name is valid on Windows, macOS, and Linux. To export a single job directly as a plain CSV (no zip), use GET /jobs/:id/export-master.',
   })
   @ApiBody({ type: ExportMasterJobsDto })
   @ApiResponse({
@@ -953,8 +953,7 @@ export class JobController {
   })
   @ApiResponse({
     status: 400,
-    description:
-      'Bad request - at least two job IDs are required; use the single-job endpoint for one job',
+    description: 'Bad request - job_ids array cannot be empty',
   })
   @ApiResponse({ status: 404, description: 'No jobs / job items found' })
   async exportMasterJobs(
