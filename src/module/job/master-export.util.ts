@@ -116,14 +116,6 @@ function asExcelText(value: string | number | null | undefined): string {
 }
 
 /**
- * Rounds a number to 4 decimal places, matching the sample
- * (e.g. 114.852, 20.268, 798.4645, 140.9055).
- */
-function round4(n: number): number {
-  return Math.round(n * 10000) / 10000;
-}
-
-/**
  * Builds one CSV row object for a given (job, jobItem) pair, applying the
  * OTA-specific rules described in the spec.
  *
@@ -140,15 +132,6 @@ export function buildMasterRow(
 
   const amountToCharge: number | null =
     item?.payment_info?.amount_to_charge_or_refund ?? null;
-
-  const dueToProperty =
-    (isExpedia || isBooking) && amountToCharge !== null
-      ? round4(amountToCharge * 0.85)
-      : NA;
-  const dueToVnp =
-    (isExpedia || isBooking) && amountToCharge !== null
-      ? round4(amountToCharge * 0.15)
-      : NA;
 
   const row: Record<string, string | number> = {};
   // IMPORTANT: keys here must exactly match the strings in
@@ -194,8 +177,8 @@ export function buildMasterRow(
   ); // Card Number (text)
   row[MASTER_EXPORT_HEADER[18]] = asExcelText(item?.card_info?.expiry_date); // Expiry date (text)
   row[MASTER_EXPORT_HEADER[19]] = asExcelText(item?.card_info?.cvv); // CVV (text)
-  row[MASTER_EXPORT_HEADER[20]] = dueToProperty; // Due to Property
-  row[MASTER_EXPORT_HEADER[21]] = dueToVnp; // Due to VNP/Invoice
+  row[MASTER_EXPORT_HEADER[20]] = ''; // Due to Property (intentionally blank)
+  row[MASTER_EXPORT_HEADER[21]] = ''; // Due to VNP/Invoice (intentionally blank)
   row[MASTER_EXPORT_HEADER[22]] = ''; // Processor
   row[MASTER_EXPORT_HEADER[23]] = ''; // QP Username
   row[MASTER_EXPORT_HEADER[24]] = ''; // Case Contact
