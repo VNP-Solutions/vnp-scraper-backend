@@ -929,10 +929,10 @@ export class JobService implements IJobService {
       const csvEntries: Array<{ name: string; data: Buffer }> = [];
 
       for (const job of jobs) {
-        const rows = buildMasterRows([job]);
+        const { headers, rows } = buildMasterRows([job]);
         if (rows.length === 0) continue;
 
-        const csvBuffer = this.buildMasterCsvBuffer(rows);
+        const csvBuffer = this.buildMasterCsvBuffer(rows, headers);
         const csvName = this.ensureUniqueFilename(
           `${this.buildJobCsvBaseName(job)}.csv`,
           usedNames,
@@ -973,14 +973,14 @@ export class JobService implements IJobService {
       }
 
       const job = jobs[0];
-      const rows = buildMasterRows([job]);
+      const { headers, rows } = buildMasterRows([job]);
       if (rows.length === 0) {
         throw new NotFoundException(
           `No job items found for job ${jobId} to export`,
         );
       }
 
-      const buffer = this.buildMasterCsvBuffer(rows);
+      const buffer = this.buildMasterCsvBuffer(rows, headers);
       const fileName = `${this.buildJobCsvBaseName(job)}.csv`;
 
       return { buffer, fileName };
@@ -993,9 +993,12 @@ export class JobService implements IJobService {
     }
   }
 
-  private buildMasterCsvBuffer(rows: Record<string, any>[]): Buffer {
+  private buildMasterCsvBuffer(
+    rows: Record<string, any>[],
+    headers: string[] = MASTER_EXPORT_HEADER,
+  ): Buffer {
     const worksheet = XLSX.utils.json_to_sheet(rows, {
-      header: MASTER_EXPORT_HEADER,
+      header: headers,
     });
     // Prefix UTF-8 BOM so Excel opens the file correctly (accents, the
     // ="..." text-formula trick for card numbers, etc.).
