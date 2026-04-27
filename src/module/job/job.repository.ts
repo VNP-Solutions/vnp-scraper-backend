@@ -1171,6 +1171,9 @@ export class JobRepository implements IJobRepository {
           },
           jobItem: {
             orderBy: { createdAt: 'asc' },
+            include: {
+              cardActivity: true,
+            },
           },
         },
       });

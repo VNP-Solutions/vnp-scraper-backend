@@ -34,6 +34,44 @@ export const MASTER_EXPORT_HEADER: string[] = [
 ];
 
 const NA = 'N/A';
+const CARD_ACTIVITY_HEADER = 'Card Activity';
+const APPROVED_AMOUNT_HEADER_PREFIX = 'Card Activity Approved Amount';
+
+/**
+ * Returns the list of "Approved" authorizations from a job item's
+ * cardActivity payload. Always returns an array so callers can `.length`
+ * safely; non-Expedia items still pass through here but the rendering
+ * layer marks their card-activity / approved-amount cells as N/A.
+ */
+function getApprovedAuthorizations(item: any): any[] {
+  const auths = item?.cardActivity?.authorizations;
+  if (!Array.isArray(auths)) return [];
+  return auths.filter(
+    (a: any) =>
+      typeof a?.status === 'string' &&
+      a.status.trim().toLowerCase() === 'approved',
+  );
+}
+
+/**
+ * Renders a single approved-authorization amount cell as
+ * "{currency} {amount}" (e.g. "CAD 294.87"). Falls back to either the
+ * currency or the amount alone if one of them is missing, and to an
+ * empty string if both are missing.
+ */
+function formatApprovedAmountCell(auth: any): string {
+  const money = auth?.amount;
+  if (!money) return '';
+  const amount = money.amount;
+  const currency = money.currency;
+  const hasAmount = amount !== null && amount !== undefined && amount !== '';
+  const hasCurrency =
+    typeof currency === 'string' && currency.trim().length > 0;
+  if (hasCurrency && hasAmount) return `${currency} ${amount}`;
+  if (hasAmount) return String(amount);
+  if (hasCurrency) return currency as string;
+  return '';
+}
 
 /**
  * Display value for the OTA posting type column.
@@ -119,12 +157,19 @@ function asExcelText(value: string | number | null | undefined): string {
  * Builds one CSV row object for a given (job, jobItem) pair, applying the
  * OTA-specific rules described in the spec.
  *
- * Keys in the returned object must exactly match MASTER_EXPORT_HEADER so
- * XLSX's json_to_sheet(..., { header }) emits columns in the right order.
+ * Keys in the returned object must exactly match MASTER_EXPORT_HEADER (and
+ * the dynamic Card Activity / Approved Amount N columns) so XLSX's
+ * json_to_sheet(..., { header }) emits columns in the right order.
+ *
+ * `approvedAmountColumns` is the number of "Approved Amount N" columns the
+ * caller has decided to render for this CSV (the maximum across all rows in
+ * the same export). Each row pads its own approved-amount cells up to that
+ * count so every row has the same shape.
  */
 export function buildMasterRow(
   job: any,
   item: any,
+  approvedAmountColumns = 0,
 ): Record<string, string | number> {
   const ota = job?.ota_provider as OTAProvider | undefined;
   const isExpedia = ota === OTAProvider.Expedia;
@@ -183,23 +228,65 @@ export function buildMasterRow(
   row[MASTER_EXPORT_HEADER[23]] = ''; // QP Username
   row[MASTER_EXPORT_HEADER[24]] = ''; // Case Contact
   row[MASTER_EXPORT_HEADER[25]] = ''; // Reporting Contact
+
+  // Card Activity + dynamic Approved Amount columns (Expedia only).
+  // Non-Expedia rows get N/A for Card Activity and N/A for every approved
+  // amount column so every row in the CSV has the same column count.
+  const approved = isExpedia ? getApprovedAuthorizations(item) : [];
+  row[CARD_ACTIVITY_HEADER] = isExpedia ? JSON.stringify(approved) : NA;
+  for (let i = 0; i < approvedAmountColumns; i++) {
+    const header = `${APPROVED_AMOUNT_HEADER_PREFIX} ${i + 1}`;
+    if (!isExpedia) {
+      row[header] = NA;
+    } else if (i < approved.length) {
+      row[header] = formatApprovedAmountCell(approved[i]);
+    } else {
+      row[header] = '';
+    }
+  }
   return row;
 }
 
 /**
  * Builds all CSV rows for the provided jobs (each with its `jobItem[]`,
- * `property`, `batch`, and `portfolio` relations loaded).
+ * `property`, `batch`, and `portfolio` relations loaded), along with the
+ * effective header list for this export.
+ *
+ * The header is the static MASTER_EXPORT_HEADER plus a Card Activity column
+ * and N "Approved Amount K" columns where N is the maximum number of
+ * Approved authorizations seen in any single Expedia job item across all
+ * provided jobs. Non-Expedia jobs do not contribute to N.
  */
-export function buildMasterRows(
-  jobs: any[],
-): Record<string, string | number>[] {
+export function buildMasterRows(jobs: any[]): {
+  headers: string[];
+  rows: Record<string, string | number>[];
+} {
+  let maxApprovedCount = 0;
+  for (const job of jobs || []) {
+    if (job?.ota_provider !== OTAProvider.Expedia) continue;
+    const items = Array.isArray(job?.jobItem) ? job.jobItem : [];
+    for (const item of items) {
+      const count = getApprovedAuthorizations(item).length;
+      if (count > maxApprovedCount) maxApprovedCount = count;
+    }
+  }
+
+  const headers: string[] = [
+    ...MASTER_EXPORT_HEADER,
+    CARD_ACTIVITY_HEADER,
+    ...Array.from(
+      { length: maxApprovedCount },
+      (_, i) => `${APPROVED_AMOUNT_HEADER_PREFIX} ${i + 1}`,
+    ),
+  ];
+
   const rows: Record<string, string | number>[] = [];
   for (const job of jobs || []) {
     const items = Array.isArray(job?.jobItem) ? job.jobItem : [];
     if (items.length === 0) continue;
     for (const item of items) {
-      rows.push(buildMasterRow(job, item));
+      rows.push(buildMasterRow(job, item, maxApprovedCount));
     }
   }
-  return rows;
+  return { headers, rows };
 }
