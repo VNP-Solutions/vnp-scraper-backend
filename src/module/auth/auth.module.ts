@@ -17,8 +17,8 @@ import { AuthRepository } from './auth.repository';
       useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('SECRET_KEY'),
         signOptions: {
-          // Env is a plain string; jsonwebtoken expects ms StringValue | number
-          expiresIn: (configService.get<string>('JWT_EXPIRES_IN') ?? '2d') as SignOptions['expiresIn'],
+          expiresIn: (configService.get<string>('JWT_EXPIRES_IN') ??
+            '2d') as NonNullable<SignOptions['expiresIn']>,
         },
       }),
     }),
