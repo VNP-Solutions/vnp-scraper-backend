@@ -81,6 +81,10 @@ export interface IJobRepository {
   }>;
   findDbEntriesByJobId(jobId: string): Promise<DbEntry[]>;
   findManyForMasterExport(jobIds: string[]): Promise<any[]>;
+  findJobIdsByRecurring(
+    recurringId: string,
+    bucketId: string,
+  ): Promise<string[]>;
 }
 
 export interface IJobService {
@@ -145,5 +149,9 @@ export interface IJobService {
   ): Promise<{ buffer: Buffer; fileName: string }>;
   exportSingleJobMasterCsv(
     jobId: string,
+  ): Promise<{ buffer: Buffer; fileName: string }>;
+  exportMasterCsvByRecurring(
+    recurringId: string,
+    bucketId: string,
   ): Promise<{ buffer: Buffer; fileName: string }>;
 }

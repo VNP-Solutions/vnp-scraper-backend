@@ -993,6 +993,45 @@ export class JobService implements IJobService {
     }
   }
 
+  /**
+   * Resolves all jobs in a recurring report bucket (by recurring_id +
+   * recurring_report_bucket_id) and runs them through the regular master
+   * export pipeline. The frontend can hit this with the same two filters
+   * it already uses on the jobs list, and gets back the same ZIP-of-CSVs
+   * as POST /jobs/export-master.
+   */
+  async exportMasterCsvByRecurring(
+    recurringId: string,
+    bucketId: string,
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    try {
+      if (!recurringId || !bucketId) {
+        throw new BadRequestException(
+          'Both recurring_id and recurring_report_bucket_id are required',
+        );
+      }
+
+      const jobIds = await this.repository.findJobIdsByRecurring(
+        recurringId,
+        bucketId,
+      );
+
+      if (jobIds.length === 0) {
+        throw new NotFoundException(
+          `No jobs found for recurring_id=${recurringId}, recurring_report_bucket_id=${bucketId}`,
+        );
+      }
+
+      return this.exportMasterCsv(jobIds);
+    } catch (error) {
+      this.logger.error(
+        `Error exporting master CSV by recurring: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
   private buildMasterCsvBuffer(
     rows: Record<string, any>[],
     headers: string[] = MASTER_EXPORT_HEADER,

@@ -8,6 +8,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
   Req,
   Res,
   UploadedFile,
@@ -983,6 +984,74 @@ export class JobController {
           return {
             statusCode: status,
             message: error?.message || 'Failed to export master CSV zip',
+            data: null,
+          };
+        },
+        this.logger,
+      );
+    }
+  }
+
+  @Get('/export-master/by-recurring')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary:
+      'Export master CSV files (zipped) for all jobs in a recurring report bucket',
+    description:
+      'Resolves every non-archived job whose recurring_id and recurring_report_bucket_id match the given query params, then returns a ZIP file of per-job CSVs (same column rules and naming as POST /jobs/export-master). Useful when the frontend already filters the jobs list by these two IDs and just wants to download the matching set without listing them first.',
+  })
+  @ApiQuery({
+    name: 'recurring_id',
+    required: true,
+    description: 'Recurring job ID to filter by',
+  })
+  @ApiQuery({
+    name: 'recurring_report_bucket_id',
+    required: true,
+    description: 'Recurring report bucket ID to filter by',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'ZIP file containing per-job CSV files',
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Bad request - recurring_id and recurring_report_bucket_id are required',
+  })
+  @ApiResponse({
+    status: 404,
+    description:
+      'No jobs found for the given recurring_id / recurring_report_bucket_id',
+  })
+  async exportMasterByRecurring(
+    @Query('recurring_id') recurringId: string,
+    @Query('recurring_report_bucket_id') bucketId: string,
+    @Res() response: Response,
+  ) {
+    try {
+      const { buffer, fileName } =
+        await this.jobService.exportMasterCsvByRecurring(recurringId, bucketId);
+
+      response.setHeader('Content-Type', 'application/zip');
+      response.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${fileName}"`,
+      );
+      response.send(buffer);
+    } catch (error) {
+      this.logger.error(
+        `Error exporting master CSV by recurring: ${error.message}`,
+        error.stack,
+      );
+      return ResponseHandler.handler(
+        response,
+        async () => {
+          const status = error?.status || 500;
+          return {
+            statusCode: status,
+            message:
+              error?.message || 'Failed to export master CSV by recurring',
             data: null,
           };
         },

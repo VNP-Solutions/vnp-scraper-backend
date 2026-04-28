@@ -1153,6 +1153,35 @@ export class JobRepository implements IJobRepository {
     }
   }
 
+  /**
+   * Returns the job IDs for a given recurring report bucket. Used by the
+   * GET /jobs/export-master/by-recurring endpoint to resolve filters into
+   * an explicit ID list before delegating to the regular master-export
+   * pipeline. Skips archived jobs to mirror the frontend list view.
+   */
+  async findJobIdsByRecurring(
+    recurringId: string,
+    bucketId: string,
+  ): Promise<string[]> {
+    try {
+      const jobs = await this.db.job.findMany({
+        where: {
+          recurring_id: recurringId,
+          recurring_report_bucket_id: bucketId,
+          is_archived: false,
+        },
+        select: { id: true },
+      });
+      return jobs.map((j) => j.id);
+    } catch (error) {
+      this.logger.error(
+        `Error finding job IDs by recurring: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
   async findManyForMasterExport(jobIds: string[]): Promise<any[]> {
     try {
       const jobs = await this.db.job.findMany({
