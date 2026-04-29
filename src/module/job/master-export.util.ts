@@ -36,6 +36,18 @@ export const MASTER_EXPORT_HEADER: string[] = [
 const NA = 'N/A';
 const CARD_ACTIVITY_HEADER = 'Card Activity';
 const APPROVED_AMOUNT_HEADER_PREFIX = 'Card Activity Approved Amount';
+const CALCULATED_AMOUNT_HEADER = 'Calculated Amount to Charge';
+const AMOUNT_MATCH_HEADER = 'Amount Match';
+
+/**
+ * Rounds a number to two decimal places. Used to keep the running sum of
+ * approved authorization amounts and the comparison against
+ * Amount to Charge free from floating-point noise (e.g. 100 - 99.99 - 0.01
+ * being 1.4e-16 instead of 0).
+ */
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
 
 /**
  * Returns the list of "Approved" authorizations from a job item's
@@ -229,19 +241,48 @@ export function buildMasterRow(
   row[MASTER_EXPORT_HEADER[24]] = ''; // Case Contact
   row[MASTER_EXPORT_HEADER[25]] = ''; // Reporting Contact
 
-  // Card Activity + dynamic Approved Amount columns (Expedia only).
-  // Non-Expedia rows get N/A for Card Activity and N/A for every approved
-  // amount column so every row in the CSV has the same column count.
-  const approved = isExpedia ? getApprovedAuthorizations(item) : [];
-  row[CARD_ACTIVITY_HEADER] = isExpedia ? JSON.stringify(approved) : NA;
-  for (let i = 0; i < approvedAmountColumns; i++) {
-    const header = `${APPROVED_AMOUNT_HEADER_PREFIX} ${i + 1}`;
-    if (!isExpedia) {
-      row[header] = NA;
-    } else if (i < approved.length) {
-      row[header] = formatApprovedAmountCell(approved[i]);
-    } else {
-      row[header] = '';
+  // Card Activity + Calculated Amount to Charge + Amount Match + dynamic
+  // Approved Amount columns are EXPEDIA-ONLY. For Booking and Agoda these
+  // keys are not written at all; buildMasterRows() also omits them from
+  // the header so the resulting CSV has just the 26 static columns.
+  if (isExpedia) {
+    const approved = getApprovedAuthorizations(item);
+    row[CARD_ACTIVITY_HEADER] = JSON.stringify(approved);
+
+    // Calculated Amount to Charge = Booking Amount - Σ approved amounts.
+    // Authorizations missing a numeric amount contribute 0 to the sum
+    // (treated as a no-op rather than an error).
+    const sumApproved = approved.reduce(
+      (s: number, a: any) =>
+        s + (typeof a?.amount?.amount === 'number' ? a.amount.amount : 0),
+      0,
+    );
+    const bookingAmount =
+      typeof item?.booking_amount === 'number' ? item.booking_amount : null;
+    const calculated =
+      bookingAmount !== null ? round2(bookingAmount - sumApproved) : null;
+    row[CALCULATED_AMOUNT_HEADER] = calculated !== null ? calculated : '';
+
+    // Amount Match: Yes only when both sides are present and equal after
+    // rounding to 2 decimals (matches the precision Booking/Expedia
+    // settlement reports operate at). Anything else is "No" — including
+    // missing booking_amount or missing amount_to_charge_or_refund.
+    const amountToChargeNum =
+      typeof amountToCharge === 'number' ? round2(amountToCharge) : null;
+    row[AMOUNT_MATCH_HEADER] =
+      calculated !== null &&
+      amountToChargeNum !== null &&
+      calculated === amountToChargeNum
+        ? 'Yes'
+        : 'No';
+
+    for (let i = 0; i < approvedAmountColumns; i++) {
+      const header = `${APPROVED_AMOUNT_HEADER_PREFIX} ${i + 1}`;
+      if (i < approved.length) {
+        row[header] = formatApprovedAmountCell(approved[i]);
+      } else {
+        row[header] = '';
+      }
     }
   }
   return row;
@@ -252,32 +293,48 @@ export function buildMasterRow(
  * `property`, `batch`, and `portfolio` relations loaded), along with the
  * effective header list for this export.
  *
- * The header is the static MASTER_EXPORT_HEADER plus a Card Activity column
- * and N "Approved Amount K" columns where N is the maximum number of
- * Approved authorizations seen in any single Expedia job item across all
- * provided jobs. Non-Expedia jobs do not contribute to N.
+ * In practice this function is always called with a single-job array
+ * (each per-job CSV is built independently in the bulk export path), so
+ * the resulting CSV always represents one OTA. Headers are tailored to
+ * the OTA:
+ *   - Expedia → static columns + Card Activity + Calculated Amount to
+ *     Charge + Amount Match + N "Card Activity Approved Amount K" columns
+ *     (N = max approved authorizations on any Expedia job item passed in).
+ *   - Booking / Agoda → static columns only (no Expedia-specific columns).
  */
 export function buildMasterRows(jobs: any[]): {
   headers: string[];
   rows: Record<string, string | number>[];
 } {
+  const isExpediaCsv = (jobs || []).some(
+    (j: any) => j?.ota_provider === OTAProvider.Expedia,
+  );
+
   let maxApprovedCount = 0;
-  for (const job of jobs || []) {
-    if (job?.ota_provider !== OTAProvider.Expedia) continue;
-    const items = Array.isArray(job?.jobItem) ? job.jobItem : [];
-    for (const item of items) {
-      const count = getApprovedAuthorizations(item).length;
-      if (count > maxApprovedCount) maxApprovedCount = count;
+  if (isExpediaCsv) {
+    for (const job of jobs || []) {
+      if (job?.ota_provider !== OTAProvider.Expedia) continue;
+      const items = Array.isArray(job?.jobItem) ? job.jobItem : [];
+      for (const item of items) {
+        const count = getApprovedAuthorizations(item).length;
+        if (count > maxApprovedCount) maxApprovedCount = count;
+      }
     }
   }
 
   const headers: string[] = [
     ...MASTER_EXPORT_HEADER,
-    CARD_ACTIVITY_HEADER,
-    ...Array.from(
-      { length: maxApprovedCount },
-      (_, i) => `${APPROVED_AMOUNT_HEADER_PREFIX} ${i + 1}`,
-    ),
+    ...(isExpediaCsv
+      ? [
+          CARD_ACTIVITY_HEADER,
+          CALCULATED_AMOUNT_HEADER,
+          AMOUNT_MATCH_HEADER,
+          ...Array.from(
+            { length: maxApprovedCount },
+            (_, i) => `${APPROVED_AMOUNT_HEADER_PREFIX} ${i + 1}`,
+          ),
+        ]
+      : []),
   ];
 
   const rows: Record<string, string | number>[] = [];
