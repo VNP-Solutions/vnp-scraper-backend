@@ -17,7 +17,9 @@ export class GoogleOAuthSchedulerService {
   // @Cron('0 59 2 29 1 *') // 19:28 UTC on Jan 28 = 01:28 AM Jan 29 in +06:00 timezone
   @Cron(CronExpression.EVERY_12_HOURS) // Runs every 12 hours
   async handleTokenRefresh() {
-    this.logger.log('Starting Google OAuth token refresh job (runs every 12 hours)...');
+    this.logger.log(
+      'Starting Google OAuth token refresh job (runs every 12 hours)...',
+    );
 
     try {
       // Load token from S3

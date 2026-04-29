@@ -1,7 +1,8 @@
 import { HttpService } from '@nestjs/axios';
-import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { SchedulerRegistry } from '@nestjs/schedule';
+import { CronJob } from 'cron';
 import { firstValueFrom } from 'rxjs';
 import { IJobService } from '../job/job.interface';
 import { IRecurringJobService } from '../recurring-job/recurring-job.interface';
@@ -12,7 +13,7 @@ import { IScheduledJobService } from './scheduled-job.interface';
 import { IScraperJobItemService } from './scraper-job-item.interface';
 
 @Injectable()
-export class ScheduledJobSchedulerService {
+export class ScheduledJobSchedulerService implements OnModuleInit {
   private readonly logger = new Logger(ScheduledJobSchedulerService.name);
 
   constructor(
@@ -31,10 +32,21 @@ export class ScheduledJobSchedulerService {
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     private readonly bookingBulkDispatchService: BookingBulkDispatchService,
+    private readonly schedulerRegistry: SchedulerRegistry,
   ) {}
 
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
-  // @Cron('0 51 14 26 4 *') // 2:10 PM on April 26th
+  onModuleInit() {
+    const cronExpression = this.configService.get<string>('SCHEDULED_JOB_CRON_TIME') || '0 0 0 * * *';
+    this.logger.log(`Registering scheduled jobs cron with expression: ${cronExpression}`);
+    
+    const job = new CronJob(cronExpression, () => {
+      this.handleScheduledJobs();
+    });
+
+    this.schedulerRegistry.addCronJob('handleScheduledJobs', job);
+    job.start();
+  }
+
   async handleScheduledJobs() {
     this.logger.log('Starting scheduled jobs execution...');
 
