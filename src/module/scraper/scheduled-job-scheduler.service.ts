@@ -389,8 +389,8 @@ export class ScheduledJobSchedulerService implements OnModuleInit {
                 this.configService.get<string>('EXPEDIA_MODE');
               const apiPath =
                 expediadMode === 'graphql'
-                  ? '/api/expedia/bulk-graphql-run-job'
-                  : '/api/expedia/bulk-property-run-job';
+                  ? '/api/batch-property-run-job-by-booking-credentials'
+                  : '/api/batch-property-run-job-by-booking-credentials';
 
               this.logger.log(
                 `[Scheduled Batch] Processing ${jobIds.length} Expedia jobs on server ${expediaUrl}${apiPath} using bulk API with ${expediadMode || 'scraper'} mode: ${apiPath}`,
