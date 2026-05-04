@@ -13,6 +13,7 @@ import {
   RetrievalItem,
 } from '@prisma/client';
 import * as XLSX from 'xlsx';
+import { asExcelText } from '../job/master-export.util';
 import { IPropertyCredentialsService } from '../property-credentials/property-credentials.interface';
 import {
   IPropertyRepository,
@@ -705,7 +706,7 @@ export class RetrievalService implements IRetrievalService {
             ? String(item.card_info.card_number).replace(/\D/g, '').slice(-12)
             : '',
           'Card Expire': item.card_info?.expiry_date || '',
-          'Card CVV': item.card_info?.cvv || '',
+          'Card CVV': asExcelText(item.card_info?.cvv),
           isMissing: item.additional_text || 'Present',
         };
 
