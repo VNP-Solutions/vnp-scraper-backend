@@ -19,6 +19,17 @@ import {
 import { IRetrievalRepository } from './retrieval.interface';
 import { sanitizeForExport } from './sanitize.util';
 
+/** BSON may store CVV as a number; coerce to string so XLSX emits text cells, not numeric. */
+function normalizeExportCardInfo(
+  raw: Record<string, unknown>,
+): Record<string, unknown> {
+  const out = { ...raw };
+  if ('cvv' in out && out.cvv != null && out.cvv !== '') {
+    out.cvv = String(out.cvv);
+  }
+  return out;
+}
+
 function mapRawDocToRetrieval(doc: Record<string, unknown>): Partial<Retrieval> {
   const id = doc._id instanceof ObjectId ? doc._id.toString() : String(doc._id);
   return {
@@ -435,7 +446,9 @@ export class RetrievalRepository implements IRetrievalRepository {
           has_card_info: Boolean(doc.has_card_info),
           card_info:
             doc.card_info && typeof doc.card_info === 'object'
-              ? (doc.card_info as Record<string, unknown>)
+              ? normalizeExportCardInfo(
+                  doc.card_info as Record<string, unknown>,
+                )
               : null,
           has_payment_info: Boolean(doc.has_payment_info),
           payment_info:

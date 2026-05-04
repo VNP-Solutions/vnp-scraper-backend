@@ -28,6 +28,35 @@ import {
 } from './retrieval.dto';
 import { IRetrievalRepository, IRetrievalService } from './retrieval.interface';
 
+const RETRIEVAL_EXPORT_CVV_COLUMN = 'Card CVV';
+
+/**
+ * SheetJS infers `t: 'n'` from numeric JS values. Set each cell to a string
+ * cell (`t: 's'`) and Excel's Text number format (`@`) so the column is plain text.
+ */
+function applyExcelTextColumnFormat(
+  worksheet: XLSX.WorkSheet,
+  dataRows: ReadonlyArray<Record<string, unknown>>,
+  columnHeader: string,
+): void {
+  if (dataRows.length === 0) return;
+  const columnIndex = Object.keys(dataRows[0]).indexOf(columnHeader);
+  if (columnIndex < 0) return;
+
+  for (let rowIndex = 0; rowIndex <= dataRows.length; rowIndex++) {
+    const address = XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex });
+    const cellValue =
+      rowIndex === 0
+        ? columnHeader
+        : (() => {
+            const raw = dataRows[rowIndex - 1][columnHeader];
+            if (raw == null || raw === '') return '';
+            return String(raw);
+          })();
+    worksheet[address] = { t: 's', v: cellValue, z: '@' };
+  }
+}
+
 @Injectable()
 export class RetrievalService implements IRetrievalService {
   constructor(
@@ -717,6 +746,11 @@ export class RetrievalService implements IRetrievalService {
 
       // Create Excel workbook
       const worksheet = XLSX.utils.json_to_sheet(excelData);
+      applyExcelTextColumnFormat(
+        worksheet,
+        excelData as ReadonlyArray<Record<string, unknown>>,
+        RETRIEVAL_EXPORT_CVV_COLUMN,
+      );
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Retrieval Items');
 
