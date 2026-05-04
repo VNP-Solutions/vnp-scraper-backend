@@ -158,7 +158,7 @@ function formatCardNumber(raw: string | null | undefined): string {
  *
  * Produces a cell value like: ="3700 2145 0852 239"
  */
-function asExcelText(value: string | number | null | undefined): string {
+export function asExcelText(value: string | number | null | undefined): string {
   if (value === null || value === undefined || value === '') return '';
   // Escape embedded double quotes per CSV/Excel rules.
   const escaped = String(value).replace(/"/g, '""');
