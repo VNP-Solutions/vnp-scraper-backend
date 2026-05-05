@@ -257,6 +257,7 @@ model Job {
   phoneNumberSlots  PhoneNumberSlot[]
   dbData        DbData[]
   dbEntries     DbEntry[]
+  otpCodes      OtpCode[]
 
   @@map("jobs")
 }
@@ -546,6 +547,25 @@ model OtpStatus {
   job Job? @relation(fields: [job_id], references: [id])
 
   @@map("otp_statuses")
+}
+
+model OtpCode {
+  id        String      @id @default(auto()) @map("_id") @db.ObjectId
+  provider  OTAProvider
+  otp_code  String
+  job_id    String?     @db.ObjectId
+  used      Boolean     @default(false)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  job Job? @relation(fields: [job_id], references: [id])
+
+  @@index([job_id])
+  @@index([provider])
+  @@index([provider, job_id])
+  @@index([createdAt(sort: Desc)])
+  @@index([provider, job_id, used])
+  @@map("otp_codes")
 }
 
 model PhoneNumberSlot {

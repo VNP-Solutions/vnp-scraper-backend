@@ -14,6 +14,7 @@ import { EncryptionModule } from './module/encryption/encryption.module';
 import { GoogleOAuthModule } from './module/google-oauth/google-oauth.module';
 import { JobModule } from './module/job/job.module';
 import { NotificationModule } from './module/notification/notification.module';
+import { OtpCodeModule } from './module/otp-code/otp-code.module';
 import { OtpLogModule } from './module/otp-log/otp-log.module';
 import { OtpStatusModule } from './module/otp-status/otp-status.module';
 import { PhoneNumberSlotModule } from './module/phone-number-slot/phone-number-slot.module';
@@ -53,6 +54,7 @@ import { UserModule } from './module/user/user.module';
     ScraperModule,
     AgodaModule,
     OtpStatusModule,
+    OtpCodeModule,
     PhoneNumberSlotModule,
     RetrievalModule,
     DbDataModule,
