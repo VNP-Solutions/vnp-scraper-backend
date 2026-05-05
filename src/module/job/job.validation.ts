@@ -49,6 +49,7 @@ export const createJobSchema = z.object({
   end_date: z.string().optional().nullable(),
   log_link: z.string().optional().nullable(),
   live_url: z.string().optional().nullable(),
+  watcher_emails: z.array(z.string()).optional(),
   batch_id: z.union([objectIdSchema, z.null(), z.undefined()]).optional(),
   recurring_id: z.union([objectIdSchema, z.null(), z.undefined()]).optional(),
   db_billing_duration: z.number().int().optional().nullable(),
