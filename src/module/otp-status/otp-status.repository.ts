@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { OtpStatus } from '@prisma/client';
+import { OtpPlatform, OtpStatus } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { CreateOtpStatusDto, UpdateOtpStatusDto } from './otp-status.dto';
 import { IOtpStatusRepository } from './otp-status.interface';
@@ -30,6 +30,19 @@ export class OtpStatusRepository implements IOtpStatusRepository {
   async find(): Promise<OtpStatus[]> {
     try {
       const otpStatus = await this.db.otpStatus.findMany();
+      return otpStatus;
+    } catch (error) {
+      this.logger.error(error);
+      return null;
+    }
+  }
+
+  async findByPlatform(platform: OtpPlatform): Promise<OtpStatus | null> {
+    try {
+      const otpStatus = await this.db.otpStatus.findFirst({
+        where: { platform },
+        orderBy: { updatedAt: 'desc' },
+      });
       return otpStatus;
     } catch (error) {
       this.logger.error(error);
