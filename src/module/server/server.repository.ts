@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Server } from '@prisma/client';
+import { OtpPlatform, Server } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { IServerRepository } from './server.interface';
 
@@ -12,6 +12,7 @@ export class ServerRepository implements IServerRepository {
   async create(data: {
     name: string;
     url: string;
+    platform?: OtpPlatform;
     is_active?: boolean;
   }): Promise<Server> {
     try {
@@ -19,6 +20,7 @@ export class ServerRepository implements IServerRepository {
         data: {
           name: data.name,
           url: data.url,
+          platform: data.platform,
           is_active: data.is_active ?? true,
           job_count: 0,
         },
@@ -31,6 +33,7 @@ export class ServerRepository implements IServerRepository {
 
   async findAll(filters?: {
     search?: string;
+    platform?: OtpPlatform;
     is_active?: boolean;
     page?: number;
     limit?: number;
@@ -59,6 +62,10 @@ export class ServerRepository implements IServerRepository {
           { name: { contains: searchTerm, mode: 'insensitive' } },
           { url: { contains: searchTerm, mode: 'insensitive' } },
         ];
+      }
+
+      if (filters?.platform !== undefined) {
+        where.platform = filters.platform;
       }
 
       if (filters?.is_active !== undefined) {
@@ -126,11 +133,37 @@ export class ServerRepository implements IServerRepository {
     }
   }
 
+  async findAvailableServerByPlatform(platform: OtpPlatform): Promise<Server | null> {
+    try {
+      const where: any = {
+        is_active: true,
+        platform,
+      };
+
+      // Find active servers with matching platform, sorted by job_count ascending (lowest first)
+      const servers = await this.db.server.findMany({
+        where,
+        orderBy: { job_count: 'asc' },
+      });
+
+      // Find the first server where job_count < max_concurrent_jobs
+      const availableServer = servers.find(
+        (server) => server.job_count < server.max_concurrent_jobs,
+      );
+
+      return availableServer || null;
+    } catch (error) {
+      this.logger.error(`Error finding available server for platform ${platform}:`, error);
+      throw error;
+    }
+  }
+
   async update(
     id: string,
     data: {
       name?: string;
       url?: string;
+      platform?: OtpPlatform;
       is_active?: boolean;
     },
   ): Promise<Server> {
