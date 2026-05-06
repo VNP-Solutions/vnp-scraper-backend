@@ -57,6 +57,7 @@ export const createJobSchema = z.object({
     .int()
     .optional()
     .nullable(),
+  phone_number_for_report: z.string().optional().nullable(),
 });
 
 export const updateJobSchema = createJobSchema.partial();

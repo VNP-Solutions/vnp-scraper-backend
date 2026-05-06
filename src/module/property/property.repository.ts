@@ -44,17 +44,45 @@ export class PropertyRepository implements IPropertyRepository {
     if (data.agoda_id) {
       propertyData.agoda_id = data.agoda_id;
     }
+
     if (data.phone_number !== undefined && data.phone_number !== null) {
-      propertyData.phone_number = data.phone_number;
-    }
-    if (data.slot !== undefined && data.slot !== null) {
-      propertyData.slot = data.slot;
-    }
-    if (
-      data.phone_number_slot_id !== undefined &&
-      data.phone_number_slot_id !== null
-    ) {
-      propertyData.phone_number_slot_id = data.phone_number_slot_id;
+      try {
+        const resolved = await this.resolvePhoneNumberSlotLinkForImport(
+          { phone: data.phone_number, slot: data.slot ?? null },
+          `Phone slot (create property "${data.name}")`,
+        );
+        if (resolved) {
+          propertyData.phone_number = resolved.phone;
+          propertyData.slot = resolved.slot;
+          propertyData.phone_number_slot_id = resolved.slotId;
+        } else {
+          propertyData.phone_number = data.phone_number;
+          if (data.slot !== undefined && data.slot !== null) {
+            propertyData.slot = data.slot;
+          }
+          if (
+            data.phone_number_slot_id !== undefined &&
+            data.phone_number_slot_id !== null
+          ) {
+            propertyData.phone_number_slot_id = data.phone_number_slot_id;
+          }
+        }
+      } catch (phoneSlotError: any) {
+        this.logger.warn(
+          `Phone slot link skipped for new property "${data.name}": ${phoneSlotError?.message}`,
+        );
+        propertyData.phone_number = data.phone_number;
+        if (data.slot !== undefined && data.slot !== null) {
+          propertyData.slot = data.slot;
+        }
+      }
+    } else {
+      if (
+        data.phone_number_slot_id !== undefined &&
+        data.phone_number_slot_id !== null
+      ) {
+        propertyData.phone_number_slot_id = data.phone_number_slot_id;
+      }
     }
 
     try {

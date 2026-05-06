@@ -116,6 +116,12 @@ export class CreateJobDto {
       'Count of reservations after booking VCCs filter (optional metadata)',
   })
   booking_vccs_filtered_reservation_count?: number;
+
+  @ApiProperty({
+    required: false,
+    description: 'Phone number used for reporting purposes',
+  })
+  phone_number_for_report?: string;
 }
 
 export class UpdateJobDto implements Partial<CreateJobDto> {
@@ -188,6 +194,12 @@ export class UpdateJobDto implements Partial<CreateJobDto> {
       'Count of reservations after booking VCCs filter (optional metadata)',
   })
   booking_vccs_filtered_reservation_count?: number;
+
+  @ApiProperty({
+    required: false,
+    description: 'Phone number used for reporting purposes',
+  })
+  phone_number_for_report?: string;
 }
 
 export class ImportJobsResponseDto {
