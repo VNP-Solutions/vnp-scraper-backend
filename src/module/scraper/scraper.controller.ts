@@ -41,6 +41,8 @@ import {
     removeJobsFromScheduledJobSchema,
 } from './scheduled-job.validation';
 import { IScraperJobItemService } from './scraper-job-item.interface';
+import { pushJobsToQueue } from '../../helpers/sqsHelper';
+import { triggerLambda } from '../../helpers/lambdaHelper';
 import {
     AllJobItemsResponseDto,
     BatchPropertyRunJobRequestDto,
@@ -1101,6 +1103,25 @@ export class ScraperController {
       const otaProvider = job.ota_provider || 'Expedia'; // Default to Expedia
       const billingType = job.billing_type;
 
+      // For Expedia jobs: push to AWS SQS queue instead of HTTP call
+      if (otaProvider === 'Expedia' && billingType !== 'DB') {
+        await pushJobsToQueue([job]);
+        
+        // Trigger Lambda function after pushing to queue
+        await triggerLambda(otaProvider);
+        
+        // Return success response without making HTTP call
+        return res.status(HttpStatus.OK).json({
+          success: true,
+          message: 'Job successfully queued for processing',
+          data: {
+            jobId: body.jobId,
+            status: 'queued',
+            otaProvider: 'Expedia',
+          },
+        });
+      }
+
       // Check if billing_type is 'DB' and route to DB server
       if (billingType === 'DB') {
         selectedUrl = this.getExpediaDbUrl();
@@ -1294,6 +1315,9 @@ export class ScraperController {
         otaProvider: string;
         propertyId?: string | null;
       }> = [];
+      
+      // Collect Expedia jobs for SQS push
+      const expediaJobsForSqs = [];
 
       // Fetch job details and group them
       for (const jobRequest of body.jobs) {
@@ -1302,6 +1326,11 @@ export class ScraperController {
           const job = await this.jobService.getJobById(jobRequest.jobId);
           const otaProvider = job.ota_provider || 'Expedia';
           const billingType = job.billing_type;
+
+          // Add Expedia jobs to the collection for SQS push
+          if (otaProvider === 'Expedia') {
+            expediaJobsForSqs.push(job);
+          }
 
           if (billingType === 'DB' && otaProvider === 'Expedia') {
             expediaDbJobs.push({ ...jobRequest, otaProvider, billingType });
@@ -1332,13 +1361,21 @@ export class ScraperController {
             status: HttpStatus.BAD_REQUEST,
             message: `Job with ID ${jobRequest.jobId} not found`,
             success: false,
-            error: 'Invalid job_id',
-          });
-        }
+          error: 'Invalid job_id',
+        });
       }
+    }
 
-      // Process Expedia DB jobs using bulk API
-      if (expediaDbJobs.length > 0) {
+    // Push only Expedia jobs to AWS SQS queue
+    await pushJobsToQueue(expediaJobsForSqs);
+
+    // Trigger Lambda function after pushing Expedia jobs to queue
+    if (expediaJobsForSqs.length > 0) {
+      await triggerLambda('Expedia');
+    }
+
+    // Process Expedia DB jobs using bulk API
+    if (expediaDbJobs.length > 0) {
         try {
           const dbUrl = this.getExpediaDbUrl();
 
@@ -1405,61 +1442,20 @@ export class ScraperController {
         }
       }
 
-      // Process Expedia Property jobs
+      // Process Expedia Property jobs - jobs already pushed to queue, just return success
       if (expediaJobs.length > 0) {
-         try {
-           const expediaUrl = this.getUrlByOtaProvider('Expedia');
-           if (!expediaUrl) {
-              for (const job of expediaJobs) {
-                 processedResults.push({
-                   jobId: job.jobId,
-                   otaProvider: 'Expedia',
-                   status: HttpStatus.SERVICE_UNAVAILABLE,
-                   message: 'No Expedia server URL configured',
-                   success: false,
-                   error: 'Expedia server URL not configured',
-                 });
-              }
-           } else {
-             // Determine API path (GraphQL or Property)
-             const otaMode = this.getScrapingMode('Expedia');
-             const apiPath = otaMode === 'graphql' ? '/api/expedia/bulk-graphql-run-job' : '/api/expedia/bulk-property-run-job';
-             
-             // Update Job URLs (optimistically or simply side-effect)
-             for (const job of expediaJobs) {
-                this.jobItemService.updateJobCurrentUrl(job.jobId, expediaUrl).catch(err => console.error(err));
-             }
-
-             const bulkRequestBody = { job_ids: expediaJobs.map(j => j.jobId) };
-             const response = await firstValueFrom(
-               this.httpService.post(`${expediaUrl}${apiPath}`, bulkRequestBody, {
-                 headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-                 timeout: 300000,
-               })
-             );
-
-             if (response.data?.results && Array.isArray(response.data.results)) {
-               processedResults.push(...response.data.results);
-             } else {
-               for (const job of expediaJobs) {
-                 processedResults.push({
-                   jobId: job.jobId,
-                   otaProvider: 'Expedia',
-                   status: response.status,
-                   message: response.data?.message || 'Bulk job run successfully',
-                   success: response.data?.success !== false,
-                   data: response.data
-                 });
-               }
-             }
-           }
-         } catch (error: any) {
-            // Error handling similar to above
-            const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
-            const errorMessage = error.message;
-            for (const job of expediaJobs) {
-               processedResults.push({ jobId: job.jobId, otaProvider: 'Expedia', status, message: errorMessage, success: false, error: errorMessage });
-            }
+         // Jobs already pushed to SQS queue above, just return success for each
+         for (const job of expediaJobs) {
+           processedResults.push({
+             jobId: job.jobId,
+             otaProvider: 'Expedia',
+             status: HttpStatus.OK,
+             message: 'Job successfully queued for processing',
+             success: true,
+             data: {
+               status: 'queued',
+             },
+           });
          }
       }
 
