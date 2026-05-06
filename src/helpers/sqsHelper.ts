@@ -6,12 +6,13 @@ const logger = new Logger('SQSHelper');
 // Initialize AWS SQS client with credentials (using S3 credentials)
 const sqsClient = new SQSClient({
   region: process.env.S3_REGION || 'us-east-1',
-  credentials: process.env.S3_ACCESS_KEY && process.env.S3_SECRET_KEY
-    ? {
-        accessKeyId: process.env.S3_ACCESS_KEY,
-        secretAccessKey: process.env.S3_SECRET_KEY,
-      }
-    : undefined, // Will use default credential provider chain if not specified
+  credentials:
+    process.env.S3_ACCESS_KEY && process.env.S3_SECRET_KEY
+      ? {
+          accessKeyId: process.env.S3_ACCESS_KEY,
+          secretAccessKey: process.env.S3_SECRET_KEY,
+        }
+      : undefined, // Will use default credential provider chain if not specified
 });
 
 /**
@@ -62,6 +63,8 @@ export async function pushJobsToQueue(jobs: any[]): Promise<void> {
             timeout: 300000, // 5 minute timeout
           },
         }),
+        MessageGroupId: 'vnp-jobs', // Required for FIFO queues
+        MessageDeduplicationId: `${job.id || job._id}-${Date.now()}-${index}`, // Unique deduplication ID
       }));
 
       // Send the batch to SQS
@@ -79,20 +82,29 @@ export async function pushJobsToQueue(jobs: any[]): Promise<void> {
       totalPushed += successCount;
 
       if (successCount > 0) {
-        logger.log(`Successfully pushed ${successCount} job(s) to SQS (batch ${Math.floor(i / batchSize) + 1})`);
+        logger.log(
+          `Successfully pushed ${successCount} job(s) to SQS (batch ${Math.floor(i / batchSize) + 1})`,
+        );
       }
 
       if (failedCount > 0) {
-        logger.error(`Failed to push ${failedCount} job(s) to SQS (batch ${Math.floor(i / batchSize) + 1})`);
+        logger.error(
+          `Failed to push ${failedCount} job(s) to SQS (batch ${Math.floor(i / batchSize) + 1})`,
+        );
         response.Failed?.forEach((failure) => {
           logger.error(`Message ID ${failure.Id} failed: ${failure.Message}`);
         });
       }
     }
 
-    logger.log(`Completed SQS push: ${totalPushed}/${jobs.length} job(s) successfully pushed to queue.`);
+    logger.log(
+      `Completed SQS push: ${totalPushed}/${jobs.length} job(s) successfully pushed to queue.`,
+    );
   } catch (error) {
-    logger.error(`Error pushing jobs to SQS queue: ${error.message}`, error.stack);
+    logger.error(
+      `Error pushing jobs to SQS queue: ${error.message}`,
+      error.stack,
+    );
     // Don't throw error to prevent disrupting the main job creation flow
   }
 }
