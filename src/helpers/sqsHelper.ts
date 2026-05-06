@@ -63,7 +63,7 @@ export async function pushJobsToQueue(jobs: any[]): Promise<void> {
             timeout: 300000, // 5 minute timeout
           },
         }),
-        MessageGroupId: 'vnp-jobs', // Required for FIFO queues
+        MessageGroupId: `job-${job.id || job._id}`, // Unique per job for FIFO queues
         MessageDeduplicationId: `${job.id || job._id}-${Date.now()}-${index}`, // Unique deduplication ID
       }));
 
