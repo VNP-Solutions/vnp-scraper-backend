@@ -26,6 +26,9 @@ export class CreateJobDto {
   @ApiProperty({ required: false })
   recurring_report_bucket_id?: string;
 
+  @ApiProperty({ required: false, description: 'Server ID to run the job on' })
+  server_id?: string;
+
   @ApiProperty({ enum: PostingType })
   posting_type: PostingType;
 

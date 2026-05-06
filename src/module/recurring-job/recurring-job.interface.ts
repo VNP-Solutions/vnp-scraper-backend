@@ -72,6 +72,7 @@ export interface IRecurringJobService {
   createNextMonthJob(
     recurringId: string,
     currentScheduleDate: string,
+    currentServerId?: string | null,
   ): Promise<Job | null>;
   getBucketsByRecurringId(
     recurringId: string,
@@ -92,5 +93,23 @@ export interface IRecurringJobService {
     recurringJobsCreated: number;
     recurringJobs: any[];
     errors: Array<{ row: number; error: string }>;
+  }>;
+  updateAllJobsUnderRecurringJob(
+    recurringId: string,
+    changeFailedToPending?: boolean,
+    newRecurringDate?: string,
+  ): Promise<{ 
+    updatedJobsCount: number; 
+    schedulerUpdated: boolean;
+    message: string;
+  }>;
+  transferRecurringJobsByDate(
+    fromDate: string,
+    toDate: string,
+  ): Promise<{ 
+    recurringJobsUpdated: number; 
+    totalJobsUpdated: number;
+    schedulerUpdated: boolean;
+    recurringJobs: Array<{ id: string; name: string; jobCount: number }>;
   }>;
 }

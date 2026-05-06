@@ -227,3 +227,35 @@ export class BulkDeleteRecurringJobDto {
   })
   ids: string[];
 }
+
+export class UpdateAllJobsUnderRecurringJobDto {
+  @ApiProperty({ 
+    required: false, 
+    description: 'Change failed jobs to pending. Set to true to update status from Failed to Pending.',
+    example: true 
+  })
+  change_failed_to_pending?: boolean;
+
+  @ApiProperty({ 
+    required: false, 
+    description: 'New recurring date in YYYY-MM-DD format. This will update the schedule_date for all jobs and update the scheduler.',
+    example: '2026-05-15'
+  })
+  new_recurring_date?: string;
+}
+
+export class TransferRecurringJobsByDateDto {
+  @ApiProperty({ 
+    required: true, 
+    description: 'Source date in YYYY-MM-DD format. All recurring jobs scheduled on this date will be transferred.',
+    example: '2026-05-15'
+  })
+  from_date: string;
+
+  @ApiProperty({ 
+    required: true, 
+    description: 'Target date in YYYY-MM-DD format. All recurring jobs will be moved to this date.',
+    example: '2026-06-20'
+  })
+  to_date: string;
+}

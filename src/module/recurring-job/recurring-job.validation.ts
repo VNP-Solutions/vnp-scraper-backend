@@ -69,6 +69,26 @@ export const bulkDeleteRecurringJobSchema = z.object({
   ids: z.array(objectIdSchema).min(1, 'At least one ID is required'),
 });
 
+export const updateAllJobsUnderRecurringJobSchema = z.object({
+  change_failed_to_pending: z.boolean().optional(),
+  new_recurring_date: dateStringSchema.optional(),
+}).refine(
+  (data) => data.change_failed_to_pending !== undefined || data.new_recurring_date !== undefined,
+  {
+    message: 'At least one of change_failed_to_pending or new_recurring_date must be provided',
+  }
+);
+
+export const transferRecurringJobsByDateSchema = z.object({
+  from_date: dateStringSchema,
+  to_date: dateStringSchema,
+}).refine(
+  (data) => data.from_date !== data.to_date,
+  {
+    message: 'from_date and to_date must be different',
+  }
+);
+
 export type CreateRecurringJobType = z.infer<typeof createRecurringJobSchema>;
 export type CreateRecurringJobFromJobType = z.infer<
   typeof createRecurringJobFromJobSchema
@@ -79,4 +99,10 @@ export type UpdateRecurringJobStatusType = z.infer<
 >;
 export type BulkDeleteRecurringJobType = z.infer<
   typeof bulkDeleteRecurringJobSchema
+>;
+export type UpdateAllJobsUnderRecurringJobType = z.infer<
+  typeof updateAllJobsUnderRecurringJobSchema
+>;
+export type TransferRecurringJobsByDateType = z.infer<
+  typeof transferRecurringJobsByDateSchema
 >;

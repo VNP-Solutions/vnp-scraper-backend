@@ -5,15 +5,19 @@ import { DatabaseService } from '../database/database.service';
 import { PropertyModule } from '../property/property.module';
 import { RecurringJobModule } from '../recurring-job/recurring-job.module';
 import { ScraperModule } from '../scraper/scraper.module';
+import { ServerModule } from '../server/server.module';
 import { JobController } from './job.controller';
 import { JobRepository } from './job.repository';
 import { JobService } from './job.service';
 
 @Module({
   imports: [
+    
     forwardRef(() => ScraperModule),
+   
     forwardRef(() => RecurringJobModule),
     PropertyModule,
+    ServerModule,
   ],
   controllers: [JobController],
   providers: [
