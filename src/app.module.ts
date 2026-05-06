@@ -23,6 +23,7 @@ import { PropertyModule } from './module/property/property.module';
 import { RecurringJobModule } from './module/recurring-job/recurring-job.module';
 import { RetrievalModule } from './module/retrieval/retrieval.module';
 import { ScraperModule } from './module/scraper/scraper.module';
+import { ServerModule } from './module/server/server.module';
 import { SubPortfolioModule } from './module/sub-portfolio/sub-portfolio.module';
 import { UploadModule } from './module/upload/upload.module';
 import { UserFeatureAccessPermissionModule } from './module/user-feature-access-permission/user-feature-access-permission.module';
@@ -44,6 +45,7 @@ import { UserModule } from './module/user/user.module';
     SubPortfolioModule,
     JobModule,
     RecurringJobModule,
+    ServerModule,
     UploadModule,
     UserFeatureAccessPermissionModule,
     UserInvitationModule,

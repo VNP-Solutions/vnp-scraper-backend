@@ -11,6 +11,7 @@ import { PassThrough } from 'stream';
 import * as XLSX from 'xlsx';
 import { IRecurringJobService } from '../recurring-job/recurring-job.interface';
 import { IScheduledJobService } from '../scraper/scheduled-job.interface';
+import { IServerService } from '../server/server.interface';
 import {
   CreateBatchDto,
   CreateJobDto,
@@ -33,6 +34,8 @@ export class JobService implements IJobService {
     private readonly scheduledJobService: IScheduledJobService,
     @Inject('IRecurringJobService')
     private readonly recurringJobService: IRecurringJobService,
+    @Inject('IServerService')
+    private readonly serverService: IServerService,
     private readonly logger: Logger,
   ) {}
 
@@ -114,6 +117,32 @@ export class JobService implements IJobService {
 
   async updateJob(id: string, data: UpdateJobDto): Promise<Job> {
     try {
+      // Get the existing job to check if schedule_date is changing
+      const existingJob = await this.repository.findById(id);
+      
+      if (!existingJob) {
+        throw new Error(`Job with ID ${id} not found`);
+      }
+      
+      // If schedule_date is being updated and job has a server assigned
+      if (data.schedule_date && 
+          existingJob.schedule_date && 
+          data.schedule_date !== existingJob.schedule_date &&
+          existingJob.server_id) {
+        try {
+          // Move job capacity from old date to new date
+          await this.serverService.moveJobBetweenDates(
+            existingJob.server_id,
+            existingJob.schedule_date,
+            data.schedule_date
+          );
+          this.logger.log(`Moved job ${id} capacity from ${existingJob.schedule_date} to ${data.schedule_date} on server ${existingJob.server_id}`);
+        } catch (serverError) {
+          this.logger.error(`Error moving job between dates: ${serverError.message}`, serverError.stack);
+          // Don't throw - continue with job update even if server update fails
+        }
+      }
+      
       const job = await this.repository.update(id, data);
       return job;
     } catch (error) {
@@ -124,8 +153,22 @@ export class JobService implements IJobService {
 
   async deleteJob(id: string): Promise<Job> {
     try {
-      const job = await this.repository.delete(id);
-      return job;
+      // Get the job first to check if it has a server assigned
+      const job = await this.repository.findById(id);
+      
+      if (job && job.server_id && job.schedule_date) {
+        // Decrement the server's date-based capacity
+        try {
+          await this.serverService.decrementDateCapacity(job.server_id, job.schedule_date);
+          this.logger.log(`Decremented date capacity for server ${job.server_id} on ${job.schedule_date} after deleting job ${id}`);
+        } catch (serverError) {
+          this.logger.error(`Error decrementing server date capacity: ${serverError.message}`, serverError.stack);
+          // Don't throw - continue with job deletion even if server update fails
+        }
+      }
+      
+      const deletedJob = await this.repository.delete(id);
+      return deletedJob;
     } catch (error) {
       this.logger.error(`Error deleting job: ${error.message}`, error.stack);
       throw error;

@@ -209,6 +209,7 @@ model Job {
   batch_id                    String?     @db.ObjectId
   recurring_id                String?     @db.ObjectId
   recurring_report_bucket_id  String?     @db.ObjectId
+  server_id                   String?     @db.ObjectId
   posting_type                PostingType
   portfolio_name              String?
   sub_portfolio_name          String?
@@ -252,6 +253,7 @@ model Job {
   batch         Batch?              @relation(fields: [batch_id], references: [id])
   recurringJob  RecurringJob?       @relation(fields: [recurring_id], references: [id], onDelete: Cascade)
   recurringReportBucket RecurringReportBucket? @relation(fields: [recurring_report_bucket_id], references: [id], onDelete: Cascade)
+  server        Server?        @relation(fields: [server_id], references: [id])
   jobItem       JobItem[]
   OtpStatus         OtpStatus[]
   phoneNumberSlots  PhoneNumberSlot[]
@@ -776,6 +778,38 @@ model Notification {
 
   @@index([user_id, is_read])
   @@map("notifications")
+}
+
+model Server {
+  id                  String   @id @default(auto()) @map("_id") @db.ObjectId
+  name                String   @unique
+  url                 String
+  job_count           Int      @default(0) // Deprecated: kept for backward compatibility
+  max_concurrent_jobs Int      @default(200)
+  is_active           Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  jobs                Job[]
+  dailySchedules      ServerDailySchedule[]
+
+  @@map("servers")
+}
+
+model ServerDailySchedule {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  server_id     String   @db.ObjectId
+  date          String   // Format: YYYY-MM-DD
+  assigned_jobs Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  server Server @relation(fields: [server_id], references: [id], onDelete: Cascade)
+
+  @@unique([server_id, date])
+  @@index([date])
+  @@index([server_id])
+  @@map("server_daily_schedules")
 }
 
 model ScheduledJob {

@@ -37,6 +37,8 @@ import {
   UpdateRecurringJobDto,
   UpdateRecurringJobStatusDto,
   BulkDeleteRecurringJobDto,
+  UpdateAllJobsUnderRecurringJobDto,
+  TransferRecurringJobsByDateDto,
 } from './recurring-job.dto';
 import { IRecurringJobService } from './recurring-job.interface';
 import {
@@ -45,6 +47,8 @@ import {
   updateRecurringJobSchema,
   updateRecurringJobStatusSchema,
   bulkDeleteRecurringJobSchema,
+  updateAllJobsUnderRecurringJobSchema,
+  transferRecurringJobsByDateSchema,
 } from './recurring-job.validation';
 
 @ApiTags('Recurring Jobs')
@@ -520,6 +524,117 @@ export class RecurringJobController {
           statusCode: 200,
           message: 'Jobs retrieved successfully',
           data: jobs,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put(':id/update-all-jobs')
+  @ValidateBody(updateAllJobsUnderRecurringJobSchema)
+  @ApiOperation({ 
+    summary: 'Update all jobs under a recurring job',
+    description: 'Can change job status from Failed to Pending and/or update the recurring date for all jobs. When recurring date is changed, the scheduler is also updated. At least one of the fields must be provided.'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'All jobs under recurring job updated successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 200 },
+        message: { type: 'string' },
+        data: {
+          type: 'object',
+          properties: {
+            updatedJobsCount: { type: 'number' },
+            schedulerUpdated: { type: 'boolean' },
+            message: { type: 'string' },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - No jobs found or invalid input' })
+  @ApiResponse({ status: 404, description: 'Recurring job not found' })
+  async updateAllJobsUnderRecurringJob(
+    @Param('id') id: string,
+    @Body() updateDto: UpdateAllJobsUnderRecurringJobDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result = await this.recurringJobService.updateAllJobsUnderRecurringJob(
+          id,
+          updateDto.change_failed_to_pending,
+          updateDto.new_recurring_date,
+        );
+        return {
+          statusCode: 200,
+          message: 'All jobs under recurring job updated successfully',
+          data: result,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/transfer-by-date')
+  @ValidateBody(transferRecurringJobsByDateSchema)
+  @ApiOperation({ 
+    summary: 'Transfer all recurring jobs from one date to another',
+    description: 'Finds all recurring jobs scheduled on the from_date and transfers them (including all their jobs) to the to_date. The scheduler is automatically updated for all active recurring jobs.'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Recurring jobs transferred successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 200 },
+        message: { type: 'string' },
+        data: {
+          type: 'object',
+          properties: {
+            recurringJobsUpdated: { type: 'number', description: 'Number of recurring jobs transferred' },
+            totalJobsUpdated: { type: 'number', description: 'Total number of jobs updated' },
+            schedulerUpdated: { type: 'boolean', description: 'Whether scheduler was updated' },
+            recurringJobs: { 
+              type: 'array',
+              description: 'List of transferred recurring jobs',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  name: { type: 'string' },
+                  jobCount: { type: 'number' },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - No recurring jobs found on from_date or dates are the same' })
+  async transferRecurringJobsByDate(
+    @Body() transferDto: TransferRecurringJobsByDateDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result = await this.recurringJobService.transferRecurringJobsByDate(
+          transferDto.from_date,
+          transferDto.to_date,
+        );
+        return {
+          statusCode: 200,
+          message: `Successfully transferred ${result.recurringJobsUpdated} recurring job(s) from ${transferDto.from_date} to ${transferDto.to_date}`,
+          data: result,
         };
       },
       this.logger,
