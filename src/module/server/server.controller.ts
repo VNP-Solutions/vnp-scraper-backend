@@ -20,6 +20,7 @@ import {
   ApiParam,
   ApiBearerAuth,
 } from '@nestjs/swagger';
+import { OtpPlatform } from '@prisma/client';
 import { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ResponseHandler } from 'src/common/utils/response-handler';
@@ -83,6 +84,7 @@ export class ServerController {
   @Get()
   @ApiOperation({ summary: 'Get all servers with pagination and filtering' })
   @ApiQuery({ name: 'search', required: false, description: 'Search by server name or URL' })
+  @ApiQuery({ name: 'platform', required: false, enum: ['expedia', 'agoda', 'booking', 'expedia_retrieval', 'agoda_retrieval', 'expedia_db'], description: 'Filter by platform' })
   @ApiQuery({ name: 'is_active', required: false, type: Boolean, description: 'Filter by active status' })
   @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number', example: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page', example: 10 })
@@ -101,9 +103,10 @@ export class ServerController {
       async () => {
         const filters: any = {};
         
-        const { search, is_active, page, limit, order } = query;
+        const { search, platform, is_active, page, limit, order } = query;
         
         if (search) filters.search = search;
+        if (platform) filters.platform = platform;
         if (is_active !== undefined) filters.is_active = is_active === 'true';
         if (page) filters.page = page;
         if (limit) filters.limit = limit;
@@ -146,6 +149,65 @@ export class ServerController {
           return {
             statusCode: 404,
             message: 'No available server found',
+            data: null,
+          };
+        }
+
+        return {
+          statusCode: 200,
+          message: 'Available server retrieved successfully',
+          data: server,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Get('/available/by-platform')
+  @ApiOperation({ summary: 'Get an available server by platform (public endpoint)' })
+  @ApiQuery({ 
+    name: 'platform', 
+    required: true, 
+    enum: ['expedia', 'agoda', 'booking', 'expedia_retrieval', 'agoda_retrieval', 'expedia_db'], 
+    description: 'Platform to filter servers by' 
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Available server retrieved successfully (sorted by lowest job_count)',
+    type: ServerResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid or missing platform parameter' })
+  @ApiResponse({ status: 404, description: 'No available server found for the platform' })
+  async findAvailableServerByPlatform(
+    @Query('platform') platform: string,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        if (!platform) {
+          return {
+            statusCode: 400,
+            message: 'Platform parameter is required',
+            data: null,
+          };
+        }
+
+        const validPlatforms = ['expedia', 'agoda', 'booking', 'expedia_retrieval', 'agoda_retrieval', 'expedia_db'];
+        if (!validPlatforms.includes(platform)) {
+          return {
+            statusCode: 400,
+            message: `Invalid platform. Valid platforms are: ${validPlatforms.join(', ')}`,
+            data: null,
+          };
+        }
+
+        const server = await this.serverService.findAvailableServerByPlatform(platform as OtpPlatform);
+
+        if (!server) {
+          return {
+            statusCode: 404,
+            message: `No available server found for platform "${platform}"`,
             data: null,
           };
         }

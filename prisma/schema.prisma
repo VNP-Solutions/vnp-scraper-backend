@@ -781,14 +781,15 @@ model Notification {
 }
 
 model Server {
-  id                  String   @id @default(auto()) @map("_id") @db.ObjectId
-  name                String   @unique
+  id                  String       @id @default(auto()) @map("_id") @db.ObjectId
+  name                String       @unique
   url                 String
-  job_count           Int      @default(0) // Deprecated: kept for backward compatibility
-  max_concurrent_jobs Int      @default(200)
-  is_active           Boolean  @default(true)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  platform            OtpPlatform?
+  job_count           Int          @default(0) // Deprecated: kept for backward compatibility
+  max_concurrent_jobs Int          @default(200)
+  is_active           Boolean      @default(true)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
 
   jobs                Job[]
   dailySchedules      ServerDailySchedule[]

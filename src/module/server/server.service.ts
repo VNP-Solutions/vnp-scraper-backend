@@ -5,7 +5,7 @@ import {
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
-import { Server } from '@prisma/client';
+import { OtpPlatform, Server } from '@prisma/client';
 import { IServerService } from './server.interface';
 import { ServerRepository } from './server.repository';
 
@@ -18,6 +18,7 @@ export class ServerService implements IServerService {
   async createServer(data: {
     name: string;
     url: string;
+    platform?: OtpPlatform;
     is_active?: boolean;
   }): Promise<Server> {
     try {
@@ -42,6 +43,7 @@ export class ServerService implements IServerService {
 
   async findAllServers(filters?: {
     search?: string;
+    platform?: OtpPlatform;
     is_active?: boolean;
     page?: number;
     limit?: number;
@@ -91,11 +93,29 @@ export class ServerService implements IServerService {
     }
   }
 
+  async findAvailableServerByPlatform(platform: OtpPlatform): Promise<Server | null> {
+    try {
+      const server = await this.repository.findAvailableServerByPlatform(platform);
+
+      if (!server) {
+        this.logger.warn(`No available server found for platform "${platform}" (all servers are at capacity or inactive)`);
+      } else {
+        this.logger.log(`Available server found for platform "${platform}": ${server.name} (job_count: ${server.job_count}/${server.max_concurrent_jobs})`);
+      }
+
+      return server;
+    } catch (error) {
+      this.logger.error(`Error finding available server for platform ${platform}:`, error);
+      throw error;
+    }
+  }
+
   async updateServer(
     id: string,
     data: {
       name?: string;
       url?: string;
+      platform?: OtpPlatform;
       is_active?: boolean;
     },
   ): Promise<Server> {

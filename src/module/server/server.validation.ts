@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { OtpPlatform } from '@prisma/client';
 
 // MongoDB ObjectId validation
 const objectIdSchema = z
@@ -8,15 +9,20 @@ const objectIdSchema = z
 // URL validation
 const urlSchema = z.string().url('Invalid URL format');
 
+// Platform validation
+const platformSchema = z.nativeEnum(OtpPlatform);
+
 export const createServerSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name must be at most 100 characters'),
   url: urlSchema,
+  platform: platformSchema.optional(),
   is_active: z.boolean().optional().default(true),
 });
 
 export const updateServerSchema = z.object({
   name: z.string().min(1, 'Name must not be empty').max(100, 'Name must be at most 100 characters').optional(),
   url: urlSchema.optional(),
+  platform: platformSchema.optional(),
   is_active: z.boolean().optional(),
 });
 

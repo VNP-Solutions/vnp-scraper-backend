@@ -1,14 +1,16 @@
-import { Server } from '@prisma/client';
+import { OtpPlatform, Server } from '@prisma/client';
 
 export interface IServerRepository {
   create(data: {
     name: string;
     url: string;
+    platform?: OtpPlatform;
     is_active?: boolean;
   }): Promise<Server>;
 
   findAll(filters?: {
     search?: string;
+    platform?: OtpPlatform;
     is_active?: boolean;
     page?: number;
     limit?: number;
@@ -27,11 +29,14 @@ export interface IServerRepository {
 
   findAvailableServer(): Promise<Server | null>;
 
+  findAvailableServerByPlatform(platform: OtpPlatform): Promise<Server | null>;
+
   update(
     id: string,
     data: {
       name?: string;
       url?: string;
+      platform?: OtpPlatform;
       is_active?: boolean;
     },
   ): Promise<Server>;
@@ -77,11 +82,13 @@ export interface IServerService {
   createServer(data: {
     name: string;
     url: string;
+    platform?: OtpPlatform;
     is_active?: boolean;
   }): Promise<Server>;
 
   findAllServers(filters?: {
     search?: string;
+    platform?: OtpPlatform;
     is_active?: boolean;
     page?: number;
     limit?: number;
@@ -98,11 +105,14 @@ export interface IServerService {
 
   findAvailableServer(): Promise<Server | null>;
 
+  findAvailableServerByPlatform(platform: OtpPlatform): Promise<Server | null>;
+
   updateServer(
     id: string,
     data: {
       name?: string;
       url?: string;
+      platform?: OtpPlatform;
       is_active?: boolean;
     },
   ): Promise<Server>;

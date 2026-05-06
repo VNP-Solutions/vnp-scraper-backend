@@ -1,4 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { OtpPlatform } from '@prisma/client';
 import {
   CreateServerType,
   UpdateServerType,
@@ -12,6 +13,13 @@ export class CreateServerDto implements CreateServerType {
   @ApiProperty({ description: 'Server URL', example: 'https://server1.example.com' })
   url: string;
 
+  @ApiPropertyOptional({
+    description: 'Platform associated with the server',
+    enum: OtpPlatform,
+    example: 'expedia',
+  })
+  platform?: OtpPlatform;
+
   @ApiProperty({ description: 'Is server active', default: true, required: false })
   is_active?: boolean;
 }
@@ -22,6 +30,13 @@ export class UpdateServerDto implements UpdateServerType {
 
   @ApiProperty({ description: 'Server URL', example: 'https://server1.example.com', required: false })
   url?: string;
+
+  @ApiPropertyOptional({
+    description: 'Platform associated with the server',
+    enum: OtpPlatform,
+    example: 'expedia',
+  })
+  platform?: OtpPlatform;
 
   @ApiProperty({ description: 'Is server active', required: false })
   is_active?: boolean;
@@ -45,6 +60,12 @@ export class ServerResponseDto {
 
   @ApiProperty({ description: 'Server URL' })
   url: string;
+
+  @ApiPropertyOptional({
+    description: 'Platform associated with the server',
+    enum: OtpPlatform,
+  })
+  platform?: OtpPlatform;
 
   @ApiProperty({ description: 'Current job count' })
   job_count: number;
