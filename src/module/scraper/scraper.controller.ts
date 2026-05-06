@@ -1107,8 +1107,8 @@ export class ScraperController {
       if (otaProvider === 'Expedia' && billingType !== 'DB') {
         await pushJobsToQueue([job]);
         
-        // Trigger Lambda function after pushing to queue
-        await triggerLambda(otaProvider);
+        // Trigger Lambda function after pushing to queue (lowercase platform name)
+        await triggerLambda('expedia');
         
         // Return success response without making HTTP call
         return res.status(HttpStatus.OK).json({
@@ -1369,9 +1369,9 @@ export class ScraperController {
     // Push only Expedia jobs to AWS SQS queue
     await pushJobsToQueue(expediaJobsForSqs);
 
-    // Trigger Lambda function after pushing Expedia jobs to queue
+    // Trigger Lambda function after pushing Expedia jobs to queue (lowercase platform name)
     if (expediaJobsForSqs.length > 0) {
-      await triggerLambda('Expedia');
+      await triggerLambda('expedia');
     }
 
     // Process Expedia DB jobs using bulk API
