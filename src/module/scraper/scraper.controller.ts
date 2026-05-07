@@ -1107,6 +1107,9 @@ export class ScraperController {
       if (otaProvider === 'Expedia' && billingType !== 'DB') {
         await pushJobsToQueue([job]);
         
+        // Update job status from Pending to InQueue
+        await this.jobService.updateJob(body.jobId, { job_status: 'InQueue' });
+        
         // Trigger Lambda function after pushing to queue (lowercase platform name)
         await triggerLambda('expedia');
         
@@ -1116,7 +1119,7 @@ export class ScraperController {
           message: 'Job successfully queued for processing',
           data: {
             jobId: body.jobId,
-            status: 'queued',
+            status: 'InQueue',
             otaProvider: 'Expedia',
           },
         });
@@ -1368,6 +1371,11 @@ export class ScraperController {
 
     // Push only Expedia jobs to AWS SQS queue
     await pushJobsToQueue(expediaJobsForSqs);
+
+    // Update job statuses from Pending to InQueue for all Expedia jobs
+    for (const job of expediaJobsForSqs) {
+      await this.jobService.updateJob(job.id, { job_status: 'InQueue' });
+    }
 
     // Trigger Lambda function after pushing Expedia jobs to queue (lowercase platform name)
     if (expediaJobsForSqs.length > 0) {
