@@ -24,6 +24,7 @@ import {
   MASTER_EXPORT_HEADER,
   buildMasterRows,
 } from './master-export.util';
+import { triggerLambda } from '../../helpers/lambdaHelper';
 
 @Injectable()
 export class JobService implements IJobService {
@@ -1208,6 +1209,19 @@ export class JobService implements IJobService {
     } catch (error) {
       this.logger.error(
         `Error getting DbEntry by job ID: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async triggerLambdaForPlatform(platform: string): Promise<void> {
+    try {
+      await triggerLambda(platform);
+      this.logger.log(`Lambda triggered successfully for platform: ${platform}`);
+    } catch (error) {
+      this.logger.error(
+        `Error triggering Lambda for platform ${platform}: ${error.message}`,
         error.stack,
       );
       throw error;

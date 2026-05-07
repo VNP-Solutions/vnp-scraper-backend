@@ -154,4 +154,5 @@ export interface IJobService {
     recurringId: string,
     bucketId: string,
   ): Promise<{ buffer: Buffer; fileName: string }>;
+  triggerLambdaForPlatform(platform: string): Promise<void>;
 }
