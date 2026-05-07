@@ -1110,6 +1110,9 @@ export class ScraperController {
         // Update job status from Pending to InQueue
         await this.jobService.updateJob(body.jobId, { job_status: 'InQueue' });
         
+        // Wait for SQS message to become visible before triggering Lambda
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        
         // Trigger Lambda function after pushing to queue (lowercase platform name)
         await triggerLambda('expedia');
         
@@ -1377,8 +1380,11 @@ export class ScraperController {
       await this.jobService.updateJob(job.id, { job_status: 'InQueue' });
     }
 
-    // Trigger Lambda function after pushing Expedia jobs to queue (lowercase platform name)
+    // Wait for SQS messages to become visible before triggering Lambda
     if (expediaJobsForSqs.length > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      
+      // Trigger Lambda function after pushing Expedia jobs to queue (lowercase platform name)
       await triggerLambda('expedia');
     }
 
