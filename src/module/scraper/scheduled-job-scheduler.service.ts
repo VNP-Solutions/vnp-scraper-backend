@@ -11,6 +11,8 @@ import { IServerService } from '../server/server.interface';
 import { BookingBulkDispatchService } from './booking-bulk-dispatch.service';
 import { IScheduledJobService } from './scheduled-job.interface';
 import { IScraperJobItemService } from './scraper-job-item.interface';
+import { pushJobsToQueue } from '../../helpers/sqsHelper';
+import { triggerLambda } from '../../helpers/lambdaHelper';
 
 @Injectable()
 export class ScheduledJobSchedulerService implements OnModuleInit {
@@ -180,6 +182,7 @@ export class ScheduledJobSchedulerService implements OnModuleInit {
       // First, group jobs by OTA provider and billing type
       const expediaDbJobs: Array<{ jobId: string }> = [];
       const expediaJobs: Array<{ jobId: string }> = [];
+      const expediaJobsForSqs: any[] = []; // Collect full Expedia job objects for SQS push
       const agodaJobs: Array<{ jobId: string }> = [];
       const bookingJobs: Array<{
         jobId: string;
@@ -197,6 +200,7 @@ export class ScheduledJobSchedulerService implements OnModuleInit {
             expediaDbJobs.push(jobRequest);
           } else if (otaProvider === 'Expedia') {
             expediaJobs.push(jobRequest);
+            expediaJobsForSqs.push(job);
           } else if (otaProvider === 'Agoda') {
             agodaJobs.push(jobRequest);
           } else if (otaProvider === 'Booking') {
@@ -357,123 +361,45 @@ export class ScheduledJobSchedulerService implements OnModuleInit {
         }
       }
 
-      // Process Expedia jobs using bulk API (grouped by server URL)
+      // Process Expedia jobs via SQS queue + Lambda
       if (expediaJobs.length > 0) {
         try {
-          // Group Expedia jobs by their server URL
-          const urlToJobsMap = await this.groupJobsByServerUrl(
-            expediaJobs,
-            'Expedia',
+          this.logger.log(
+            `[Scheduled Batch] Pushing ${expediaJobsForSqs.length} Expedia jobs to SQS queue`,
           );
 
-          // Process each server group separately
-          for (const [expediaUrl, jobIds] of urlToJobsMap.entries()) {
-            try {
-              if (!expediaUrl) {
-                // Mark jobs with no URL as failed
-                for (const jobId of jobIds) {
-                  processedResults.push({
-                    jobId,
-                    otaProvider: 'Expedia',
-                    status: HttpStatus.SERVICE_UNAVAILABLE,
-                    message: `No Expedia server URL configured (EXPEDIA_SERVER_URL)`,
-                    success: false,
-                    error: 'Expedia server URL not configured',
-                  });
-                }
-                continue;
-              }
+          // Push all Expedia jobs to SQS queue
+          await pushJobsToQueue(expediaJobsForSqs);
 
-              // Determine the API path based on EXPEDIA_MODE
-              const expediadMode =
-                this.configService.get<string>('EXPEDIA_MODE');
-              const apiPath =
-                expediadMode === 'graphql' ?
-                   '/api/expedia/bulk-graphql-run-job' : '/api/expedia/bulk-property-run-job';
+          // Update job statuses from Pending to InQueue
+          for (const job of expediaJobsForSqs) {
+            await this.jobService.updateJob(job.id, { job_status: 'InQueue' });
+          }
 
-              this.logger.log(
-                `[Scheduled Batch] Processing ${jobIds.length} Expedia jobs on server ${expediaUrl}${apiPath} using bulk API with ${expediadMode || 'scraper'} mode: ${apiPath}`,
-              );
+          // Wait for SQS messages to become visible before triggering Lambda
+          await new Promise((resolve) => setTimeout(resolve, 3000));
 
-              // Call bulk property run job API
-              const bulkRequestBody = {
-                job_ids: jobIds,
-              };
+          // Trigger Lambda function
+          await triggerLambda('expedia');
 
-              const response = await firstValueFrom(
-                this.httpService.post(
-                  `${expediaUrl}${apiPath}`,
-                  bulkRequestBody,
-                  {
-                    headers: {
-                      'Content-Type': 'application/json',
-                      Accept: 'application/json',
-                    },
-                    timeout: 300000, // 5 minute timeout
-                  },
-                ),
-              );
+          this.logger.log(
+            `[Scheduled Batch] Successfully queued ${expediaJobsForSqs.length} Expedia jobs and triggered Lambda`,
+          );
 
-              // Log which jobs started running on which API
-              this.logger.log(
-                `Jobs [${jobIds.join(', ')}] started running on API: ${expediaUrl}${apiPath}`,
-              );
-
-              // Process bulk response
-              if (
-                response.data?.results &&
-                Array.isArray(response.data.results)
-              ) {
-                for (const result of response.data.results) {
-                  processedResults.push({
-                    jobId: result.jobId || result.job_id,
-                    otaProvider: 'Expedia',
-                    status: result.status || response.status,
-                    message: result.message || 'Job run successfully',
-                    success: result.success !== false,
-                    data: result.data,
-                    error: result.error,
-                  });
-                }
-              } else {
-                // If bulk API doesn't return individual results, mark all as successful
-                for (const jobId of jobIds) {
-                  processedResults.push({
-                    jobId,
-                    otaProvider: 'Expedia',
-                    status: response.status,
-                    message:
-                      response.data?.message || 'Bulk job run successfully',
-                    success: true,
-                    data: response.data,
-                  });
-                }
-              }
-            } catch (serverGroupError: any) {
-              const status =
-                serverGroupError.response?.status ||
-                HttpStatus.INTERNAL_SERVER_ERROR;
-              const errorMessage =
-                serverGroupError.response?.data?.message ||
-                serverGroupError.message ||
-                'Unknown error occurred';
-
-              // Mark jobs in this server group as failed
-              for (const jobId of jobIds) {
-                processedResults.push({
-                  jobId,
-                  otaProvider: 'Expedia',
-                  status,
-                  message: errorMessage,
-                  success: false,
-                  error: errorMessage,
-                });
-              }
-            }
+          // Mark all Expedia jobs as successfully queued
+          for (const jobRequest of expediaJobs) {
+            processedResults.push({
+              jobId: jobRequest.jobId,
+              otaProvider: 'Expedia',
+              status: HttpStatus.OK,
+              message: 'Job successfully queued for processing',
+              success: true,
+              data: { status: 'InQueue' },
+            });
           }
         } catch (error: any) {
           this.logger.error(
-            `Error grouping Expedia jobs by server: ${error.message}`,
+            `Error pushing Expedia jobs to SQS queue: ${error.message}`,
           );
           // Mark all Expedia jobs as failed
           for (const jobRequest of expediaJobs) {
@@ -481,7 +407,7 @@ export class ScheduledJobSchedulerService implements OnModuleInit {
               jobId: jobRequest.jobId,
               otaProvider: 'Expedia',
               status: HttpStatus.INTERNAL_SERVER_ERROR,
-              message: error.message || 'Failed to group jobs by server',
+              message: error.message || 'Failed to push jobs to SQS queue',
               success: false,
               error: error.message,
             });
