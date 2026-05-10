@@ -1065,7 +1065,7 @@ export class JobController {
   @ApiOperation({
     summary: 'Export master CSV file for a single job',
     description:
-      'Returns a CSV file for a single job, named "{OTA}-{property}-{startDate}-{endDate}.csv". The CSV has one row per job item and follows the same columns and OTA-specific rules as the bulk /jobs/export-master endpoint. Card Number, Expiry Date and CVV columns use the Excel `="..."` text-formula trick so Excel preserves them as text.',
+      'Returns a CSV file for a single job, named "{OTA}-{property}-{startDate}-{endDate}.csv" (e.g. "Expedia-Moxy Vienna-01-01-2026-03-31-2026.csv"). The CSV has one row per job item and follows the same columns and OTA-specific rules as the bulk /jobs/export-master endpoint.',
   })
   @ApiResponse({
     status: 200,
