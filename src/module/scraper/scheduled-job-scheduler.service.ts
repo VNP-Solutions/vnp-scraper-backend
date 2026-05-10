@@ -179,33 +179,37 @@ export class ScheduledJobSchedulerService implements OnModuleInit {
 
       const processedResults = [];
 
-      // First, group jobs by OTA provider and billing type
-      const expediaDbJobs: Array<{ jobId: string }> = [];
-      const expediaJobs: Array<{ jobId: string }> = [];
-      const expediaJobsForSqs: any[] = []; // Collect full Expedia job objects for SQS push
-      const agodaJobs: Array<{ jobId: string }> = [];
+      const expediaDbJobs = [];
+      const expediaJobs = [];
+      const agodaJobs = [];
       const bookingJobs: Array<{
         jobId: string;
-        propertyId: string | null;
+        otaProvider: string;
+        propertyId?: string | null;
       }> = [];
 
-      // Fetch OTA providers and billing types for all jobs
+      const expediaJobsForSqs = [];
+
       for (const jobRequest of jobs) {
         try {
           const job = await this.jobService.getJobById(jobRequest.jobId);
           const otaProvider = job.ota_provider || 'Expedia';
           const billingType = job.billing_type;
 
-          if (billingType === 'DB' && otaProvider === 'Expedia') {
-            expediaDbJobs.push(jobRequest);
-          } else if (otaProvider === 'Expedia') {
-            expediaJobs.push(jobRequest);
+          if (otaProvider === 'Expedia') {
             expediaJobsForSqs.push(job);
+          }
+
+          if (billingType === 'DB' && otaProvider === 'Expedia') {
+            expediaDbJobs.push({ ...jobRequest, otaProvider, billingType });
+          } else if (otaProvider === 'Expedia') {
+            expediaJobs.push({ ...jobRequest, otaProvider });
           } else if (otaProvider === 'Agoda') {
-            agodaJobs.push(jobRequest);
+            agodaJobs.push({ ...jobRequest, otaProvider });
           } else if (otaProvider === 'Booking') {
             bookingJobs.push({
               jobId: jobRequest.jobId,
+              otaProvider,
               propertyId: job.property_id,
             });
           } else {
@@ -233,409 +237,233 @@ export class ScheduledJobSchedulerService implements OnModuleInit {
         }
       }
 
-      // Process Expedia DB jobs using bulk API (grouped by server URL)
+      // Push all Expedia jobs (DB + non-DB) to AWS SQS queue
+      await pushJobsToQueue(expediaJobsForSqs);
+
+      for (const job of expediaJobsForSqs) {
+        await this.jobService.updateJob(job.id, { job_status: 'InQueue' });
+      }
+
+      if (expediaJobsForSqs.length > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+
+        await triggerLambda('expedia');
+
+        this.logger.log(
+          `[Scheduled Batch] Successfully queued ${expediaJobsForSqs.length} Expedia jobs and triggered Lambda`,
+        );
+      }
+
+      // Process Expedia DB jobs using bulk API
       if (expediaDbJobs.length > 0) {
         try {
-          // Group Expedia DB jobs by their server URL
-          const urlToJobsMap = await this.groupDbJobsByServerUrl(expediaDbJobs);
+          const dbUrl = this.getExpediaDbUrl();
 
-          // Process each server group separately
-          for (const [dbUrl, jobIds] of urlToJobsMap.entries()) {
-            try {
-              if (!dbUrl) {
-                // Mark jobs with no URL as failed
-                for (const jobId of jobIds) {
-                  processedResults.push({
-                    jobId,
-                    otaProvider: 'Expedia',
-                    billingType: 'DB',
-                    status: HttpStatus.SERVICE_UNAVAILABLE,
-                    message:
-                      'No Expedia DB server URL configured (EXPEDIA_DB_SERVER_URL)',
-                    success: false,
-                    error: 'Expedia DB server URL not configured',
-                  });
-                }
-                continue;
-              }
+          if (!dbUrl) {
+            for (const job of expediaDbJobs) {
+              processedResults.push({
+                jobId: job.jobId,
+                otaProvider: 'Expedia',
+                billingType: 'DB',
+                status: HttpStatus.SERVICE_UNAVAILABLE,
+                message: 'No Expedia DB server URL configured',
+                success: false,
+                error: 'Expedia DB server URL not configured',
+              });
+            }
+          } else {
+            const bulkRequestBody = {
+              job_ids: expediaDbJobs.map((j) => j.jobId),
+            };
 
-              this.logger.log(
-                `[Scheduled Batch] Processing ${jobIds.length} Expedia DB jobs on server ${dbUrl} using bulk API`,
-              );
-
-              // Call bulk DB run job API
-              const bulkRequestBody = {
-                job_ids: jobIds,
-              };
-
-              const response = await firstValueFrom(
-                this.httpService.post(
-                  `${dbUrl}/api/expedia/bulk-db-run-job`,
-                  bulkRequestBody,
-                  {
-                    headers: {
-                      'Content-Type': 'application/json',
-                      Accept: 'application/json',
-                    },
-                    timeout: 300000, // 5 minute timeout
+            const response = await firstValueFrom(
+              this.httpService.post(
+                `${dbUrl}/api/expedia/bulk-db-run-job`,
+                bulkRequestBody,
+                {
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
                   },
-                ),
-              );
+                  timeout: 300000,
+                },
+              ),
+            );
 
-              // Log which jobs started running on which API
-              this.logger.log(
-                `Jobs [${jobIds.join(', ')}] started running on API: ${dbUrl}/api/expedia/bulk-db-run-job`,
-              );
-
-              // Process bulk response
-              if (
-                response.data?.results &&
-                Array.isArray(response.data.results)
-              ) {
-                for (const result of response.data.results) {
-                  processedResults.push({
-                    jobId: result.jobId || result.job_id,
-                    otaProvider: 'Expedia',
-                    billingType: 'DB',
-                    status: result.status || response.status,
-                    message: result.message || 'DB job run successfully',
-                    success: result.success !== false,
-                    data: result.data,
-                    error: result.error,
-                  });
-                }
-              } else {
-                // If bulk API doesn't return individual results, mark all as successful
-                for (const jobId of jobIds) {
-                  processedResults.push({
-                    jobId,
-                    otaProvider: 'Expedia',
-                    billingType: 'DB',
-                    status: response.status,
-                    message:
-                      response.data?.message || 'Bulk DB job run successfully',
-                    success: true,
-                    data: response.data,
-                  });
-                }
-              }
-            } catch (serverGroupError: any) {
-              const status =
-                serverGroupError.response?.status ||
-                HttpStatus.INTERNAL_SERVER_ERROR;
-              const errorMessage =
-                serverGroupError.response?.data?.message ||
-                serverGroupError.message ||
-                'Unknown error occurred';
-
-              // Mark jobs in this server group as failed
-              for (const jobId of jobIds) {
+            if (
+              response.data?.results &&
+              Array.isArray(response.data.results)
+            ) {
+              processedResults.push(...response.data.results);
+            } else {
+              for (const job of expediaDbJobs) {
                 processedResults.push({
-                  jobId,
+                  jobId: job.jobId,
                   otaProvider: 'Expedia',
                   billingType: 'DB',
-                  status,
-                  message: errorMessage,
-                  success: false,
-                  error: errorMessage,
+                  status: response.status,
+                  message:
+                    response.data?.message || 'Bulk DB job run successfully',
+                  success: response.data?.success !== false,
+                  data: response.data,
                 });
               }
             }
           }
         } catch (error: any) {
-          this.logger.error(
-            `Error grouping Expedia DB jobs by server: ${error.message}`,
-          );
-          // Mark all DB jobs as failed
-          for (const jobRequest of expediaDbJobs) {
+          const status =
+            error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
+          const errorMessage =
+            error.response?.data?.message ||
+            error.message ||
+            'Unknown error occurred';
+          for (const job of expediaDbJobs) {
             processedResults.push({
-              jobId: jobRequest.jobId,
+              jobId: job.jobId,
               otaProvider: 'Expedia',
               billingType: 'DB',
-              status: HttpStatus.INTERNAL_SERVER_ERROR,
-              message: error.message || 'Failed to group jobs by server',
+              status,
+              message: errorMessage,
               success: false,
-              error: error.message,
+              error: errorMessage,
             });
           }
         }
       }
 
-      // Process Expedia jobs via SQS queue + Lambda
+      // Process Expedia Property jobs - already pushed to SQS queue above
       if (expediaJobs.length > 0) {
-        try {
-          this.logger.log(
-            `[Scheduled Batch] Pushing ${expediaJobsForSqs.length} Expedia jobs to SQS queue`,
-          );
-
-          // Push all Expedia jobs to SQS queue
-          await pushJobsToQueue(expediaJobsForSqs);
-
-          // Update job statuses from Pending to InQueue
-          for (const job of expediaJobsForSqs) {
-            await this.jobService.updateJob(job.id, { job_status: 'InQueue' });
-          }
-
-          // Wait for SQS messages to become visible before triggering Lambda
-          await new Promise((resolve) => setTimeout(resolve, 3000));
-
-          // Trigger Lambda function
-          await triggerLambda('expedia');
-
-          this.logger.log(
-            `[Scheduled Batch] Successfully queued ${expediaJobsForSqs.length} Expedia jobs and triggered Lambda`,
-          );
-
-          // Mark all Expedia jobs as successfully queued
-          for (const jobRequest of expediaJobs) {
-            processedResults.push({
-              jobId: jobRequest.jobId,
-              otaProvider: 'Expedia',
-              status: HttpStatus.OK,
-              message: 'Job successfully queued for processing',
-              success: true,
-              data: { status: 'InQueue' },
-            });
-          }
-        } catch (error: any) {
-          this.logger.error(
-            `Error pushing Expedia jobs to SQS queue: ${error.message}`,
-          );
-          // Mark all Expedia jobs as failed
-          for (const jobRequest of expediaJobs) {
-            processedResults.push({
-              jobId: jobRequest.jobId,
-              otaProvider: 'Expedia',
-              status: HttpStatus.INTERNAL_SERVER_ERROR,
-              message: error.message || 'Failed to push jobs to SQS queue',
-              success: false,
-              error: error.message,
-            });
-          }
+        for (const job of expediaJobs) {
+          processedResults.push({
+            jobId: job.jobId,
+            otaProvider: 'Expedia',
+            status: HttpStatus.OK,
+            message: 'Job successfully queued for processing',
+            success: true,
+            data: {
+              status: 'queued',
+            },
+          });
         }
       }
 
-      // Process Agoda jobs using bulk API (grouped by server URL)
+      // Process Agoda Jobs
       if (agodaJobs.length > 0) {
         try {
-          // Group Agoda jobs by their server URL
-          const urlToJobsMap = await this.groupJobsByServerUrl(
-            agodaJobs,
-            'Agoda',
-          );
+          const agodaUrl = this.getUrlByOtaProvider('Agoda');
+          if (!agodaUrl) {
+            for (const job of agodaJobs) {
+              processedResults.push({
+                jobId: job.jobId,
+                otaProvider: 'Agoda',
+                status: HttpStatus.SERVICE_UNAVAILABLE,
+                success: false,
+                message: 'Agoda URL invalid',
+              });
+            }
+          } else {
+            for (const job of agodaJobs) {
+              this.jobItemService
+                .updateJobCurrentUrl(job.jobId, agodaUrl)
+                .catch((e) =>
+                  this.logger.error(
+                    `Error updating job URL for ${job.jobId}: ${e.message}`,
+                  ),
+                );
+            }
 
-          // Process each server group separately
-          for (const [agodaUrl, jobIds] of urlToJobsMap.entries()) {
-            try {
-              if (!agodaUrl) {
-                // Mark jobs with no URL as failed
-                for (const jobId of jobIds) {
-                  processedResults.push({
-                    jobId,
-                    otaProvider: 'Agoda',
-                    status: HttpStatus.SERVICE_UNAVAILABLE,
-                    message: `No Agoda server URL configured (AGODA_SERVER_URL)`,
-                    success: false,
-                    error: 'Agoda server URL not configured',
-                  });
-                }
-                continue;
-              }
-
-              this.logger.log(
-                `[Scheduled Batch] Processing ${jobIds.length} Agoda jobs on server ${agodaUrl} using bulk API`,
-              );
-
-              // Call bulk property run job API
-              const bulkRequestBody = {
-                job_ids: jobIds,
-              };
-
-              const response = await firstValueFrom(
-                this.httpService.post(
-                  `${agodaUrl}/api/agoda/bulk-property-run-job`,
-                  bulkRequestBody,
-                  {
-                    headers: {
-                      'Content-Type': 'application/json',
-                      Accept: 'application/json',
-                    },
-                    timeout: 300000, // 5 minute timeout
+            const bulkRequestBody = {
+              job_ids: agodaJobs.map((j) => j.jobId),
+            };
+            const response = await firstValueFrom(
+              this.httpService.post(
+                `${agodaUrl}/api/agoda/bulk-property-run-job`,
+                bulkRequestBody,
+                {
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
                   },
-                ),
-              );
-
-              // Log which jobs started running on which API
-              this.logger.log(
-                `Jobs [${jobIds.join(', ')}] started running on API: ${agodaUrl}/api/agoda/bulk-property-run-job`,
-              );
-
-              // Process bulk response
-              if (
-                response.data?.results &&
-                Array.isArray(response.data.results)
-              ) {
-                for (const result of response.data.results) {
-                  processedResults.push({
-                    jobId: result.jobId || result.job_id,
-                    otaProvider: 'Agoda',
-                    status: result.status || response.status,
-                    message: result.message || 'Job run successfully',
-                    success: result.success !== false,
-                    data: result.data,
-                    error: result.error,
-                  });
-                }
-              } else {
-                // If bulk API doesn't return individual results, mark all as successful
-                for (const jobId of jobIds) {
-                  processedResults.push({
-                    jobId,
-                    otaProvider: 'Agoda',
-                    status: response.status,
-                    message:
-                      response.data?.message || 'Bulk job run successfully',
-                    success: true,
-                    data: response.data,
-                  });
-                }
-              }
-            } catch (serverGroupError: any) {
-              const status =
-                serverGroupError.response?.status ||
-                HttpStatus.INTERNAL_SERVER_ERROR;
-              const errorMessage =
-                serverGroupError.response?.data?.message ||
-                serverGroupError.message ||
-                'Unknown error occurred';
-
-              // Mark jobs in this server group as failed
-              for (const jobId of jobIds) {
+                  timeout: 300000,
+                },
+              ),
+            );
+            if (
+              response.data?.results &&
+              Array.isArray(response.data.results)
+            ) {
+              processedResults.push(...response.data.results);
+            } else {
+              for (const job of agodaJobs) {
                 processedResults.push({
-                  jobId,
+                  jobId: job.jobId,
                   otaProvider: 'Agoda',
-                  status,
-                  message: errorMessage,
-                  success: false,
-                  error: errorMessage,
+                  status: response.status,
+                  success: true,
+                  message: 'Bulk Agoda run success',
                 });
               }
             }
           }
         } catch (error: any) {
-          this.logger.error(
-            `Error grouping Agoda jobs by server: ${error.message}`,
-          );
-          // Mark all Agoda jobs as failed
-          for (const jobRequest of agodaJobs) {
+          const status = error.response?.status || 500;
+          for (const job of agodaJobs) {
             processedResults.push({
-              jobId: jobRequest.jobId,
+              jobId: job.jobId,
               otaProvider: 'Agoda',
-              status: HttpStatus.INTERNAL_SERVER_ERROR,
-              message: error.message || 'Failed to group jobs by server',
+              status,
               success: false,
-              error: error.message,
+              message: error.message,
             });
           }
         }
       }
 
-      // Process Booking jobs (credential-grouped bulk + scheduled_job_id, grouped by server URL)
+      // Process Booking Jobs
       if (bookingJobs.length > 0) {
-        try {
-          // Group Booking jobs by their server URL
-          const urlToJobsMap = new Map<
-            string,
-            Array<{ jobId: string; propertyId: string | null }>
-          >();
-
-          for (const bookingJob of bookingJobs) {
-            const url = await this.getUrlForJob(bookingJob.jobId, 'Booking');
-
-            if (url) {
-              const existing = urlToJobsMap.get(url) || [];
-              existing.push(bookingJob);
-              urlToJobsMap.set(url, existing);
-            }
-          }
-
-          // Process each server group separately
-          for (const [bookingUrl, jobsForServer] of urlToJobsMap.entries()) {
-            try {
-              if (!bookingUrl) {
-                // Mark jobs with no URL as failed
-                for (const jobRequest of jobsForServer) {
-                  processedResults.push({
-                    jobId: jobRequest.jobId,
-                    otaProvider: 'Booking',
-                    status: HttpStatus.SERVICE_UNAVAILABLE,
-                    message: `No Booking server URL configured (BOOKING_SERVER_URL)`,
-                    success: false,
-                    error: 'Booking server URL not configured',
-                  });
-                }
-                continue;
-              }
-
-              this.logger.log(
-                `[Scheduled Batch] Processing ${jobsForServer.length} Booking job(s) on server ${bookingUrl} via grouped bulk API (scheduled_job_id: ${scheduledJobRecordId ?? 'none'})`,
-              );
-
-              const bookingRows =
-                await this.bookingBulkDispatchService.dispatchGroupedBulkRuns(
-                  jobsForServer.map((j) => ({
-                    jobId: j.jobId,
-                    propertyId: j.propertyId,
-                  })),
-                  bookingUrl,
-                  (jobId, url) =>
-                    this.jobItemService.updateJobCurrentUrl(jobId, url),
-                  { scheduledJobId: scheduledJobRecordId },
-                );
-
-              // Log which jobs started running on which server
-              const bookingJobIds = jobsForServer.map((j) => j.jobId);
-              this.logger.log(
-                `Jobs [${bookingJobIds.join(', ')}] started running on Booking server: ${bookingUrl}`,
-              );
-
-              for (const row of bookingRows) {
-                processedResults.push(row);
-              }
-            } catch (serverGroupError: any) {
-              this.logger.error(
-                `Error processing Booking jobs on server ${bookingUrl}: ${serverGroupError.message}`,
-              );
-
-              // Mark jobs in this server group as failed
-              for (const jobRequest of jobsForServer) {
-                processedResults.push({
-                  jobId: jobRequest.jobId,
-                  otaProvider: 'Booking',
-                  status: HttpStatus.INTERNAL_SERVER_ERROR,
-                  message:
-                    serverGroupError.message ||
-                    'Failed to process Booking jobs',
-                  success: false,
-                  error: serverGroupError.message,
-                });
-              }
-            }
-          }
-        } catch (error: any) {
-          this.logger.error(
-            `Error grouping Booking jobs by server: ${error.message}`,
-          );
-          // Mark all Booking jobs as failed
-          for (const jobRequest of bookingJobs) {
+        const bookingUrl = this.getUrlByOtaProvider('Booking');
+        if (!bookingUrl) {
+          for (const job of bookingJobs) {
             processedResults.push({
-              jobId: jobRequest.jobId,
+              jobId: job.jobId,
               otaProvider: 'Booking',
-              status: HttpStatus.INTERNAL_SERVER_ERROR,
-              message: error.message || 'Failed to group jobs by server',
+              status: HttpStatus.SERVICE_UNAVAILABLE,
               success: false,
-              error: error.message,
+              message: 'Booking URL invalid',
             });
+          }
+        } else {
+          try {
+            this.logger.log(
+              `[Scheduled Batch] Processing ${bookingJobs.length} Booking job(s) on server ${bookingUrl} via grouped bulk API (scheduled_job_id: ${scheduledJobRecordId ?? 'none'})`,
+            );
+
+            const bookingRows =
+              await this.bookingBulkDispatchService.dispatchGroupedBulkRuns(
+                bookingJobs.map((j) => ({
+                  jobId: j.jobId,
+                  propertyId: j.propertyId,
+                })),
+                bookingUrl,
+                (jobId, url) =>
+                  this.jobItemService.updateJobCurrentUrl(jobId, url),
+                { scheduledJobId: scheduledJobRecordId },
+              );
+            processedResults.push(...bookingRows);
+          } catch (error: any) {
+            this.logger.error(
+              `Error processing Booking jobs: ${error.message}`,
+            );
+            for (const job of bookingJobs) {
+              processedResults.push({
+                jobId: job.jobId,
+                otaProvider: 'Booking',
+                status: HttpStatus.INTERNAL_SERVER_ERROR,
+                success: false,
+                message: error.message,
+                error: error.message,
+              });
+            }
           }
         }
       }
