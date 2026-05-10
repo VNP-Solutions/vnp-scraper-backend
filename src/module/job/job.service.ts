@@ -981,6 +981,8 @@ export class JobService implements IJobService {
       }
 
       const buffer = this.buildMasterCsvBuffer(rows, headers);
+      // Filename format: "{OTA}-{property}-{startDate}-{endDate}.csv"
+      // (same as the inner CSVs produced by POST /jobs/export-master).
       const fileName = `${this.buildJobCsvBaseName(job)}.csv`;
 
       return { buffer, fileName };
