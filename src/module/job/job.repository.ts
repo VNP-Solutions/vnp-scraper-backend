@@ -133,8 +133,10 @@ export class JobRepository implements IJobRepository {
         const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(searchTerm);
 
         allFilters.OR = [
-          // Job fields - only search by ID if it's a valid ObjectId format
-          ...(isValidObjectId ? [{ id: searchTerm }] : []),
+          // Job id or linked property document id (Mongo ObjectId)
+          ...(isValidObjectId
+            ? [{ id: searchTerm }, { property_id: searchTerm }]
+            : []),
           { name: { contains: searchTerm, mode: 'insensitive' } },
 
           // Portfolio/Sub-portfolio/Property names (existing)

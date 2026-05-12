@@ -125,7 +125,7 @@ export class JobController {
     name: 'search',
     required: false,
     description:
-      'Search jobs by job ID, job name, portfolio name, sub-portfolio name, property name, batch name, Expedia ID, Booking ID, or Agoda ID',
+      'Search jobs by job id, **property id** (Mongo ObjectId on the job), job name, portfolio name, sub-portfolio name, property name, batch name, Expedia ID, Booking ID, or Agoda ID',
   })
   @ApiQuery({
     name: 'page',
@@ -164,6 +164,12 @@ export class JobController {
     name: 'batch_id',
     required: false,
     description: 'Filter jobs by batch ID',
+  })
+  @ApiQuery({
+    name: 'property_id',
+    required: false,
+    description:
+      'Filter jobs by linked property Mongo ObjectId (exact match; can be combined with other filters)',
   })
   @ApiQuery({
     name: 'batch_name',
