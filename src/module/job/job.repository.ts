@@ -277,6 +277,7 @@ export class JobRepository implements IJobRepository {
             expedia_id: true,
             booking_id: true,
             agoda_id: true,
+            credentials: true,
           },
         },
         portfolio: {
