@@ -64,6 +64,34 @@ export class PropertyRunJobRequestDto {
     description: 'MongoDB ObjectId of the job to run.',
   })
   jobId: string;
+
+  @ApiPropertyOptional({
+    example: '507f1f77bcf86cd799439011',
+    description:
+      'Property id. With credentials_id and a successful DBMS credential extract, triggers PUT /property-credentials/:credentials_id before the scraper run.',
+  })
+  property_id?: string;
+
+  @ApiPropertyOptional({
+    example: '507f1f77bcf86cd799439011',
+    description:
+      'Property credentials document id. Used with property_id when persisting credentials from DBMS.',
+  })
+  credentials_id?: string;
+
+  @ApiPropertyOptional({
+    enum: ['expedia', 'agoda', 'booking'],
+    description:
+      'OTA key for DBMS lookup query param. When set with ota_id (and DBMS env vars), credentials may be refreshed before the run.',
+  })
+  ota_provider?: 'expedia' | 'agoda' | 'booking';
+
+  @ApiPropertyOptional({
+    description:
+      'OTA identifier for DBMS lookup (string or number). Paired with ota_provider.',
+    oneOf: [{ type: 'string' }, { type: 'number' }],
+  })
+  ota_id?: string | number;
 }
 
 export class RetrievalRunJobRequestDto {
