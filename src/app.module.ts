@@ -14,6 +14,7 @@ import { EncryptionModule } from './module/encryption/encryption.module';
 import { GoogleOAuthModule } from './module/google-oauth/google-oauth.module';
 import { JobModule } from './module/job/job.module';
 import { NotificationModule } from './module/notification/notification.module';
+import { OnboardingModule } from './module/onboarding/onboarding.module';
 import { OtpCodeModule } from './module/otp-code/otp-code.module';
 import { OtpLogModule } from './module/otp-log/otp-log.module';
 import { OtpStatusModule } from './module/otp-status/otp-status.module';
@@ -59,6 +60,7 @@ import { UserModule } from './module/user/user.module';
     RetrievalModule,
     DbDataModule,
     NotificationModule,
+    OnboardingModule,
     GoogleOAuthModule,
     EncryptionModule,
   ],

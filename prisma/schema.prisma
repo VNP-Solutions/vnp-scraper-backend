@@ -811,3 +811,18 @@ model ScheduledJob {
   @@index([date])
   @@map("scheduled_jobs")
 }
+
+model Onboarding {
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  name              String
+  company           String
+  email             String
+  phone             String
+  number_of_hotels  Int
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([email])
+  @@index([createdAt])
+  @@map("onboardings")
+}
