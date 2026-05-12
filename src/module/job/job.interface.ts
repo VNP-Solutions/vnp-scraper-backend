@@ -7,10 +7,44 @@ import {
   UpdateJobDto,
 } from './job.dto';
 
+/** Row returned by GET /jobs (list): OTA, linked property document, job status. */
+export interface JobListItemDto {
+  /** Job document id (Mongo ObjectId). */
+  job_id: string;
+  ota_name: string;
+  /** Denormalized name on the job document (may differ from property.name if out of sync). */
+  property_name: string | null;
+  property: JobListPropertyDto | null;
+  job_status: string;
+}
+
+/** Property payload on job list (scalars + portfolio / sub-portfolio summary). */
+export interface JobListPropertyDto {
+  id: string;
+  portfolio_id: string | null;
+  sub_portfolio_id: string | null;
+  name: string;
+  expedia_id: number | null;
+  expedia_status: string | null;
+  booking_id: number | null;
+  booking_status: string | null;
+  agoda_id: number | null;
+  agoda_status: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  booking_trusted_status: string | null;
+  booking_last_login: Date | null;
+  phone_number: string | null;
+  slot: number | null;
+  phone_number_slot_id: string | null;
+  portfolio: { id: string; name: string } | null;
+  subPortfolio: { id: string; name: string } | null;
+}
+
 export interface IJobRepository {
   create(data: CreateJobDto): Promise<Job>;
   findById(id: string): Promise<Job>;
-  findAll(query: Record<string, any>): Promise<{ data: Job[]; metadata: any }>;
+  findAll(query: Record<string, any>): Promise<{ data: any[]; metadata: any }>;
   update(id: string, data: UpdateJobDto): Promise<Job>;
   delete(id: string): Promise<Job>;
   findPortfolioByName(name: string): Promise<any>;
@@ -91,7 +125,7 @@ export interface IJobService {
   createJob(data: CreateJobDto): Promise<Job>;
   getAllJobs(
     query: Record<string, any>,
-  ): Promise<{ data: Job[]; metadata: any }>;
+  ): Promise<{ data: JobListItemDto[]; metadata: any }>;
   getJobById(id: string): Promise<Job>;
   updateJob(id: string, data: UpdateJobDto): Promise<Job>;
   deleteJob(id: string): Promise<Job>;

@@ -101,7 +101,7 @@ export class JobRepository implements IJobRepository {
 
   async findAll(
     query: Record<string, any>,
-  ): Promise<{ data: Job[]; metadata: any }> {
+  ): Promise<{ data: any[]; metadata: any }> {
     try {
       const {
         page,
@@ -253,10 +253,6 @@ export class JobRepository implements IJobRepository {
         allFilters.recurring_report_bucket_id = recurring_report_bucket_id.toString();
       }
 
-      const skip = page
-        ? (parseInt(page || '1') - 1) * parseInt(limit || '10')
-        : 0;
-      const take = limit ? parseInt(limit) : 10;
       let orderBy = undefined;
       if (sortBy) {
         orderBy = {
@@ -264,50 +260,48 @@ export class JobRepository implements IJobRepository {
         };
       }
 
-      // Include property relationship for searching and data completeness
-      const include = {
+      const jobListSelect = {
+        id: true,
+        ota_provider: true,
+        property_id: true,
+        property_name: true,
+        job_status: true,
+        billing_type: true,
         property: {
           select: {
             id: true,
+            portfolio_id: true,
+            sub_portfolio_id: true,
             name: true,
             expedia_id: true,
+            expedia_status: true,
             booking_id: true,
+            booking_status: true,
             agoda_id: true,
+            agoda_status: true,
+            createdAt: true,
+            updatedAt: true,
+            booking_trusted_status: true,
+            booking_last_login: true,
+            phone_number: true,
+            slot: true,
+            phone_number_slot_id: true,
+            portfolio: { select: { id: true, name: true } },
+            subPortfolio: { select: { id: true, name: true } },
           },
         },
-        portfolio: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        subPortfolio: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        batch: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-      };
+      } satisfies Prisma.JobSelect;
 
       // If filter_invoice_amount is true, we need to fetch all jobs first to calculate total count
       // Otherwise, we can use the count query for better performance
       const needsInvoiceFilter =
         filter_invoice_amount === 'true' || filter_invoice_amount === true;
 
-      let totalDocuments: number;
-      let jobs: any[];
-
       if (needsInvoiceFilter) {
         // Fetch all jobs matching filters (without pagination) to calculate invoice amounts and get accurate total count
         const allJobs = await this.db.job.findMany({
           where: allFilters,
-          include,
+          select: jobListSelect,
           orderBy,
         });
 
@@ -358,73 +352,65 @@ export class JobRepository implements IJobRepository {
         });
 
         // Get total count after filtering
-        totalDocuments = filteredAllJobs.length;
+        const totalDocuments = filteredAllJobs.length;
 
         // Apply pagination to filtered results
         const skip = page
           ? (parseInt(page || '1') - 1) * parseInt(limit || '10')
           : 0;
         const take = limit ? parseInt(limit) : 10;
-        jobs = filteredAllJobs.slice(skip, skip + take);
-      } else {
-        // Normal flow: use count query for better performance
-        totalDocuments = await this.db.job.count({
-          where: allFilters,
-        });
+        const jobs = filteredAllJobs.slice(skip, skip + take);
 
-        const skip = page
-          ? (parseInt(page || '1') - 1) * parseInt(limit || '10')
-          : 0;
-        const take = limit ? parseInt(limit) : 10;
+        const statusCounts = { pending: 0, failed: 0, completed: 0 };
+        for (const j of filteredAllJobs) {
+          if (j.job_status === 'Pending') statusCounts.pending += 1;
+          else if (j.job_status === 'Failed') statusCounts.failed += 1;
+          else if (j.job_status === 'Completed') statusCounts.completed += 1;
+        }
 
-        jobs = await this.db.job.findMany({
+        const metadata = {
+          totalDocuments,
+          currentPage: parseInt(page || '1'),
+          totalPage: Math.ceil(totalDocuments / parseInt(limit || '10')),
+          limit: parseInt(limit || '10'),
+          statusCounts,
+        };
+        return { data: jobs, metadata };
+      }
+
+      // Normal flow: use count query for better performance
+      const skip = page
+        ? (parseInt(page || '1') - 1) * parseInt(limit || '10')
+        : 0;
+      const take = limit ? parseInt(limit) : 10;
+
+      const [totalDocuments, jobs, statusGroups] = await Promise.all([
+        this.db.job.count({
           where: allFilters,
-          include,
+        }),
+        this.db.job.findMany({
+          where: allFilters,
+          select: jobListSelect,
           skip,
           take,
           orderBy,
-        });
+        }),
+        this.db.job.groupBy({
+          by: ['job_status'],
+          where: allFilters,
+          _count: { _all: true },
+        }),
+      ]);
 
-        // Get all job IDs with billing_type === 'DB'
-        const dbJobIds = jobs
-          .filter((job) => job.billing_type === 'DB')
-          .map((job) => job.id);
-
-        // Fetch all DbData records for DB billing type jobs in a single query
-        let totalInvoiceAmountMap = new Map<string, number>();
-
-        if (dbJobIds.length > 0) {
-          const dbDataRecords = await this.db.dbData.findMany({
-            where: {
-              job_id: { in: dbJobIds },
-            },
-            select: {
-              job_id: true,
-              total_invoice_amount: true,
-            },
-          });
-
-          // Group by job_id and calculate sums
-          for (const dbData of dbDataRecords) {
-            const currentSum = totalInvoiceAmountMap.get(dbData.job_id) || 0;
-            const amount = dbData.total_invoice_amount || 0;
-            totalInvoiceAmountMap.set(dbData.job_id, currentSum + amount);
-          }
+      const statusCounts = { pending: 0, failed: 0, completed: 0 };
+      for (const row of statusGroups) {
+        if (row.job_status === 'Pending') {
+          statusCounts.pending = row._count._all;
+        } else if (row.job_status === 'Failed') {
+          statusCounts.failed = row._count._all;
+        } else if (row.job_status === 'Completed') {
+          statusCounts.completed = row._count._all;
         }
-
-        // Add total invoice amount field to jobs with billing_type === 'DB'
-        jobs = jobs.map((job) => {
-          const jobData = job as any;
-
-          if (job.billing_type === 'DB') {
-            const totalInvoiceAmount = totalInvoiceAmountMap.get(job.id) || 0;
-            // Round to 2 decimal places to avoid floating point precision issues
-            jobData.total_invoice_amount =
-              Math.round(totalInvoiceAmount * 100) / 100;
-          }
-
-          return jobData;
-        });
       }
 
       const metadata = {
@@ -432,6 +418,7 @@ export class JobRepository implements IJobRepository {
         currentPage: parseInt(page || '1'),
         totalPage: Math.ceil(totalDocuments / parseInt(limit || '10')),
         limit: parseInt(limit || '10'),
+        statusCounts,
       };
       return { data: jobs, metadata };
     } catch (error) {

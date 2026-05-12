@@ -18,7 +18,7 @@ import {
   UpdateBatchDto,
   UpdateJobDto,
 } from './job.dto';
-import { IJobRepository, IJobService } from './job.interface';
+import { IJobRepository, IJobService, JobListItemDto } from './job.interface';
 import {
   MASTER_EXPORT_HEADER,
   buildMasterRows,
@@ -80,17 +80,15 @@ export class JobService implements IJobService {
 
   async getAllJobs(
     query: Record<string, any>,
-  ): Promise<{ data: Job[]; metadata: any }> {
+  ): Promise<{ data: JobListItemDto[]; metadata: any }> {
     try {
       const result = await this.repository.findAll(query);
-      // Normalize so log_link, failed_reason, screenshot_urls are always present (array/string for older docs)
       const data = (result.data || []).map((job: any) => ({
-        ...job,
-        log_link: job.log_link ?? null,
-        failed_reason: job.failed_reason ?? '',
-        screenshot_urls: Array.isArray(job.screenshot_urls)
-          ? job.screenshot_urls
-          : [],
+        job_id: job.id,
+        ota_name: job.ota_provider,
+        property_name: job.property_name ?? null,
+        property: job.property ?? null,
+        job_status: job.job_status,
       }));
       return { ...result, data };
     } catch (error) {

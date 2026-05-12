@@ -1843,7 +1843,8 @@ export class ScraperController {
   @Get('/api/jobs/:jobId/items')
   @ApiOperation({
     summary: 'Get job items',
-    description: 'Get scraped reservation data for a specific job',
+    description:
+      'Returns up to 3 reservation rows that have **both** `total_guest_payment` and `amount_to_charge_or_refund` set, non-zero, and non-NaN (rows with null or 0 for either field are skipped while scanning in sort order). Each row: reservation_id, check_in, check_out, payment_info (amounts plus `total_guest_payment_currency` and `amount_to_charge_or_refund_currency` from `amount_to_charge_or_refund_currency` in the DB when present). metadata: total_reservations_count (all rows matching filters), total_amount_to_charge_or_refund (sum of `amount_to_charge_or_refund` over those rows), and total_amount_to_charge_or_refund_currency when every non-null stored currency agrees (otherwise null). Pagination query params (page, limit) are ignored for the list size.',
   })
   @ApiParam({
     name: 'jobId',
@@ -1855,14 +1856,14 @@ export class ScraperController {
     name: 'page',
     required: false,
     type: Number,
-    description: 'Page number for pagination',
+    description: 'Deprecated for this endpoint — list is capped at 3 items',
     example: 1,
   })
   @ApiQuery({
     name: 'limit',
     required: false,
     type: Number,
-    description: 'Maximum number of items to return per page',
+    description: 'Deprecated for this endpoint — list is capped at 3 items',
     example: 10,
   })
   @ApiQuery({
