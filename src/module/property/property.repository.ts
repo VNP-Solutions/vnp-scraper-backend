@@ -86,13 +86,12 @@ export class PropertyRepository implements IPropertyRepository {
     }
 
     try {
-      const property = await this.db.property.create({
+      return await this.db.property.create({
         data: propertyData,
       });
-      return property;
     } catch (error) {
       this.logger.error(error);
-      return null;
+      throw error;
     }
   }
 
@@ -1239,7 +1238,7 @@ export class PropertyRepository implements IPropertyRepository {
    * The method will:
    * 1. Extract unique portfolio names and create them if they don't exist
    * 2. Extract unique sub-portfolio names and create them if they don't exist (linked to portfolios)
-   * 3. Create properties with relationships to portfolios and sub-portfolios
+   * 3. Create one property document per row (duplicate names / OTA ids allowed if Mongo has no unique index on those fields)
    * 4. Create property credentials for OTA platforms
    *
    * @param file - Excel file buffer
@@ -1448,308 +1447,143 @@ export class PropertyRepository implements IPropertyRepository {
             }
           }
 
-          // Check if property already exists
-          const existingProperty = await this.findPropertyByNameAndRelations(
-            rowData['Property Name'].toString(),
-            portfolioId,
-            subPortfolioId,
-          );
+          // One new property document per row.
+          const propertyData: CreatePropertyDto = {
+            name: rowData['Property Name'].toString().trim(),
+            portfolio_id: portfolioId,
+            sub_portfolio_id: subPortfolioId,
+            expedia_status: rowData['Expedia Status'] || 'Access Required',
+            booking_status: rowData['Booking Status'] || 'Access Required',
+            agoda_status: rowData['Agoda Status'] || 'Access Required',
+          };
 
-          if (!existingProperty) {
-            // Create property data
-            const propertyData: CreatePropertyDto = {
-              name: rowData['Property Name'].toString().trim(),
-              portfolio_id: portfolioId,
-              sub_portfolio_id: subPortfolioId,
-              expedia_status: rowData['Expedia Status'] || 'Access Required',
-              booking_status: rowData['Booking Status'] || 'Access Required',
-              agoda_status: rowData['Agoda Status'] || 'Access Required',
-            };
+          if (rowData['Expedia ID']) {
+            propertyData.expedia_id = Number(rowData['Expedia ID']);
+          }
 
-            if (rowData['Expedia ID']) {
-              propertyData.expedia_id = Number(rowData['Expedia ID']);
-            }
+          if (rowData['Booking ID']) {
+            propertyData.booking_id = Number(rowData['Booking ID']);
+          }
+          if (rowData['Agoda ID']) {
+            propertyData.agoda_id = Number(rowData['Agoda ID']);
+          }
 
-            if (rowData['Booking ID']) {
-              propertyData.booking_id = Number(rowData['Booking ID']);
-            }
-            if (rowData['Agoda ID']) {
-              propertyData.agoda_id = Number(rowData['Agoda ID']);
-            }
-
-            const parsedPhoneSlot = this.parsePhoneNumberAndSlotFromRow(rowData);
-            if (parsedPhoneSlot) {
-              try {
-                const resolved = await this.resolvePhoneNumberSlotLinkForImport(
-                  parsedPhoneSlot,
-                  `Phone slot (new property "${rowData['Property Name']}")`,
-                );
-                if (resolved) {
-                  propertyData.phone_number = resolved.phone;
-                  propertyData.slot = resolved.slot;
-                  propertyData.phone_number_slot_id = resolved.slotId;
-                }
-              } catch (phoneSlotError: any) {
-                this.logger.warn(
-                  `Phone slot link skipped for new property ${rowData['Property Name']}: ${phoneSlotError?.message}`,
-                );
+          const parsedPhoneSlot = this.parsePhoneNumberAndSlotFromRow(rowData);
+          if (parsedPhoneSlot) {
+            try {
+              const resolved = await this.resolvePhoneNumberSlotLinkForImport(
+                parsedPhoneSlot,
+                `Phone slot (new property "${rowData['Property Name']}")`,
+              );
+              if (resolved) {
+                propertyData.phone_number = resolved.phone;
+                propertyData.slot = resolved.slot;
+                propertyData.phone_number_slot_id = resolved.slotId;
               }
+            } catch (phoneSlotError: any) {
+              this.logger.warn(
+                `Phone slot link skipped for new property ${rowData['Property Name']}: ${phoneSlotError?.message}`,
+              );
             }
+          }
 
-            // Create property using repository method
-            const newProperty = await this.create(propertyData);
-            properties.push(newProperty);
-            propertiesCreated++;
-            this.logger.log(`Created new property: ${newProperty.name}`);
+          const newProperty = await this.create(propertyData);
+          properties.push(newProperty);
+          propertiesCreated++;
+          this.logger.log(`Created new property: ${newProperty.name}`);
 
-            // Create property credentials if any credential data exists
-            const credentialsData: any = {};
-            let hasCredentials = false;
+          const credentialsData: any = {};
+          let hasCredentials = false;
 
-            // Check for credential columns and extract data
-            if (rowData['Expedia Username']) {
-              credentialsData.expediaUsername = rowData['Expedia Username']
-                .toString()
-                .trim();
+          if (rowData['Expedia Username']) {
+            credentialsData.expediaUsername = rowData['Expedia Username']
+              .toString()
+              .trim();
+            hasCredentials = true;
+          }
+          if (rowData['Expedia Password']) {
+            credentialsData.expediaPassword =
+              this.encryptionUtil.encryptPassword(
+                rowData['Expedia Password'].toString().trim(),
+              );
+            hasCredentials = true;
+          }
+          if (rowData['Agoda Username']) {
+            credentialsData.agodaUsername = rowData['Agoda Username']
+              .toString()
+              .trim();
+            hasCredentials = true;
+          }
+          if (rowData['Agoda Password']) {
+            credentialsData.agodaPassword =
+              this.encryptionUtil.encryptPassword(
+                rowData['Agoda Password'].toString().trim(),
+              );
+            hasCredentials = true;
+          }
+          if (rowData['Booking Username']) {
+            credentialsData.bookingUsername = rowData['Booking Username']
+              .toString()
+              .trim();
+            hasCredentials = true;
+          }
+          if (rowData['Booking Password']) {
+            credentialsData.bookingPassword =
+              this.encryptionUtil.encryptPassword(
+                rowData['Booking Password'].toString().trim(),
+              );
+            hasCredentials = true;
+          }
+          if (rowData['Expedia Email Associated']) {
+            credentialsData.expediaEmailAssociated = rowData[
+              'Expedia Email Associated'
+            ]
+              .toString()
+              .trim();
+            hasCredentials = true;
+          }
+          if (rowData['Property Contact Email']) {
+            credentialsData.propertyContactEmail = rowData[
+              'Property Contact Email'
+            ]
+              .toString()
+              .trim();
+            hasCredentials = true;
+          }
+          if (rowData['Portfolio Contact Email']) {
+            credentialsData.portfolioContactEmail = rowData[
+              'Portfolio Contact Email'
+            ]
+              .toString()
+              .trim();
+            hasCredentials = true;
+          }
+          if (rowData['Multiple Portfolio Emails']) {
+            const emails = rowData['Multiple Portfolio Emails']
+              .toString()
+              .split(',')
+              .map((email: string) => email.trim())
+              .filter((email: string) => email);
+            if (emails.length > 0) {
+              credentialsData.multiplePortfolioEmails = emails;
               hasCredentials = true;
             }
-            if (rowData['Expedia Password']) {
-              credentialsData.expediaPassword =
-                this.encryptionUtil.encryptPassword(
-                  rowData['Expedia Password'].toString().trim(),
-                );
-              hasCredentials = true;
-            }
-            if (rowData['Agoda Username']) {
-              credentialsData.agodaUsername = rowData['Agoda Username']
-                .toString()
-                .trim();
-              hasCredentials = true;
-            }
-            if (rowData['Agoda Password']) {
-              credentialsData.agodaPassword =
-                this.encryptionUtil.encryptPassword(
-                  rowData['Agoda Password'].toString().trim(),
-                );
-              hasCredentials = true;
-            }
-            if (rowData['Booking Username']) {
-              credentialsData.bookingUsername = rowData['Booking Username']
-                .toString()
-                .trim();
-              hasCredentials = true;
-            }
-            if (rowData['Booking Password']) {
-              credentialsData.bookingPassword =
-                this.encryptionUtil.encryptPassword(
-                  rowData['Booking Password'].toString().trim(),
-                );
-              hasCredentials = true;
-            }
-            if (rowData['Expedia Email Associated']) {
-              credentialsData.expediaEmailAssociated = rowData[
-                'Expedia Email Associated'
-              ]
-                .toString()
-                .trim();
-              hasCredentials = true;
-            }
-            if (rowData['Property Contact Email']) {
-              credentialsData.propertyContactEmail = rowData[
-                'Property Contact Email'
-              ]
-                .toString()
-                .trim();
-              hasCredentials = true;
-            }
-            if (rowData['Portfolio Contact Email']) {
-              credentialsData.portfolioContactEmail = rowData[
-                'Portfolio Contact Email'
-              ]
-                .toString()
-                .trim();
-              hasCredentials = true;
-            }
-            if (rowData['Multiple Portfolio Emails']) {
-              // Handle comma-separated emails
-              const emails = rowData['Multiple Portfolio Emails']
-                .toString()
-                .split(',')
-                .map((email: string) => email.trim())
-                .filter((email: string) => email);
-              if (emails.length > 0) {
-                credentialsData.multiplePortfolioEmails = emails;
-                hasCredentials = true;
-              }
-            }
+          }
 
-            // Create credentials if any credential data exists
-            if (hasCredentials) {
-              try {
-                await this.createPropertyCredentials(
-                  newProperty.id,
-                  credentialsData,
-                );
-                credentialsCreated++;
-                this.logger.log(
-                  `Created credentials for property: ${newProperty.name}`,
-                );
-              } catch (credentialError) {
-                this.logger.error(
-                  `Error creating credentials for property ${newProperty.name}: ${credentialError.message}`,
-                );
-                // Don't fail the entire import if credentials creation fails
-              }
-            }
-          } else {
-            this.logger.log(
-              `Property '${rowData['Property Name']}' already exists, checking for new credentials to merge`,
-            );
-
-            // Process credentials for existing property
-            const credentialsData: any = {};
-            let hasCredentials = false;
-
-            // Check for credential columns and extract data
-            if (rowData['Expedia Username']) {
-              credentialsData.expediaUsername = rowData['Expedia Username']
-                .toString()
-                .trim();
-              hasCredentials = true;
-            }
-            if (rowData['Expedia Password']) {
-              credentialsData.expediaPassword =
-                this.encryptionUtil.encryptPassword(
-                  rowData['Expedia Password'].toString().trim(),
-                );
-              hasCredentials = true;
-            }
-            if (rowData['Agoda Username']) {
-              credentialsData.agodaUsername = rowData['Agoda Username']
-                .toString()
-                .trim();
-              hasCredentials = true;
-            }
-            if (rowData['Agoda Password']) {
-              credentialsData.agodaPassword =
-                this.encryptionUtil.encryptPassword(
-                  rowData['Agoda Password'].toString().trim(),
-                );
-              hasCredentials = true;
-            }
-            if (rowData['Booking Username']) {
-              credentialsData.bookingUsername = rowData['Booking Username']
-                .toString()
-                .trim();
-              hasCredentials = true;
-            }
-            if (rowData['Booking Password']) {
-              credentialsData.bookingPassword =
-                this.encryptionUtil.encryptPassword(
-                  rowData['Booking Password'].toString().trim(),
-                );
-              hasCredentials = true;
-            }
-            if (rowData['Expedia Email Associated']) {
-              credentialsData.expediaEmailAssociated = rowData[
-                'Expedia Email Associated'
-              ]
-                .toString()
-                .trim();
-              hasCredentials = true;
-            }
-            if (rowData['Property Contact Email']) {
-              credentialsData.propertyContactEmail = rowData[
-                'Property Contact Email'
-              ]
-                .toString()
-                .trim();
-              hasCredentials = true;
-            }
-            if (rowData['Portfolio Contact Email']) {
-              credentialsData.portfolioContactEmail = rowData[
-                'Portfolio Contact Email'
-              ]
-                .toString()
-                .trim();
-              hasCredentials = true;
-            }
-            if (rowData['Multiple Portfolio Emails']) {
-              // Handle comma-separated emails
-              const emails = rowData['Multiple Portfolio Emails']
-                .toString()
-                .split(',')
-                .map((email: string) => email.trim())
-                .filter((email: string) => email);
-              if (emails.length > 0) {
-                credentialsData.multiplePortfolioEmails = emails;
-                hasCredentials = true;
-              }
-            }
-
-            // Update property with IDs if they exist
-            const propertyUpdateData: any = {};
-            if (rowData['Expedia ID']) {
-              propertyUpdateData.expedia_id = Number(rowData['Expedia ID']);
-            }
-            if (rowData['Booking ID']) {
-              propertyUpdateData.booking_id = Number(rowData['Booking ID']);
-            }
-            if (rowData['Agoda ID']) {
-              propertyUpdateData.agoda_id = Number(rowData['Agoda ID']);
-            }
-
-            const parsedPhoneSlotExisting =
-              this.parsePhoneNumberAndSlotFromRow(rowData);
-            if (parsedPhoneSlotExisting) {
-              try {
-                const resolved = await this.resolvePhoneNumberSlotLinkForImport(
-                  parsedPhoneSlotExisting,
-                  `Phone slot (existing property "${existingProperty.name}")`,
-                );
-                if (resolved) {
-                  propertyUpdateData.phone_number = resolved.phone;
-                  propertyUpdateData.slot = resolved.slot;
-                  propertyUpdateData.phone_number_slot_id = resolved.slotId;
-                }
-              } catch (phoneSlotError: any) {
-                this.logger.warn(
-                  `Phone slot link skipped for existing property ${existingProperty.name}: ${phoneSlotError?.message}`,
-                );
-              }
-            }
-
-            // Update property if there are IDs to update
-            if (Object.keys(propertyUpdateData).length > 0) {
-              try {
-                await this.update(existingProperty.id, propertyUpdateData);
-                this.logger.log(
-                  `Updated property IDs for: ${existingProperty.name}`,
-                );
-              } catch (updateError) {
-                this.logger.error(
-                  `Error updating property IDs for ${existingProperty.name}: ${updateError.message}`,
-                );
-              }
-            }
-
-            // Merge credentials if any credential data exists
-            if (hasCredentials) {
-              try {
-                await this.mergePropertyCredentials(
-                  existingProperty.id,
-                  credentialsData,
-                );
-                credentialsCreated++;
-                this.logger.log(
-                  `Merged credentials for existing property: ${existingProperty.name}`,
-                );
-              } catch (credentialError) {
-                this.logger.error(
-                  `Error merging credentials for property ${existingProperty.name}: ${credentialError.message}`,
-                );
-                // Don't fail the entire import if credentials merge fails
-              }
+          if (hasCredentials) {
+            try {
+              await this.createPropertyCredentials(
+                newProperty.id,
+                credentialsData,
+              );
+              credentialsCreated++;
+              this.logger.log(
+                `Created credentials for property: ${newProperty.name}`,
+              );
+            } catch (credentialError) {
+              this.logger.error(
+                `Error creating credentials for property ${newProperty.name}: ${credentialError.message}`,
+              );
             }
           }
         } catch (error) {
