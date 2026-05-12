@@ -126,6 +126,12 @@ export class PropertyService implements IPropertyService {
     return this.repository.findPropertyBySubPortfolioId(subPortfolioId);
   }
 
+  applyPropertyCredentialsShape(property: any | null | undefined): void {
+    if (property == null) return;
+    const credential = { ...property.credentials?.[0] };
+    property.credentials = credential;
+  }
+
   private processProperty(property: any) {
     // Decrypt the password when returning property data
     if (property.user_password) {
@@ -141,8 +147,7 @@ export class PropertyService implements IPropertyService {
       }
     }
 
-    const credential = { ...property.credentials?.[0] };
-    property.credentials = credential;
+    this.applyPropertyCredentialsShape(property);
     return property;
   }
 

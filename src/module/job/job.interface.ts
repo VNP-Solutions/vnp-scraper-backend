@@ -6,6 +6,7 @@ import {
   UpdateBatchDto,
   UpdateJobDto,
 } from './job.dto';
+import type { JobListItem } from './job-list.types';
 
 export interface IJobRepository {
   create(data: CreateJobDto): Promise<Job>;
@@ -91,7 +92,7 @@ export interface IJobService {
   createJob(data: CreateJobDto): Promise<Job>;
   getAllJobs(
     query: Record<string, any>,
-  ): Promise<{ data: Job[]; metadata: any }>;
+  ): Promise<{ data: JobListItem[]; metadata: any }>;
   getJobById(id: string): Promise<Job>;
   updateJob(id: string, data: UpdateJobDto): Promise<Job>;
   deleteJob(id: string): Promise<Job>;

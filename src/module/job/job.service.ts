@@ -5,6 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { IPropertyService } from '../property/property.interface';
 import { Batch, Job, OTAProvider, PostingType } from '@prisma/client';
 import * as archiver from 'archiver';
 import { PassThrough } from 'stream';
@@ -19,6 +20,7 @@ import {
   UpdateJobDto,
 } from './job.dto';
 import { IJobRepository, IJobService } from './job.interface';
+import type { JobListItem } from './job-list.types';
 import {
   MASTER_EXPORT_HEADER,
   buildMasterRows,
@@ -33,6 +35,8 @@ export class JobService implements IJobService {
     private readonly scheduledJobService: IScheduledJobService,
     @Inject('IRecurringJobService')
     private readonly recurringJobService: IRecurringJobService,
+    @Inject('IPropertyService')
+    private readonly propertyService: IPropertyService,
     private readonly logger: Logger,
   ) {}
 
@@ -80,18 +84,23 @@ export class JobService implements IJobService {
 
   async getAllJobs(
     query: Record<string, any>,
-  ): Promise<{ data: Job[]; metadata: any }> {
+  ): Promise<{ data: JobListItem[]; metadata: any }> {
     try {
       const result = await this.repository.findAll(query);
       // Normalize so log_link, failed_reason, screenshot_urls are always present (array/string for older docs)
-      const data = (result.data || []).map((job: any) => ({
-        ...job,
-        log_link: job.log_link ?? null,
-        failed_reason: job.failed_reason ?? '',
-        screenshot_urls: Array.isArray(job.screenshot_urls)
-          ? job.screenshot_urls
-          : [],
-      }));
+      const data: JobListItem[] = (result.data || []).map((job: any) => {
+        if (job?.property) {
+          this.propertyService.applyPropertyCredentialsShape(job.property);
+        }
+        return {
+          ...job,
+          log_link: job.log_link ?? null,
+          failed_reason: job.failed_reason ?? '',
+          screenshot_urls: Array.isArray(job.screenshot_urls)
+            ? job.screenshot_urls
+            : [],
+        };
+      });
       return { ...result, data };
     } catch (error) {
       this.logger.error(`Error getting jobs: ${error.message}`, error.stack);
