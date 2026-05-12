@@ -323,6 +323,61 @@ export class ScraperController {
     }
   }
 
+  private static readonly PROPERTY_RUN_JOB_EARLY_RESPONSE_MS = 10_000;
+
+  /**
+   * POST to the scraper. If the scraper responds (success or error) **before** 10s, that
+   * response is returned immediately (including HTTP 4xx/5xx — axios rejects / errors propagate).
+   * If **no** response within 10s, respond 200 with current job from DB while the outbound HTTP
+   * request keeps running (avoids client/gateway timeouts on long runs).
+   */
+  private async postScraperPropertyRunWithEarlyOk(
+    res: Response,
+    postUrl: string,
+    body: Record<string, unknown>,
+    jobId: string,
+  ): Promise<void> {
+    const headers = {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    };
+    const scraperCall = firstValueFrom(
+      this.httpService.post(postUrl, body, {
+        headers,
+        timeout: 300_000,
+      }),
+    );
+    const early = new Promise<'EARLY'>((resolve) =>
+      setTimeout(
+        () => resolve('EARLY'),
+        ScraperController.PROPERTY_RUN_JOB_EARLY_RESPONSE_MS,
+      ),
+    );
+    const winner = await Promise.race([scraperCall, early]);
+    if (winner === 'EARLY') {
+      void scraperCall.catch((err: unknown) => {
+        const msg =
+          err instanceof Error ? err.message : JSON.stringify(err);
+        this.logger.warn(
+          `property-run-job early 200 for job ${jobId}: scraper POST later failed (client already responded): ${msg}`,
+        );
+      });
+      this.logger.log(
+        `property-run-job: 10s elapsed for job ${jobId}, returning 200 with job while scraper request continues`,
+      );
+      const latestJob = await this.jobService.getJobById(jobId);
+      res.status(HttpStatus.OK).json({
+        success: true,
+        message:
+          'Request was sent to the scraper. Returned after 10 seconds with current job state; scraping may still be in progress.',
+        data: latestJob,
+      });
+      return;
+    }
+    const response = winner as { status: number; data: unknown };
+    res.status(response.status).json(response.data);
+  }
+
   /**
    * Determine scraping mode based on OTA provider. Only Expedia supports mode switching via EXPEDIA_MODE.
    */
@@ -1060,12 +1115,13 @@ export class ScraperController {
   @ApiOperation({
     summary: 'Start unified property scraping job',
     description:
-      'Start a new property scraping job for any OTA provider (Expedia, Agoda, Booking). The system automatically determines the OTA provider from the job record and routes to the appropriate scraper server. For Expedia, EXPEDIA_MODE determines whether to use GraphQL (graphql-run-job) or regular scraper (property-run-job) endpoint. Booking and Agoda only use property-run-job.',
+      'Start a new property scraping job for any OTA provider (Expedia, Agoda, Booking). The system automatically determines the OTA provider from the job record and routes to the appropriate scraper server. For Expedia, EXPEDIA_MODE determines whether to use GraphQL (graphql-run-job) or regular scraper (property-run-job) endpoint. Booking and Agoda only use property-run-job. **If the scraper responds with an error (or network failure) within 10 seconds, that error is returned to the client.** If the scraper has not responded within 10 seconds, returns HTTP 200 with `success: true` and the current job document in `data` while the scraper continues in the background.',
   })
   @ApiBody({ type: PropertyRunJobRequestDto })
   @ApiResponse({
     status: 200,
-    description: 'Property scraping job completed successfully',
+    description:
+      'Scraper responded within 10s (body proxied) **or** 10s elapsed: `success: true` and current job in `data` while scraping may continue',
     type: PropertyRunJobResponseDto,
   })
   @ApiResponse({
@@ -1126,21 +1182,13 @@ export class ScraperController {
 
         console.log(`Using Expedia DB server for billing_type=DB`);
 
-        const response = await firstValueFrom(
-          this.httpService.post(
-            `${selectedUrl}/api/expedia/db-run-job`,
-            enhancedBody,
-            {
-              headers: {
-                'Content-Type': 'application/json',
-                Accept: 'application/json',
-              },
-              timeout: 300000, // 5 minute timeout for long-running scraping jobs
-            },
-          ),
+        await this.postScraperPropertyRunWithEarlyOk(
+          res,
+          `${selectedUrl}/api/expedia/db-run-job`,
+          enhancedBody,
+          body.jobId,
         );
-
-        return res.status(response.status).json(response.data);
+        return;
       }
 
       // Regular flow for non-DB billing types
@@ -1185,17 +1233,13 @@ export class ScraperController {
         console.log(`Using ${otaProvider} endpoint: ${apiPath}`);
       }
 
-      const response = await firstValueFrom(
-        this.httpService.post(`${selectedUrl}${apiPath}`, enhancedBody, {
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-          },
-          timeout: 300000, // 5 minute timeout for long-running scraping jobs
-        }),
+      await this.postScraperPropertyRunWithEarlyOk(
+        res,
+        `${selectedUrl}${apiPath}`,
+        enhancedBody,
+        body.jobId,
       );
-
-      return res.status(response.status).json(response.data);
+      return;
     } catch (error: any) {
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
       const data = error.response?.data || {
@@ -1984,12 +2028,13 @@ export class ScraperController {
   @ApiOperation({
     summary: 'Start unified GraphQL property scraping job',
     description:
-      'Start a new GraphQL property scraping job for any OTA provider (Expedia, Agoda, Booking). The system automatically determines the OTA provider from the job record and routes to the appropriate scraper server. This endpoint is primarily used when EXPEDIA_MODE is set to "graphql". Note: Booking and Agoda primarily use property-run-job endpoint.',
+      'Start a new GraphQL property scraping job for any OTA provider (Expedia, Agoda, Booking). The system automatically determines the OTA provider from the job record and routes to the appropriate scraper server. This endpoint is primarily used when EXPEDIA_MODE is set to "graphql". Note: Booking and Agoda primarily use property-run-job endpoint. **Errors from the scraper within 10 seconds are returned to the client.** If there is no response within 10 seconds, returns HTTP 200 with `success: true` and the current job in `data` while the scraper continues.',
   })
   @ApiBody({ type: PropertyRunJobRequestDto })
   @ApiResponse({
     status: 200,
-    description: 'Property scraping job completed successfully',
+    description:
+      'Scraper responded within 10s (body proxied) **or** 10s elapsed: `success: true` and current job in `data` while scraping may continue',
     type: PropertyRunJobResponseDto,
   })
   @ApiResponse({
@@ -2050,21 +2095,13 @@ export class ScraperController {
 
         console.log(`Using Expedia DB server for billing_type=DB`);
 
-        const response = await firstValueFrom(
-          this.httpService.post(
-            `${selectedUrl}/api/expedia/db-run-job`,
-            enhancedBody,
-            {
-              headers: {
-                'Content-Type': 'application/json',
-                Accept: 'application/json',
-              },
-              timeout: 300000, // 5 minute timeout for long-running scraping jobs
-            },
-          ),
+        await this.postScraperPropertyRunWithEarlyOk(
+          res,
+          `${selectedUrl}/api/expedia/db-run-job`,
+          enhancedBody,
+          body.jobId,
         );
-
-        return res.status(response.status).json(response.data);
+        return;
       }
 
       // Regular flow for non-DB billing types
@@ -2090,17 +2127,13 @@ export class ScraperController {
         'graphql-run-job',
       );
 
-      const response = await firstValueFrom(
-        this.httpService.post(`${selectedUrl}${apiPath}`, enhancedBody, {
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-          },
-          timeout: 300000, // 5 minute timeout for long-running scraping jobs
-        }),
+      await this.postScraperPropertyRunWithEarlyOk(
+        res,
+        `${selectedUrl}${apiPath}`,
+        enhancedBody,
+        body.jobId,
       );
-
-      return res.status(response.status).json(response.data);
+      return;
     } catch (error: any) {
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
       const data = error.response?.data || {

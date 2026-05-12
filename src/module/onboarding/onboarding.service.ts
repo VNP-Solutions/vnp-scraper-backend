@@ -111,4 +111,10 @@ export class OnboardingService implements IOnboardingService {
     }
     return record;
   }
+
+  async findAll(
+    query: Record<string, any>,
+  ): Promise<{ data: Onboarding[]; metadata: any }> {
+    return this.repository.findAllByQuery(query);
+  }
 }
