@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { OtpStatus } from '@prisma/client';
+import { OtpPlatform, OtpStatus } from '@prisma/client';
 import { CreateOtpStatusDto, UpdateOtpStatusDto } from './otp-status.dto';
 import {
   IOtpStatusRepository,
@@ -33,7 +33,6 @@ export class OtpStatusService implements IOtpStatusService {
       if (!otpStatus) {
         return null;
       }
-      // Build the return object with expedia, agoda, booking, expedia_retrieval, agoda_retrieval fields
       const platforms = [
         'expedia',
         'agoda',
@@ -59,6 +58,19 @@ export class OtpStatusService implements IOtpStatusService {
     } catch (error) {
       this.logger.error(
         `Error finding OTP status: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async getOtpStatusByPlatform(platform: OtpPlatform): Promise<OtpStatus | null> {
+    try {
+      const otpStatus = await this.repository.findByPlatform(platform);
+      return otpStatus;
+    } catch (error) {
+      this.logger.error(
+        `Error finding OTP status by platform: ${error.message}`,
         error.stack,
       );
       throw error;

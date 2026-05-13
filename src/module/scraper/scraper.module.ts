@@ -7,6 +7,7 @@ import { JobModule } from '../job/job.module';
 import { PropertyCredentialsModule } from '../property-credentials/property-credentials.module';
 import { RecurringJobModule } from '../recurring-job/recurring-job.module';
 import { RetrievalModule } from '../retrieval/retrieval.module';
+import { ServerModule } from '../server/server.module';
 import { BookingBulkDispatchService } from './booking-bulk-dispatch.service';
 import { ScheduledJobSchedulerService } from './scheduled-job-scheduler.service';
 import { ScheduledJobRepository } from './scheduled-job.repository';
@@ -35,6 +36,7 @@ import { ScraperController } from './scraper.controller';
     ConfigModule,
     forwardRef(() => JobModule),
     forwardRef(() => RecurringJobModule),
+    ServerModule,
     RetrievalModule,
     PropertyCredentialsModule,
   ],

@@ -8,6 +8,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -19,6 +20,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { OtpPlatform } from '@prisma/client';
 import { Response } from 'express';
 import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
@@ -33,7 +35,6 @@ import {
 } from './otp-status.validation';
 
 @ApiTags('OTP Status')
-@ApiBearerAuth('JWT-auth')
 @Controller('/otp-status')
 export class OtpStatusController {
   constructor(
@@ -42,7 +43,58 @@ export class OtpStatusController {
     private readonly logger: Logger,
   ) {}
 
+  @Get('/public')
+  @ApiOperation({ summary: 'Get OTP status by platform (public endpoint)' })
+  @ApiResponse({ status: 200, description: 'Returns OTP status for the specified platform' })
+  @ApiResponse({ status: 400, description: 'Invalid platform' })
+  @ApiResponse({ status: 404, description: 'OTP status not found for the platform' })
+  @ApiQuery({
+    name: 'platform',
+    required: true,
+    enum: OtpPlatform,
+    description: 'Platform to get OTP status for',
+  })
+  async getOtpStatusByPlatform(
+    @Query('platform') platform: OtpPlatform,
+    @Res() response: Response,
+  ) {
+    if (!platform || !Object.values(OtpPlatform).includes(platform)) {
+      return ResponseHandler.handler(
+        response,
+        async () => {
+          return {
+            statusCode: 400,
+            message: 'Invalid platform. Valid platforms are: ' + Object.values(OtpPlatform).join(', '),
+            data: null,
+          };
+        },
+        this.logger,
+      );
+    }
+
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const otpStatus = await this.otpStatusService.getOtpStatusByPlatform(platform);
+        if (!otpStatus) {
+          return {
+            statusCode: 404,
+            message: `OTP status not found for platform: ${platform}`,
+            data: null,
+          };
+        }
+        return {
+          statusCode: 200,
+          message: 'OTP status retrieved successfully',
+          data: otpStatus,
+        };
+      },
+      this.logger,
+    );
+  }
+
   @Post()
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Create a new OTP status' })
   @ApiResponse({ status: 201, description: 'OTP status created successfully' })
   @ApiResponse({ status: 400, description: 'Bad request' })
@@ -83,9 +135,10 @@ export class OtpStatusController {
   }
 
   @Get()
+  @ApiBearerAuth('JWT-auth')
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Get OTP status by ID' })
-  @ApiResponse({ status: 200, description: 'Returns an OTP status' })
+  @ApiOperation({ summary: 'Get all OTP statuses' })
+  @ApiResponse({ status: 200, description: 'Returns all OTP statuses' })
   @ApiResponse({ status: 404, description: 'OTP status not found' })
   async getOtpStatusById(@Res() response: Response) {
     return ResponseHandler.handler(
@@ -103,6 +156,7 @@ export class OtpStatusController {
   }
 
   @Put('/:id')
+  @ApiBearerAuth('JWT-auth')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Update OTP status by ID' })
   @ApiResponse({ status: 200, description: 'OTP status updated successfully' })
@@ -146,6 +200,7 @@ export class OtpStatusController {
   }
 
   @Delete('/:id')
+  @ApiBearerAuth('JWT-auth')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Delete OTP status by ID' })
   @ApiResponse({ status: 200, description: 'OTP status deleted successfully' })

@@ -10,6 +10,7 @@ import * as XLSX from 'xlsx';
 import { DatabaseService } from '../database/database.service';
 import { IJobRepository } from '../job/job.interface';
 import { IScheduledJobService } from '../scraper/scheduled-job.interface';
+import { IServerService } from '../server/server.interface';
 import {
   CreateRecurringJobDto,
   CreateRecurringJobFromJobDto,
@@ -37,6 +38,8 @@ export class RecurringJobService implements IRecurringJobService {
     private readonly jobRepository: IJobRepository,
     @Inject('IScheduledJobService')
     private readonly scheduledJobService: IScheduledJobService,
+    @Inject('IServerService')
+    private readonly serverService: IServerService,
     private readonly db: DatabaseService,
     private readonly logger: Logger,
   ) {}
@@ -105,26 +108,52 @@ export class RecurringJobService implements IRecurringJobService {
 
   /**
    * Get next schedule date (advance by 1 month from current schedule date).
-   * Since each job covers 1 month, the next schedule is always 1 month later.
+   * If the current day doesn't exist in the next month, skip to the next month that has that day.
+   * This prevents load concentration on days like Feb 28.
+   * 
+   * Examples:
+   * - Jan 28 → Feb 28 (Feb has 28 days, no skip)
+   * - Jan 29 → Mar 29 (Feb doesn't have 29 in non-leap year, skip to Mar)
+   * - Jan 30 → Mar 30 (Feb doesn't have 30, skip to Mar)
+   * - Jan 31 → Mar 31 (Feb doesn't have 31, skip to Mar)
    */
   private getNextMonthScheduleDate(currentScheduleDate: string): string {
     const date = new Date(currentScheduleDate);
     const currentDay = date.getDate();
-    const year = date.getFullYear();
-    const month = date.getMonth(); // 0-indexed
+    let year = date.getFullYear();
+    let month = date.getMonth(); // 0-indexed
 
+    // Keep advancing months until we find one with the required day
     let nextMonth = month + 1;
     let nextYear = year;
+    let maxIterations = 12; // Safety: don't loop forever
 
-    if (nextMonth > 11) {
-      nextMonth = 0;
-      nextYear += 1;
+    while (maxIterations > 0) {
+      if (nextMonth > 11) {
+        nextMonth = 0;
+        nextYear += 1;
+      }
+
+      const lastDayOfNextMonth = this.getLastDayOfMonth(nextYear, nextMonth + 1);
+      
+      // If the next month has the required day, use it
+      if (currentDay <= lastDayOfNextMonth) {
+        return `${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`;
+      }
+
+      // Otherwise, skip to the next month
+      this.logger.log(
+        `Skipping month ${nextYear}-${String(nextMonth + 1).padStart(2, '0')} (day ${currentDay} doesn't exist, last day is ${lastDayOfNextMonth})`
+      );
+      
+      nextMonth += 1;
+      maxIterations -= 1;
     }
 
+    // Fallback (should never reach here): use last day of next month
+    this.logger.error(`Failed to find valid month for day ${currentDay}, falling back to capping`);
     const lastDayOfNextMonth = this.getLastDayOfMonth(nextYear, nextMonth + 1);
-    const nextDay = Math.min(currentDay, lastDayOfNextMonth);
-
-    return `${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-${String(nextDay).padStart(2, '0')}`;
+    return `${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-${String(lastDayOfNextMonth).padStart(2, '0')}`;
   }
 
   /**
@@ -189,7 +218,31 @@ export class RecurringJobService implements IRecurringJobService {
   }
 
   /**
+   * Assign an available server to a job for a specific date
+   * Uses date-based capacity tracking instead of global count
+   * Returns the server_id if successful, null otherwise
+   */
+  private async assignServerToJob(scheduleDate: string): Promise<string | null> {
+    try {
+      const serverId = await this.serverService.assignServerForDate(scheduleDate);
+      
+      if (!serverId) {
+        this.logger.warn(`No available server found for date ${scheduleDate} (all servers at capacity for this date)`);
+        return null;
+      }
+
+      this.logger.log(`Assigned server ${serverId} for date ${scheduleDate}`);
+      
+      return serverId;
+    } catch (error) {
+      this.logger.error('Error assigning server to job:', error);
+      return null;
+    }
+  }
+
+  /**
    * Create a job using template data, linked to a bucket
+   * Returns null if no server is available for the schedule_date
    */
   private async createJobFromTemplate(
     templateData: any,
@@ -200,8 +253,22 @@ export class RecurringJobService implements IRecurringJobService {
       start_date: string;
       end_date: string;
       name: string;
+      server_id?: string | null; // Optional: use provided server_id or assign new one
     },
-  ): Promise<Job> {
+  ): Promise<Job | null> {
+    // Use provided server_id if available, otherwise assign a new one for the schedule_date
+    const server_id = overrides.server_id !== undefined 
+      ? overrides.server_id 
+      : await this.assignServerToJob(overrides.schedule_date);
+    
+    // If no server is available and none was provided, return null
+    if (server_id === null) {
+      this.logger.warn(
+        `Cannot create job for ${overrides.schedule_date}: No available server found (all servers at capacity for this date)`
+      );
+      return null;
+    }
+    
     return this.jobRepository.create({
       job_status: JobStatus.Pending,
       portfolio_id: templateData.portfolio_id,
@@ -210,6 +277,7 @@ export class RecurringJobService implements IRecurringJobService {
       user_id: templateData.user_id,
       recurring_id: overrides.recurring_id,
       recurring_report_bucket_id: overrides.bucket_id,
+      server_id: server_id, // Assign server
       posting_type: templateData.posting_type,
       portfolio_name: templateData.portfolio_name,
       sub_portfolio_name: templateData.sub_portfolio_name,
@@ -373,6 +441,18 @@ export class RecurringJobService implements IRecurringJobService {
 
           // Create job for this historical month with the schedule_date for execution
           try {
+            // Assign an available server to this job for the schedule_date
+            const server_id = await this.assignServerToJob(schedule_date);
+            
+            // If no server is available, clean up and throw error
+            if (server_id === null) {
+              // Delete the recurring job (cascade will delete buckets and jobs)
+              await this.repository.delete(recurringJob.id);
+              throw new BadRequestException(
+                `Cannot create recurring job: No available server found for date ${schedule_date}. All servers are at capacity for this date.`
+              );
+            }
+            
             const historicalJob = await this.jobRepository.create({
               ...jobData,
               job_status: jobData.job_status || JobStatus.Pending,
@@ -381,6 +461,7 @@ export class RecurringJobService implements IRecurringJobService {
               user_id,
               recurring_id: recurringJob.id,
               recurring_report_bucket_id: currentBucket!.id,
+              server_id: server_id, // Assign server
               start_date: startDate,
               end_date: endDate,
               schedule_date: schedule_date, // All historical jobs will run on the same schedule_date
@@ -407,13 +488,25 @@ export class RecurringJobService implements IRecurringJobService {
           allJobIds,
         );
 
+        // Calculate next_date: should be the next month after schedule_date
+        // because schedule_date already has all historical jobs
+        const nextScheduleDate = this.getNextMonthScheduleDate(schedule_date);
+        
+        // Update recurring job's next_date to the NEXT schedule after historical jobs
+        await this.repository.update(recurringJob.id, {
+          next_date: nextScheduleDate, // Next execution is after historical jobs
+        });
+
         this.logger.log(
-          `Created recurring job ${recurringJob.id} with ${createdBuckets.length} buckets and ${historicalJobs.length} jobs, all scheduled for ${schedule_date}`,
+          `Created recurring job ${recurringJob.id} with ${createdBuckets.length} buckets and ${historicalJobs.length} historical jobs for ${schedule_date}, next execution on ${nextScheduleDate}`,
         );
 
         // Return the first bucket and first job, with all historical jobs
         return { 
-          recurringJob, 
+          recurringJob: {
+            ...recurringJob,
+            next_date: nextScheduleDate, // Return updated next_date
+          },
           bucket: createdBuckets[0], 
           job: historicalJobs[0], 
           historicalJobs,
@@ -433,6 +526,18 @@ export class RecurringJobService implements IRecurringJobService {
         name: bucketName,
       });
 
+      // Assign an available server to this job for the schedule_date
+      const server_id = await this.assignServerToJob(schedule_date);
+
+      // If no server is available, clean up and throw error
+      if (server_id === null) {
+        // Delete the recurring job (cascade will delete bucket)
+        await this.repository.delete(recurringJob.id);
+        throw new BadRequestException(
+          `Cannot create recurring job: No available server found for date ${schedule_date}. All servers are at capacity for this date.`
+        );
+      }
+
       // Create the first job linked to this recurring job and bucket
       const job = await this.jobRepository.create({
         ...jobData,
@@ -441,6 +546,7 @@ export class RecurringJobService implements IRecurringJobService {
         user_id,
         recurring_id: recurringJob.id,
         recurring_report_bucket_id: bucket.id,
+        server_id: server_id, // Assign server
         start_date: startDate,
         end_date: endDate,
         schedule_date: schedule_date,
@@ -608,6 +714,15 @@ export class RecurringJobService implements IRecurringJobService {
               name: `${recurringJobName} - ${startDate} to ${endDate}`,
             });
 
+            // If job creation failed due to no available server, clean up and throw error
+            if (!historicalJob) {
+              // Delete the recurring job (cascade will delete buckets and jobs)
+              await this.repository.delete(recurringJob.id);
+              throw new BadRequestException(
+                `Cannot create recurring job: No available server found for date ${schedule_date}. All servers are at capacity for this date.`
+              );
+            }
+
             this.logger.log(`Created historical job ${historicalJob.id} for period ${startDate} to ${endDate} in bucket ${currentBucket.id}`);
 
             historicalJobs.push(historicalJob);
@@ -625,13 +740,25 @@ export class RecurringJobService implements IRecurringJobService {
           allJobIds,
         );
 
+        // Calculate next_date: should be the next month after schedule_date
+        // because schedule_date already has all historical jobs
+        const nextScheduleDate = this.getNextMonthScheduleDate(schedule_date);
+        
+        // Update recurring job's next_date to the NEXT schedule after historical jobs
+        await this.repository.update(recurringJob.id, {
+          next_date: nextScheduleDate, // Next execution is after historical jobs
+        });
+
         this.logger.log(
-          `Created recurring job ${recurringJob.id} from job ${job_id} with ${createdBuckets.length} buckets and ${historicalJobs.length} jobs, all scheduled for ${schedule_date}`,
+          `Created recurring job ${recurringJob.id} from job ${job_id} with ${createdBuckets.length} buckets and ${historicalJobs.length} historical jobs for ${schedule_date}, next execution on ${nextScheduleDate}`,
         );
 
         // Return the first bucket and first job, with all historical jobs
         return { 
-          recurringJob, 
+          recurringJob: {
+            ...recurringJob,
+            next_date: nextScheduleDate, // Return updated next_date
+          },
           bucket: createdBuckets[0], 
           job: historicalJobs[0], 
           historicalJobs,
@@ -660,6 +787,15 @@ export class RecurringJobService implements IRecurringJobService {
         end_date: endDate,
         name: `${recurringJobName} - ${startDate} to ${endDate}`,
       });
+
+      // If no server is available, delete the created resources and throw error
+      if (!job) {
+        // Delete the recurring job (cascade will delete bucket)
+        await this.repository.delete(recurringJob.id);
+        throw new BadRequestException(
+          `Cannot create recurring job: No available server found for date ${schedule_date}. All servers are at capacity for this date.`
+        );
+      }
 
       // Add job to scheduler
       await this.scheduledJobService.createOrUpdateScheduledJob(
@@ -804,10 +940,17 @@ export class RecurringJobService implements IRecurringJobService {
                 name: `${recurringJob.name} - ${startDate} to ${endDate}`,
               });
 
-              await this.scheduledJobService.createOrUpdateScheduledJob(
-                newScheduleDate,
-                [newJob.id],
-              );
+              // Only add to scheduler if job was created successfully
+              if (newJob) {
+                await this.scheduledJobService.createOrUpdateScheduledJob(
+                  newScheduleDate,
+                  [newJob.id],
+                );
+              } else {
+                this.logger.warn(
+                  `Could not create job for ${newScheduleDate} - no available server`
+                );
+              }
             }
           }
         }
@@ -880,14 +1023,21 @@ export class RecurringJobService implements IRecurringJobService {
                 name: `${recurringJob.name} - ${startDate} to ${endDate}`,
               });
 
-              await this.scheduledJobService.createOrUpdateScheduledJob(
-                scheduleDate,
-                [newJob.id],
-              );
+              // Only proceed if job was created successfully
+              if (newJob) {
+                await this.scheduledJobService.createOrUpdateScheduledJob(
+                  scheduleDate,
+                  [newJob.id],
+                );
 
-              this.logger.log(
-                `Created new job ${newJob.id} in bucket #${targetBucket.bucket_number} for activated recurring job ${id}`,
-              );
+                this.logger.log(
+                  `Created new job ${newJob.id} in bucket #${targetBucket.bucket_number} for activated recurring job ${id}`,
+                );
+              } else {
+                this.logger.warn(
+                  `Could not create job for ${scheduleDate} when activating recurring job ${id} - no available server`
+                );
+              }
             } else {
               throw new BadRequestException(
                 'No template job found for recurring job',
@@ -958,18 +1108,22 @@ export class RecurringJobService implements IRecurringJobService {
   }
 
   /**
-   * Create the next monthly job for a recurring job (called after cron execution).
+   * Create the next monthly job(s) for a recurring job (called after cron execution).
+   * 
+   * If months need to be skipped (e.g., day 31 skipping Feb), this will create
+   * SEPARATE jobs for each skipped month, all scheduled on the target date.
    *
    * Logic:
-   * 1. Find the latest bucket for this recurring job
-   * 2. Count jobs in the latest bucket
-   * 3. If bucket is full (jobs >= duration), create a new bucket
-   * 4. Create next monthly job in the target bucket
-   * 5. Schedule the job
+   * 1. Calculate next schedule date (may skip months)
+   * 2. Check if job(s) already exist for the target schedule date
+   * 3. If skipped months, create separate jobs for each month
+   * 4. Assign to appropriate buckets
+   * 5. Schedule all jobs
    */
   async createNextMonthJob(
     recurringId: string,
     currentScheduleDate: string,
+    currentServerId?: string | null,
   ): Promise<Job | null> {
     try {
       const recurringJob = await this.repository.findById(recurringId);
@@ -983,43 +1137,29 @@ export class RecurringJobService implements IRecurringJobService {
 
       const duration = recurringJob.duration ?? 1;
 
-      // Next schedule date is always 1 month later
+      // Calculate next schedule date (with month skipping logic)
       const nextScheduleDate = this.getNextMonthScheduleDate(currentScheduleDate);
-
-      // Get 1-month date range for next job
-      const { startDate, endDate } = this.getMonthlyDateRange(nextScheduleDate);
-
-      // Find the latest bucket
-      const latestBucket = await this.repository.findLatestBucketByRecurringId(recurringId);
-
-      let targetBucket: RecurringReportBucket & { jobs: Job[] };
-
-      if (!latestBucket) {
-        // No bucket exists (legacy data), create one
-        const bucketName = this.generateBucketName(startDate, duration);
-        const newBucket = await this.repository.createBucket({
-          recurring_id: recurringId,
-          bucket_number: 1,
-          name: bucketName,
-        });
-        targetBucket = { ...newBucket, jobs: [] };
-      } else if (latestBucket.jobs.length >= duration) {
-        // Current bucket is full, create a new one
-        const newBucketNumber = latestBucket.bucket_number + 1;
-        const bucketName = this.generateBucketName(startDate, duration);
-        const newBucket = await this.repository.createBucket({
-          recurring_id: recurringId,
-          bucket_number: newBucketNumber,
-          name: bucketName,
-        });
-        targetBucket = { ...newBucket, jobs: [] };
-
-        this.logger.log(
-          `Bucket #${latestBucket.bucket_number} is full (${latestBucket.jobs.length}/${duration} jobs). Created new bucket #${newBucketNumber} "${bucketName}"`,
+      
+      // Check if jobs already exist for this schedule date to prevent duplicates
+      const existingJobs = await this.repository.findJobsByRecurringId(recurringId);
+      const jobsForNextDate = existingJobs.filter(job => job.schedule_date === nextScheduleDate);
+      
+      if (jobsForNextDate.length > 0) {
+        this.logger.warn(
+          `Jobs already exist for recurring job ${recurringId} on ${nextScheduleDate}, skipping creation to prevent duplicates`
         );
-      } else {
-        targetBucket = latestBucket;
+        return null;
       }
+
+      // Calculate how many months were skipped
+      const currentDate = new Date(currentScheduleDate);
+      const nextDate = new Date(nextScheduleDate);
+      const monthsSkipped = (nextDate.getFullYear() - currentDate.getFullYear()) * 12 
+                          + (nextDate.getMonth() - currentDate.getMonth());
+      
+      this.logger.log(
+        `Creating next job(s) for recurring job ${recurringId}: ${currentScheduleDate} → ${nextScheduleDate} (${monthsSkipped} month(s))`
+      );
 
       // Get existing jobs to use as template
       const jobs = await this.repository.findJobsByRecurringId(recurringId);
@@ -1031,32 +1171,87 @@ export class RecurringJobService implements IRecurringJobService {
         );
       }
 
-      // Create new job for next month in the target bucket
-      const newJob = await this.createJobFromTemplate(templateJob, {
-        recurring_id: recurringId,
-        bucket_id: targetBucket.id,
-        schedule_date: nextScheduleDate,
-        start_date: startDate,
-        end_date: endDate,
-        name: `${recurringJob.name} - ${startDate} to ${endDate}`,
-      });
+      const createdJobs: Job[] = [];
+      
+      // Create separate jobs for each month up to the next schedule date
+      for (let i = 1; i <= monthsSkipped; i++) {
+        // Calculate the month this job covers
+        const dataMonth = new Date(currentDate);
+        dataMonth.setMonth(dataMonth.getMonth() + i);
+        
+        const { startDate, endDate } = this.getMonthlyDateRange(
+          `${dataMonth.getFullYear()}-${String(dataMonth.getMonth() + 1).padStart(2, '0')}-${String(nextDate.getDate()).padStart(2, '0')}`
+        );
 
-      // Add to scheduler
-      await this.scheduledJobService.createOrUpdateScheduledJob(
-        nextScheduleDate,
-        [newJob.id],
-      );
+        // Find or create appropriate bucket
+        const latestBucket = await this.repository.findLatestBucketByRecurringId(recurringId);
+        let targetBucket: RecurringReportBucket & { jobs: Job[] };
 
-      // Update recurring job's next_date to the newly created job's schedule_date
-      await this.repository.update(recurringId, {
-        next_date: nextScheduleDate,
-      });
+        if (!latestBucket || latestBucket.jobs.length >= duration) {
+          // Create new bucket
+          const bucketNumber = latestBucket ? latestBucket.bucket_number + 1 : 1;
+          const bucketName = this.generateBucketName(startDate, duration);
+          const newBucket = await this.repository.createBucket({
+            recurring_id: recurringId,
+            bucket_number: bucketNumber,
+            name: bucketName,
+          });
+          targetBucket = { ...newBucket, jobs: [] };
 
-      this.logger.log(
-        `Created next job ${newJob.id} in bucket #${targetBucket.bucket_number} "${targetBucket.name}" for recurring job ${recurringId}, scheduled for ${nextScheduleDate}, covering ${startDate} to ${endDate}`,
-      );
+          this.logger.log(
+            `Created new bucket #${bucketNumber} "${bucketName}" for recurring job ${recurringId}`,
+          );
+        } else {
+          targetBucket = latestBucket;
+        }
 
-      return newJob;
+        // Create job for this month, scheduled on the target date
+        const newJob = await this.createJobFromTemplate(templateJob, {
+          recurring_id: recurringId,
+          bucket_id: targetBucket.id,
+          schedule_date: nextScheduleDate,  // All jobs scheduled on same date
+          start_date: startDate,
+          end_date: endDate,
+          name: `${recurringJob.name} - ${startDate} to ${endDate}`,
+          server_id: currentServerId, // Use the same server as current job
+        });
+
+        // Only add job if it was created successfully
+        if (newJob) {
+          createdJobs.push(newJob);
+          
+          this.logger.log(
+            `Created job ${newJob.id} for ${startDate} to ${endDate}, scheduled on ${nextScheduleDate} in bucket #${targetBucket.bucket_number}`
+          );
+        } else {
+          this.logger.warn(
+            `Could not create job for ${startDate} to ${endDate} on ${nextScheduleDate} - no available server`
+          );
+        }
+      }
+
+      // Add all created jobs to scheduler
+      if (createdJobs.length > 0) {
+        await this.scheduledJobService.createOrUpdateScheduledJob(
+          nextScheduleDate,
+          createdJobs.map(j => j.id),
+        );
+
+        // Update recurring job's next_date
+        await this.repository.update(recurringId, {
+          next_date: nextScheduleDate,
+        });
+
+        this.logger.log(
+          `Created ${createdJobs.length} job(s) for recurring job ${recurringId}, scheduled for ${nextScheduleDate}`
+        );
+      } else {
+        this.logger.warn(
+          `No jobs were created for recurring job ${recurringId} on ${nextScheduleDate} - all servers at capacity. Scheduled job will not be created.`
+        );
+      }
+
+      return createdJobs[0] || null;
     } catch (error) {
       this.logger.error('Error creating next month job:', error);
       throw error;
@@ -1197,8 +1392,213 @@ export class RecurringJobService implements IRecurringJobService {
   }
 
   /**
+   * Update all jobs under a recurring job
+   * Can change status from Failed to Pending and/or update recurring date
+   */
+  async updateAllJobsUnderRecurringJob(
+    recurringId: string,
+    changeFailedToPending?: boolean,
+    newRecurringDate?: string,
+  ): Promise<{ 
+    updatedJobsCount: number; 
+    schedulerUpdated: boolean;
+    message: string;
+  }> {
+    try {
+      const recurringJob = await this.repository.findById(recurringId);
+      if (!recurringJob) {
+        throw new NotFoundException(`Recurring job with ID ${recurringId} not found`);
+      }
+
+      const jobs = await this.repository.findJobsByRecurringId(recurringId);
+      
+      if (jobs.length === 0) {
+        throw new BadRequestException('No jobs found under this recurring job');
+      }
+
+      let updatedJobsCount = 0;
+      let schedulerUpdated = false;
+      const messages: string[] = [];
+
+      // Step 1: Change status from Failed to Pending if requested
+      if (changeFailedToPending) {
+        const failedJobs = jobs.filter(job => job.job_status === JobStatus.Failed);
+        
+        if (failedJobs.length > 0) {
+          for (const job of failedJobs) {
+            await this.jobRepository.update(job.id, {
+              job_status: JobStatus.Pending,
+            });
+            updatedJobsCount++;
+          }
+          
+          messages.push(`Changed ${failedJobs.length} job(s) from Failed to Pending`);
+          this.logger.log(`Updated ${failedJobs.length} failed jobs to pending for recurring job ${recurringId}`);
+        } else {
+          messages.push('No failed jobs found to update');
+        }
+      }
+
+      // Step 2: Update recurring date if requested
+      if (newRecurringDate) {
+        const oldScheduleDate = recurringJob.schedule_date;
+        
+        // Update all jobs with the new schedule_date
+        let jobsUpdatedForDateChange = 0;
+        for (const job of jobs) {
+          await this.jobRepository.update(job.id, {
+            schedule_date: newRecurringDate,
+          });
+          jobsUpdatedForDateChange++;
+        }
+
+        // Update the recurring job's schedule_date and next_date
+        await this.repository.update(recurringId, {
+          schedule_date: newRecurringDate,
+          next_date: newRecurringDate,
+        });
+
+        // Update scheduler: remove jobs from old date and add to new date
+        if (recurringJob.is_active) {
+          // Remove all job IDs from the old schedule date
+          if (oldScheduleDate) {
+            await this.scheduledJobService.removeJobsFromScheduledJob(
+              oldScheduleDate,
+              jobs.map(job => job.id),
+            );
+            this.logger.log(`Removed ${jobs.length} jobs from scheduler date ${oldScheduleDate}`);
+          }
+
+          // Add all job IDs to the new schedule date
+          await this.scheduledJobService.createOrUpdateScheduledJob(
+            newRecurringDate,
+            jobs.map(job => job.id),
+          );
+          this.logger.log(`Added ${jobs.length} jobs to scheduler date ${newRecurringDate}`);
+          
+          schedulerUpdated = true;
+          messages.push(`Updated recurring date from ${oldScheduleDate} to ${newRecurringDate} for ${jobsUpdatedForDateChange} job(s) and updated scheduler`);
+        } else {
+          messages.push(`Updated recurring date from ${oldScheduleDate} to ${newRecurringDate} for ${jobsUpdatedForDateChange} job(s) (scheduler not updated - recurring job is inactive)`);
+        }
+
+        // If status was not being updated, count these jobs
+        if (!changeFailedToPending) {
+          updatedJobsCount = jobsUpdatedForDateChange;
+        }
+      }
+
+      const finalMessage = messages.join('. ');
+      
+      this.logger.log(
+        `Updated recurring job ${recurringId}: ${finalMessage}`,
+      );
+
+      return {
+        updatedJobsCount,
+        schedulerUpdated,
+        message: finalMessage,
+      };
+    } catch (error) {
+      this.logger.error('Error updating all jobs under recurring job:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Transfer all recurring jobs from one date to another date
+   * Finds all recurring jobs scheduled on from_date and moves them to to_date
+   */
+  async transferRecurringJobsByDate(
+    fromDate: string,
+    toDate: string,
+  ): Promise<{ 
+    recurringJobsUpdated: number; 
+    totalJobsUpdated: number;
+    schedulerUpdated: boolean;
+    recurringJobs: Array<{ id: string; name: string; jobCount: number }>;
+  }> {
+    try {
+      // Find all recurring jobs with schedule_date matching fromDate
+      const recurringJobs = await this.repository.findAll({
+        schedule_date: fromDate,
+      });
+
+      if (!recurringJobs.data || recurringJobs.data.length === 0) {
+        throw new BadRequestException(`No recurring jobs found scheduled on ${fromDate}`);
+      }
+
+      let totalJobsUpdated = 0;
+      const updatedRecurringJobs: Array<{ id: string; name: string; jobCount: number }> = [];
+
+      // Process each recurring job
+      for (const recurringJob of recurringJobs.data) {
+        const jobs = await this.repository.findJobsByRecurringId(recurringJob.id);
+        
+        if (jobs.length === 0) {
+          this.logger.warn(`No jobs found for recurring job ${recurringJob.id}, skipping`);
+          continue;
+        }
+
+        // Update all jobs with the new schedule_date
+        for (const job of jobs) {
+          await this.jobRepository.update(job.id, {
+            schedule_date: toDate,
+          });
+        }
+
+        // Update the recurring job's schedule_date and next_date
+        await this.repository.update(recurringJob.id, {
+          schedule_date: toDate,
+          next_date: toDate,
+        });
+
+        // Update scheduler only if recurring job is active
+        if (recurringJob.is_active) {
+          // Remove all job IDs from the old schedule date
+          await this.scheduledJobService.removeJobsFromScheduledJob(
+            fromDate,
+            jobs.map(job => job.id),
+          );
+
+          // Add all job IDs to the new schedule date
+          await this.scheduledJobService.createOrUpdateScheduledJob(
+            toDate,
+            jobs.map(job => job.id),
+          );
+        }
+
+        totalJobsUpdated += jobs.length;
+        updatedRecurringJobs.push({
+          id: recurringJob.id,
+          name: recurringJob.name,
+          jobCount: jobs.length,
+        });
+
+        this.logger.log(
+          `Transferred recurring job ${recurringJob.id} (${recurringJob.name}) with ${jobs.length} job(s) from ${fromDate} to ${toDate}`,
+        );
+      }
+
+      this.logger.log(
+        `Successfully transferred ${updatedRecurringJobs.length} recurring job(s) with total ${totalJobsUpdated} job(s) from ${fromDate} to ${toDate}`,
+      );
+
+      return {
+        recurringJobsUpdated: updatedRecurringJobs.length,
+        totalJobsUpdated,
+        schedulerUpdated: true,
+        recurringJobs: updatedRecurringJobs,
+      };
+    } catch (error) {
+      this.logger.error('Error transferring recurring jobs by date:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Helper: Parse date from Excel (supports flexible formats with or without leading zeros)
-   * Accepts: M/D/YYYY, M/DD/YYYY, MM/D/YYYY, MM/DD/YYYY, YYYY-M-D, YYYY-MM-DD
+   * Accepts: M/D/YYYY, M/DD/YYYY, MM/D/YYYY, MM/DD/YYYY, M/D/YY, MM/DD/YY, YYYY-M-D, YYYY-MM-DD
    */
   private parseExcelDate(dateValue: any): string | null {
     if (!dateValue || dateValue.toString().trim() === '') {
@@ -1207,15 +1607,29 @@ export class RecurringJobService implements IRecurringJobService {
 
     const dateStr = dateValue.toString().trim();
 
-    // Try M/D/YYYY, M/DD/YYYY, MM/D/YYYY, or MM/DD/YYYY format (flexible with leading zeros)
-    const mmddyyyyRegex = /^(0?[1-9]|1[0-2])\/(0?[1-9]|[12]\d|3[01])\/(\d{4})$/;
-    const mmddMatch = dateStr.match(mmddyyyyRegex);
-    if (mmddMatch) {
-      const [_, month, day, year] = mmddMatch;
-      // Pad with leading zeros for YYYY-MM-DD format
+    // Try M/D/YYYY, M/DD/YYYY, MM/D/YYYY, or MM/DD/YYYY format (4-digit year)
+    const mmddyyyy4Regex = /^(0?[1-9]|1[0-2])\/(0?[1-9]|[12]\d|3[01])\/(\d{4})$/;
+    const mmddyyyy4Match = dateStr.match(mmddyyyy4Regex);
+    if (mmddyyyy4Match) {
+      const [_, month, day, year] = mmddyyyy4Match;
       const paddedMonth = month.padStart(2, '0');
       const paddedDay = day.padStart(2, '0');
       return `${year}-${paddedMonth}-${paddedDay}`;
+    }
+
+    // Try M/D/YY, M/DD/YY, MM/D/YY, or MM/DD/YY format (2-digit year)
+    const mmddyy2Regex = /^(0?[1-9]|1[0-2])\/(0?[1-9]|[12]\d|3[01])\/(\d{2})$/;
+    const mmddyy2Match = dateStr.match(mmddyy2Regex);
+    if (mmddyy2Match) {
+      const [_, month, day, year] = mmddyy2Match;
+      const paddedMonth = month.padStart(2, '0');
+      const paddedDay = day.padStart(2, '0');
+      
+      // Convert 2-digit year to 4-digit year
+      // Assume 00-49 = 2000-2049, 50-99 = 1950-1999
+      const fullYear = parseInt(year) < 50 ? `20${year}` : `19${year}`;
+      
+      return `${fullYear}-${paddedMonth}-${paddedDay}`;
     }
 
     // Try YYYY-MM-DD or YYYY-M-D format (flexible with leading zeros)
@@ -1223,7 +1637,6 @@ export class RecurringJobService implements IRecurringJobService {
     const yyyymmddMatch = dateStr.match(yyyymmddRegex);
     if (yyyymmddMatch) {
       const [_, year, month, day] = yyyymmddMatch;
-      // Pad with leading zeros for consistency
       const paddedMonth = month.padStart(2, '0');
       const paddedDay = day.padStart(2, '0');
       return `${year}-${paddedMonth}-${paddedDay}`;
@@ -1284,6 +1697,7 @@ export class RecurringJobService implements IRecurringJobService {
 
       const workbook = XLSX.read(file.buffer, { type: 'buffer' });
       const sheetName = workbook.SheetNames[0];
+      console.log(sheetName);
       const worksheet = workbook.Sheets[sheetName];
 
       const data = XLSX.utils.sheet_to_json(worksheet, {
@@ -1300,6 +1714,15 @@ export class RecurringJobService implements IRecurringJobService {
         `Starting recurring job import for ${data.length} rows with headers: ${headers.join(', ')}`,
       );
 
+      // Log first row data for debugging
+      if (data.length > 0) {
+        const firstRow = data[0] as any;
+        console.log(firstRow);
+        this.logger.log(
+          `First row sample - Property Name: "${firstRow['Property Name']}", Recurring Date: "${firstRow['Recurring Date']}", Portfolio: "${firstRow['Portfolio']}"`,
+        );
+      }
+
       let recurringJobsCreated = 0;
       const recurringJobs: any[] = [];
       const errors: Array<{ row: number; error: string }> = [];
@@ -1314,14 +1737,16 @@ export class RecurringJobService implements IRecurringJobService {
             throw new Error('Property Name is required');
           }
 
-          if (!row['Recurring Date'] || row['Recurring Date'].trim() === '') {
-            throw new Error('Recurring Date is required');
+          // Check Recurring Date with better error message
+          const recurringDateValue = row['Recurring Date'];
+          if (!recurringDateValue || recurringDateValue.toString().trim() === '') {
+            throw new Error(`Recurring Date is required. Found value: "${recurringDateValue || 'empty'}"`);
           }
 
           // Parse Recurring Date
           const recurringDate = this.parseExcelDate(row['Recurring Date']);
           if (!recurringDate) {
-            throw new Error(`Invalid Recurring Date format: ${row['Recurring Date']}`);
+            throw new Error(`Invalid Recurring Date format: "${row['Recurring Date']}". Expected format: MM/DD/YYYY or YYYY-MM-DD`);
           }
 
           // Parse Initial Date (optional) - support multiple column names

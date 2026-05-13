@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpStatus,
   Inject,
   Logger,
   Param,
@@ -1132,5 +1133,46 @@ export class JobController {
       },
       this.logger,
     );
+  }
+
+  @Post('/trigger-lambda')
+  @ApiOperation({ summary: 'Manually trigger Lambda function (public)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        platform: { type: 'string', example: 'expedia', description: 'Platform name to send to Lambda' },
+      },
+      required: ['platform'],
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Lambda triggered successfully' })
+  @ApiResponse({ status: 400, description: 'Platform is required' })
+  @ApiResponse({ status: 500, description: 'Failed to trigger Lambda' })
+  async manualTriggerLambda(
+    @Body() body: { platform: string },
+    @Res() response: Response,
+  ) {
+    try {
+      if (!body.platform) {
+        return response.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          message: 'Platform is required',
+        });
+      }
+
+      await this.jobService.triggerLambdaForPlatform(body.platform);
+
+      return response.status(HttpStatus.OK).json({
+        success: true,
+        message: `Lambda triggered successfully for platform: ${body.platform}`,
+      });
+    } catch (error: any) {
+      this.logger.error(`Error triggering Lambda: ${error.message}`, error.stack);
+      return response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: `Failed to trigger Lambda: ${error.message}`,
+      });
+    }
   }
 }
