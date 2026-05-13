@@ -152,4 +152,7 @@ export interface IPropertyService {
     username: string;
     password: string;
   }>;
+
+  /** Flattens `credentials[]` to a single object like GET /properties. */
+  applyPropertyCredentialsShape(property: any | null | undefined): void;
 }

@@ -32,8 +32,16 @@ import { ValidateBody } from '../../common/decorators/validate.decorator';
 import { ResponseHandler } from '../../common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { IJobService } from '../job/job.interface';
+import { IPropertyCredentialsService } from '../property-credentials/property-credentials.interface';
 import { IRetrievalService } from '../retrieval/retrieval.interface';
 import { BookingBulkDispatchService } from './booking-bulk-dispatch.service';
+import {
+  buildDbmsLookupUrl,
+  buildPropertyCredentialsPayloadFromDbmsStep,
+  extractOtaCredentialsFromDbmsLookup,
+  hasOtaIdForDbmsLookup,
+  isDbmsOtaProvider,
+} from './dbms-lookup.util';
 import { IScheduledJobService } from './scheduled-job.interface';
 import {
     createScheduledJobSchema,
@@ -86,6 +94,8 @@ export class ScraperController {
     private readonly jobService: IJobService,
     @Inject('IRetrievalService')
     private readonly retrievalService: IRetrievalService,
+    @Inject('IPropertyCredentialsService')
+    private readonly propertyCredentialsService: IPropertyCredentialsService,
     @Inject('IScheduledJobService')
     private readonly scheduledJobService: IScheduledJobService,
     private readonly bookingBulkDispatchService: BookingBulkDispatchService,
@@ -284,6 +294,98 @@ export class ScraperController {
       return false;
     }
     return true;
+  }
+
+  private toScraperPropertyRunJobBody(body: PropertyRunJobRequestDto) {
+    return {
+      jobId: body.jobId,
+      startDate: body.startDate,
+      endDate: body.endDate,
+    };
+  }
+
+  private async maybeSyncPropertyCredentialsFromDbms(
+    body: PropertyRunJobRequestDto,
+  ): Promise<void> {
+    if (!isDbmsOtaProvider(body?.ota_provider.toLowerCase() as 'expedia' | 'agoda' | 'booking')) {
+      return;
+    }
+    if (!hasOtaIdForDbmsLookup(body?.ota_id)) {
+      return;
+    }
+    const baseUrl = this.configService.get<string>('DBMS_LOOKUP_BASE_URL')?.trim?.();
+    const token = this.configService.get<string>('DBMS_JWT_TOKEN')?.trim?.();
+
+    if (!baseUrl || !token) {
+      this.logger.warn(
+        'DBMS credential sync skipped: DBMS_LOOKUP_BASE_URL or DBMS_JWT_TOKEN is not set',
+      );
+      return;
+    }
+
+    const url = buildDbmsLookupUrl(
+      baseUrl,
+      body.ota_provider,
+      body.ota_id as string | number,
+    );
+
+    let raw: unknown;
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.get<unknown>(url, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          timeout: 60000,
+        }),
+      );
+      const status = response?.status ?? 0;
+      // DBMS wraps the list in { data: [...] }; Axios already exposes the HTTP body as response.data.
+      raw = (response?.data as { data?: unknown } | undefined)?.data;
+      if (status < 200 || status >= 300) {
+        this.logger.warn(
+          `DBMS lookup returned non-success HTTP status ${status}`,
+        );
+        return;
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`DBMS lookup request failed: ${msg}`);
+      return;
+    }
+
+    const step3 = extractOtaCredentialsFromDbmsLookup(raw, body.ota_provider);
+    if (!step3) {
+      return;
+    }
+
+    const credentialsId = body?.credentials_id?.trim?.();
+    const propertyId = body?.property_id?.trim?.();
+    if (!credentialsId || !propertyId) {
+      this.logger.warn(
+        'DBMS credentials extracted but credentials_id or property_id is missing; skipping property-credentials update',
+      );
+      return;
+    }
+
+    try {
+      const payload = buildPropertyCredentialsPayloadFromDbmsStep(
+        propertyId,
+        step3,
+      );
+      await this.propertyCredentialsService.updatePropertyCredentials(
+        credentialsId,
+        payload,
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `property-credentials update after DBMS lookup failed: ${msg}`,
+      );
+    }
   }
 
   /**
@@ -1098,6 +1200,8 @@ export class ScraperController {
     let selectedUrl: string | null = null;
 
     try {
+      await this.maybeSyncPropertyCredentialsFromDbms(body);
+
       // Fetch job details to get OTA provider and billing_type
       const job = await this.jobService.getJobById(body.jobId);
       const otaProvider = job.ota_provider || 'Expedia'; // Default to Expedia
@@ -1147,7 +1251,7 @@ export class ScraperController {
 
         // Add the selected URL to the request body
         const enhancedBody = {
-          ...body,
+          ...this.toScraperPropertyRunJobBody(body),
           scraperUrl: selectedUrl,
         };
 
@@ -1183,7 +1287,7 @@ export class ScraperController {
 
       // Add the selected URL to the request body
       const enhancedBody = {
-        ...body,
+        ...this.toScraperPropertyRunJobBody(body),
         scraperUrl: selectedUrl,
       };
 
@@ -2053,7 +2157,7 @@ export class ScraperController {
 
         // Add the selected URL to the request body
         const enhancedBody = {
-          ...body,
+          ...this.toScraperPropertyRunJobBody(body),
           scraperUrl: selectedUrl,
         };
 
@@ -2089,7 +2193,7 @@ export class ScraperController {
 
       // Add the selected URL to the request body
       const enhancedBody = {
-        ...body,
+        ...this.toScraperPropertyRunJobBody(body),
         scraperUrl: selectedUrl,
       };
 
