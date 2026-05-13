@@ -243,6 +243,8 @@ model Job {
   booking_vccs_filtered_reservation_count Int?
   phone_number_for_report     String?
   is_archived                 Boolean     @default(false)
+  is_quick_job                Boolean     @default(false)
+  otp_needed                  Boolean     @default(false)
   createdAt                   DateTime    @default(now())
   updatedAt                   DateTime    @updatedAt
 

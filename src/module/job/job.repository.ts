@@ -114,6 +114,7 @@ export class JobRepository implements IJobRepository {
         batch_id,
         batch_name,
         is_archived,
+        is_quick_job,
         filter_invoice_amount,
         job_type,
         schedule_start_date,
@@ -182,6 +183,14 @@ export class JobRepository implements IJobRepository {
         } else if (is_archived === 'false' || is_archived === false) {
           // Include records where is_archived is false OR null/undefined (legacy data)
           allFilters.is_archived = false;
+        }
+      }
+
+      if (is_quick_job !== undefined && is_quick_job !== null && is_quick_job !== '') {
+        if (is_quick_job === 'true' || is_quick_job === true) {
+          allFilters.is_quick_job = true;
+        } else if (is_quick_job === 'false' || is_quick_job === false) {
+          allFilters.is_quick_job = false;
         }
       }
 
@@ -268,6 +277,8 @@ export class JobRepository implements IJobRepository {
         property_id: true,
         property_name: true,
         job_status: true,
+        is_quick_job: true,
+        otp_needed: true,
         billing_type: true,
         property: {
           select: {
@@ -292,7 +303,7 @@ export class JobRepository implements IJobRepository {
             subPortfolio: { select: { id: true, name: true } },
           },
         },
-      } satisfies Prisma.JobSelect;
+      } as Prisma.JobSelect;
 
       // If filter_invoice_amount is true, we need to fetch all jobs first to calculate total count
       // Otherwise, we can use the count query for better performance

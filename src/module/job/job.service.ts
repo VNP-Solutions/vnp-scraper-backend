@@ -89,6 +89,8 @@ export class JobService implements IJobService {
         property_name: job.property_name ?? null,
         property: job.property ?? null,
         job_status: job.job_status,
+        is_quick_job: job.is_quick_job ?? false,
+        otp_needed: job.otp_needed ?? false,
       }));
       return { ...result, data };
     } catch (error) {
@@ -103,7 +105,12 @@ export class JobService implements IJobService {
       if (!job) {
         throw new Error(`Job with ID ${id} not found`);
       }
-      return job;
+      const row = job as Record<string, unknown>;
+      return {
+        ...job,
+        is_quick_job: (row.is_quick_job as boolean | null | undefined) ?? false,
+        otp_needed: (row.otp_needed as boolean | null | undefined) ?? false,
+      } as Job;
     } catch (error) {
       this.logger.error(`Error finding job: ${error.message}`, error.stack);
       throw error;

@@ -59,6 +59,8 @@ export const createJobSchema = z.object({
     .optional()
     .nullable(),
   phone_number_for_report: z.string().optional().nullable(),
+  is_quick_job: z.boolean().optional().default(false),
+  otp_needed: z.boolean().optional().default(false),
 });
 
 export const updateJobSchema = createJobSchema.partial();

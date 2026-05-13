@@ -122,6 +122,12 @@ export class CreateJobDto {
     description: 'Phone number used for reporting purposes',
   })
   phone_number_for_report?: string;
+
+  @ApiProperty({ required: false, default: false })
+  is_quick_job?: boolean;
+
+  @ApiProperty({ required: false, default: false })
+  otp_needed?: boolean;
 }
 
 export class UpdateJobDto implements Partial<CreateJobDto> {
@@ -187,6 +193,12 @@ export class UpdateJobDto implements Partial<CreateJobDto> {
 
   @ApiProperty({ required: false, default: false })
   is_archived?: boolean;
+
+  @ApiProperty({ required: false, default: false })
+  is_quick_job?: boolean;
+
+  @ApiProperty({ required: false, default: false })
+  otp_needed?: boolean;
 
   @ApiProperty({
     required: false,

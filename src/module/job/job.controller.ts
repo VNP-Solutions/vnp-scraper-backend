@@ -183,6 +183,12 @@ export class JobController {
     description: 'Filter jobs by archived status (true/false)',
   })
   @ApiQuery({
+    name: 'is_quick_job',
+    required: false,
+    type: Boolean,
+    description: 'Filter jobs by quick-job flag (true/false)',
+  })
+  @ApiQuery({
     name: 'billing_type',
     required: false,
     type: String,
