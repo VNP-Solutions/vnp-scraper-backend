@@ -38,6 +38,38 @@ const CARD_ACTIVITY_HEADER = 'Card Activity';
 const APPROVED_AMOUNT_HEADER_PREFIX = 'Card Activity Approved Amount';
 const CALCULATED_AMOUNT_HEADER = 'Calculated Amount to Charge';
 const AMOUNT_MATCH_HEADER = 'Amount Match';
+const OVER_160_HEADER = 'Over 160';
+
+/**
+ * Builds the dynamic header label for the "days since chargeback date"
+ * column. The header embeds today's date so the reader can see what
+ * "today" the calculation was anchored to, e.g.
+ *   "Number of days since chargeback date ( Today: May 17, 2026)"
+ */
+function buildChargebackDaysHeader(today: Date): string {
+  const dateStr = today.toLocaleDateString('en-US', {
+    month: 'short',
+    day: '2-digit',
+    year: 'numeric',
+  });
+  return `Number of days since chargeback date ( Today: ${dateStr})`;
+}
+
+/**
+ * Whole-day difference between two dates: `to - from`, measured in
+ * calendar days (UTC-based to avoid DST glitches). Positive means `to`
+ * is later than `from`. Returns 0 for the same calendar day.
+ */
+function daysBetween(from: Date, to: Date): number {
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const fromDay = Date.UTC(
+    from.getFullYear(),
+    from.getMonth(),
+    from.getDate(),
+  );
+  const toDay = Date.UTC(to.getFullYear(), to.getMonth(), to.getDate());
+  return Math.floor((toDay - fromDay) / msPerDay);
+}
 
 /**
  * Rounds a number to two decimal places. Used to keep the running sum of
@@ -182,10 +214,12 @@ export function buildMasterRow(
   job: any,
   item: any,
   approvedAmountColumns = 0,
+  today: Date = new Date(),
 ): Record<string, string | number> {
   const ota = job?.ota_provider as OTAProvider | undefined;
   const isExpedia = ota === OTAProvider.Expedia;
   const isBooking = ota === OTAProvider.Booking;
+  const chargebackHeader = buildChargebackDaysHeader(today);
 
   const amountToCharge: number | null =
     item?.payment_info?.amount_to_charge_or_refund ?? null;
@@ -215,6 +249,30 @@ export function buildMasterRow(
   row[MASTER_EXPORT_HEADER[11]] = isBooking
     ? NA
     : formatDisplayDate(item?.check_out_date); // Check Out
+
+  // Over 160 / Number of days since chargeback date
+  // Computed off `check_out_date` (= the chargeback anchor for the row).
+  // Booking never tracks a per-item check-out date, so both cells are
+  // "N/A" for Booking rows. Same fallback if the date is missing or
+  // unparseable on any OTA.
+  {
+    const rawCheckOut = item?.check_out_date;
+    let parsedCheckOut: Date | null = null;
+    if (!isBooking && rawCheckOut) {
+      const d =
+        rawCheckOut instanceof Date ? rawCheckOut : new Date(rawCheckOut);
+      if (!isNaN(d.getTime())) parsedCheckOut = d;
+    }
+    if (parsedCheckOut) {
+      const days = daysBetween(parsedCheckOut, today);
+      row[OVER_160_HEADER] = days > 160 ? 'Yes' : 'No';
+      row[chargebackHeader] = days;
+    } else {
+      row[OVER_160_HEADER] = NA;
+      row[chargebackHeader] = NA;
+    }
+  }
+
   row[MASTER_EXPORT_HEADER[12]] = isBooking
     ? (item?.payment_info?.charge_before ?? NA)
     : NA; // Charge Before (Booking only)
@@ -310,6 +368,12 @@ export function buildMasterRows(jobs: any[]): {
     (j: any) => j?.ota_provider === OTAProvider.Expedia,
   );
 
+  // Anchor "today" once for the entire CSV so every row, AND the dynamic
+  // "Number of days since chargeback date ( Today: <date>)" header label,
+  // see the exact same date — even if the export straddles midnight.
+  const today = new Date();
+  const chargebackHeader = buildChargebackDaysHeader(today);
+
   let maxApprovedCount = 0;
   if (isExpediaCsv) {
     for (const job of jobs || []) {
@@ -322,8 +386,14 @@ export function buildMasterRows(jobs: any[]): {
     }
   }
 
+  // Insert OVER_160_HEADER and the chargebackHeader right after "Check Out"
+  // (index 11 in MASTER_EXPORT_HEADER) so the order is:
+  //   ... Check Out, Over 160, Number of days since chargeback date, Charge Before ...
   const headers: string[] = [
-    ...MASTER_EXPORT_HEADER,
+    ...MASTER_EXPORT_HEADER.slice(0, 12),
+    OVER_160_HEADER,
+    chargebackHeader,
+    ...MASTER_EXPORT_HEADER.slice(12),
     ...(isExpediaCsv
       ? [
           CARD_ACTIVITY_HEADER,
@@ -342,7 +412,7 @@ export function buildMasterRows(jobs: any[]): {
     const items = Array.isArray(job?.jobItem) ? job.jobItem : [];
     if (items.length === 0) continue;
     for (const item of items) {
-      rows.push(buildMasterRow(job, item, maxApprovedCount));
+      rows.push(buildMasterRow(job, item, maxApprovedCount, today));
     }
   }
   return { headers, rows };

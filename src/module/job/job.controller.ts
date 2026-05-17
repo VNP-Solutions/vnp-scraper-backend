@@ -997,9 +997,9 @@ export class JobController {
   @UseGuards(JwtAuthGuard)
   @ApiOperation({
     summary:
-      'Export master CSV files (zipped) for all jobs in a recurring report bucket',
+      'Export a single combined master CSV for all jobs in a recurring report bucket',
     description:
-      'Resolves every non-archived job whose recurring_id and recurring_report_bucket_id match the given query params, then returns a ZIP file of per-job CSVs (same column rules and naming as POST /jobs/export-master). Useful when the frontend already filters the jobs list by these two IDs and just wants to download the matching set without listing them first.',
+      'Resolves every non-archived job whose recurring_id and recurring_report_bucket_id match the given query params, then returns a SINGLE combined CSV file containing every job item across all matching jobs (not a ZIP of per-job CSVs). The headers are the union across all OTAs in the bucket: if any Expedia job is included, the Expedia-only columns (Card Activity, Calculated Amount to Charge, Amount Match, dynamic Approved Amount K) appear in the file; non-Expedia rows leave those cells blank. The file is named "job-exports-{D Month YYYY-HH.MM AM/PM}.csv".',
   })
   @ApiQuery({
     name: 'recurring_id',
@@ -1013,7 +1013,7 @@ export class JobController {
   })
   @ApiResponse({
     status: 200,
-    description: 'ZIP file containing per-job CSV files',
+    description: 'Combined CSV file generated successfully',
   })
   @ApiResponse({
     status: 400,
@@ -1034,7 +1034,7 @@ export class JobController {
       const { buffer, fileName } =
         await this.jobService.exportMasterCsvByRecurring(recurringId, bucketId);
 
-      response.setHeader('Content-Type', 'application/zip');
+      response.setHeader('Content-Type', 'text/csv; charset=utf-8');
       response.setHeader(
         'Content-Disposition',
         `attachment; filename="${fileName}"`,
