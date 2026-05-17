@@ -1197,30 +1197,61 @@ export class ScraperController {
     @Res() res: Response,
     @Body() body: PropertyRunJobRequestDto,
   ) {
+    const reqId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const tag = `[propertyRunJob ${reqId}]`;
+    console.log(`${tag} >>> ENTER`);
+    console.log(`${tag} method: ${req.method}, url: ${req.originalUrl}`);
+    console.log(`${tag} body received:`, JSON.stringify(body));
+    console.log(`${tag} body.jobId:`, body?.jobId);
+
     let selectedUrl: string | null = null;
 
     try {
+      console.log(`${tag} step 1: maybeSyncPropertyCredentialsFromDbms(body)`);
       await this.maybeSyncPropertyCredentialsFromDbms(body);
+      console.log(`${tag} step 1: OK`);
 
-      // Fetch job details to get OTA provider and billing_type
+      console.log(`${tag} step 2: jobService.getJobById(${body?.jobId})`);
       const job = await this.jobService.getJobById(body.jobId);
-      const otaProvider = job.ota_provider || 'Expedia'; // Default to Expedia
+      console.log(
+        `${tag} step 2: OK - job exists?`,
+        Boolean(job),
+        '- ota_provider:',
+        job?.ota_provider,
+        '- billing_type:',
+        job?.billing_type,
+        '- job_status:',
+        job?.job_status,
+      );
+
+      const otaProvider = job.ota_provider || 'Expedia';
       const billingType = job.billing_type;
+      console.log(
+        `${tag} resolved otaProvider=${otaProvider}, billingType=${billingType}`,
+      );
 
       // For Expedia jobs: push to AWS SQS queue instead of HTTP call
       if (otaProvider === 'Expedia' && billingType !== 'DB') {
+        console.log(`${tag} branch: Expedia + non-DB → SQS path`);
+
+        console.log(`${tag} step 3a: pushJobsToQueue([job])`);
         await pushJobsToQueue([job]);
-        
-        // Update job status from Pending to InQueue
-        await this.jobService.updateJob(body.jobId, { job_status: 'InQueue' });
-        
-        // Wait for SQS message to become visible before triggering Lambda
+        console.log(`${tag} step 3a: OK`);
+
+        console.log(`${tag} step 3b: updateJob → InQueue`);
+        await this.jobService.updateJob(body.jobId, {
+          job_status: 'InQueue',
+        });
+        console.log(`${tag} step 3b: OK`);
+
+        console.log(`${tag} step 3c: waiting 3s for SQS visibility`);
         await new Promise((resolve) => setTimeout(resolve, 3000));
-        
-        // Trigger Lambda function after pushing to queue (lowercase platform name)
+
+        console.log(`${tag} step 3d: triggerLambda('expedia')`);
         await triggerLambda('expedia');
-        
-        // Return success response without making HTTP call
+        console.log(`${tag} step 3d: OK`);
+
+        console.log(`${tag} <<< 200 InQueue (SQS path)`);
         return res.status(HttpStatus.OK).json({
           success: true,
           message: 'Job successfully queued for processing',
@@ -1234,9 +1265,12 @@ export class ScraperController {
 
       // Check if billing_type is 'DB' and route to DB server
       if (billingType === 'DB') {
+        console.log(`${tag} branch: billing_type=DB → Expedia DB server path`);
         selectedUrl = this.getExpediaDbUrl();
+        console.log(`${tag} step 4a: getExpediaDbUrl() = ${selectedUrl}`);
 
         if (!selectedUrl) {
+          console.log(`${tag} <<< 503 Expedia DB server URL not configured`);
           return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
             success: false,
             message:
@@ -1245,18 +1279,23 @@ export class ScraperController {
           });
         }
 
+        console.log(`${tag} step 4b: validateDbDatesNotFuture`);
         if (!this.validateDbDatesNotFuture(body, res)) {
+          console.log(
+            `${tag} <<< response written by validateDbDatesNotFuture (early return)`,
+          );
           return;
         }
+        console.log(`${tag} step 4b: OK`);
 
-        // Add the selected URL to the request body
         const enhancedBody = {
           ...this.toScraperPropertyRunJobBody(body),
           scraperUrl: selectedUrl,
         };
 
-        console.log(`Using Expedia DB server for billing_type=DB`);
-
+        console.log(
+          `${tag} step 4c: POST ${selectedUrl}/api/expedia/db-run-job`,
+        );
         const response = await firstValueFrom(
           this.httpService.post(
             `${selectedUrl}/api/expedia/db-run-job`,
@@ -1266,18 +1305,31 @@ export class ScraperController {
                 'Content-Type': 'application/json',
                 Accept: 'application/json',
               },
-              timeout: 300000, // 5 minute timeout for long-running scraping jobs
+              timeout: 300000,
             },
           ),
         );
+        console.log(
+          `${tag} step 4c: OK - upstream status=${response.status}`,
+        );
 
+        console.log(`${tag} <<< ${response.status} (Expedia DB path)`);
         return res.status(response.status).json(response.data);
       }
 
       // Regular flow for non-DB billing types
+      console.log(
+        `${tag} branch: non-Expedia or non-DB → regular HTTP flow (otaProvider=${otaProvider})`,
+      );
       selectedUrl = this.getUrlByOtaProvider(otaProvider);
+      console.log(
+        `${tag} step 5a: getUrlByOtaProvider(${otaProvider}) = ${selectedUrl}`,
+      );
 
       if (!selectedUrl) {
+        console.log(
+          `${tag} <<< 503 No scraper URL configured for ${otaProvider}`,
+        );
         return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
           success: false,
           message: `No scraper URL configured for OTA provider: ${otaProvider}`,
@@ -1285,53 +1337,87 @@ export class ScraperController {
         });
       }
 
-      // Add the selected URL to the request body
       const enhancedBody = {
         ...this.toScraperPropertyRunJobBody(body),
         scraperUrl: selectedUrl,
       };
 
-      // Update job current URL
       setTimeout(async () => {
         if (selectedUrl) {
-          await this.jobItemService.updateJobCurrentUrl(
-            body.jobId,
-            selectedUrl,
-          );
+          try {
+            await this.jobItemService.updateJobCurrentUrl(
+              body.jobId,
+              selectedUrl,
+            );
+            console.log(
+              `${tag} (deferred) updateJobCurrentUrl OK for jobId=${body.jobId}, url=${selectedUrl}`,
+            );
+          } catch (e: any) {
+            console.error(
+              `${tag} (deferred) updateJobCurrentUrl FAILED:`,
+              e?.message,
+              e?.stack,
+            );
+          }
         }
       }, 1000);
 
-      // Get the correct API path based on OTA provider and mode
       const apiPath = this.getApiPathByOtaProvider(
         otaProvider,
         'property-run-job',
       );
 
-      // Log which endpoint is being used (only Expedia has modes)
       if (otaProvider === 'Expedia') {
         const expediadMode =
           this.configService.get<string>('EXPEDIA_MODE') || 'scraper';
-        console.log(`Using Expedia ${expediadMode} mode: ${apiPath}`);
+        console.log(`${tag} Using Expedia ${expediadMode} mode: ${apiPath}`);
       } else {
-        console.log(`Using ${otaProvider} endpoint: ${apiPath}`);
+        console.log(`${tag} Using ${otaProvider} endpoint: ${apiPath}`);
       }
 
+      console.log(`${tag} step 5b: POST ${selectedUrl}${apiPath}`);
       const response = await firstValueFrom(
         this.httpService.post(`${selectedUrl}${apiPath}`, enhancedBody, {
           headers: {
             'Content-Type': 'application/json',
             Accept: 'application/json',
           },
-          timeout: 300000, // 5 minute timeout for long-running scraping jobs
+          timeout: 300000,
         }),
       );
+      console.log(
+        `${tag} step 5b: OK - upstream status=${response.status}`,
+      );
 
+      console.log(`${tag} <<< ${response.status} (regular path)`);
       return res.status(response.status).json(response.data);
     } catch (error: any) {
+      // IMPORTANT: log the FULL error before we collapse it into a generic
+      // "Job server is down" response. Without this, the upstream
+      // exception is silently swallowed and you only see a 500 in the
+      // access log with no clue what went wrong.
+      console.error(`${tag} !!! CAUGHT EXCEPTION`);
+      console.error(`${tag} error.name:`, error?.name);
+      console.error(`${tag} error.message:`, error?.message);
+      console.error(`${tag} error.code:`, error?.code);
+      console.error(`${tag} error.response?.status:`, error?.response?.status);
+      console.error(
+        `${tag} error.response?.data:`,
+        typeof error?.response?.data === 'string'
+          ? error.response.data.slice(0, 1000)
+          : JSON.stringify(error?.response?.data),
+      );
+      console.error(
+        `${tag} error.config?.url:`,
+        error?.config?.url,
+      );
+      console.error(`${tag} error.stack:`, error?.stack);
+
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
       const data = error.response?.data || {
         message: 'Job server is down',
       };
+      console.log(`${tag} <<< ${status} (error path)`);
       return res.status(status).json(data);
     }
   }
