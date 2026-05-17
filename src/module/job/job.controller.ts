@@ -426,8 +426,7 @@ export class JobController {
   }
 
   @Get('/:id')
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Get job by ID' })
+  @ApiOperation({ summary: 'Get job by ID (public)' })
   @ApiResponse({ status: 200, description: 'Returns job' })
   @ApiResponse({ status: 404, description: 'Job not found' })
   async getJobById(@Param('id') id: string, @Res() response: Response) {
