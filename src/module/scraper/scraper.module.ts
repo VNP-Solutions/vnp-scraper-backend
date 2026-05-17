@@ -9,6 +9,7 @@ import { RecurringJobModule } from '../recurring-job/recurring-job.module';
 import { RetrievalModule } from '../retrieval/retrieval.module';
 import { ServerModule } from '../server/server.module';
 import { BookingBulkDispatchService } from './booking-bulk-dispatch.service';
+import { LambdaTriggerSchedulerService } from './lambda-trigger-scheduler.service';
 import { ScheduledJobSchedulerService } from './scheduled-job-scheduler.service';
 import { ScheduledJobRepository } from './scheduled-job.repository';
 import { ScheduledJobService } from './scheduled-job.service';
@@ -61,6 +62,7 @@ import { ScraperController } from './scraper.controller';
     DatabaseService,
     Logger,
     ScheduledJobSchedulerService,
+    LambdaTriggerSchedulerService,
     BookingBulkDispatchService,
   ],
   exports: ['IScheduledJobService'],
