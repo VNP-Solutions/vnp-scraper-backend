@@ -1220,10 +1220,14 @@ export class ScraperController {
     let selectedUrl: string | null = null;
 
     try {
-      console.log(`${tag} step 1: maybeSyncPropertyCredentialsFromDbms(body)`);
-      await this.maybeSyncPropertyCredentialsFromDbms(body);
+      try {
+        console.log(`${tag} Extra step: maybeSyncPropertyCredentialsFromDbms(body)`);
+        await this.maybeSyncPropertyCredentialsFromDbms(body);
+      } catch (syncError) {
+        console.error(`${tag} property credential from dbms sync failed`);
+      }
       console.log(`${tag} step 1: OK`);
-
+      
       console.log(`${tag} step 2: jobService.getJobById(${body?.jobId})`);
       const job = await this.jobService.getJobById(body.jobId);
       console.log(
