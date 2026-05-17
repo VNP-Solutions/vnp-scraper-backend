@@ -1050,10 +1050,13 @@ export class JobService implements IJobService {
 
   /**
    * Resolves all jobs in a recurring report bucket (by recurring_id +
-   * recurring_report_bucket_id) and runs them through the regular master
-   * export pipeline. The frontend can hit this with the same two filters
-   * it already uses on the jobs list, and gets back the same ZIP-of-CSVs
-   * as POST /jobs/export-master.
+   * recurring_report_bucket_id) and exports every matching job item into
+   * a SINGLE combined CSV (not a zip-of-CSVs like POST /jobs/export-master).
+   *
+   * The headers are computed across all jobs together, so if the bucket
+   * contains any Expedia jobs the Expedia-specific columns (Card Activity,
+   * Calculated Amount to Charge, Amount Match, dynamic Approved Amount K)
+   * appear in the file. Non-Expedia rows simply leave those cells blank.
    */
   async exportMasterCsvByRecurring(
     recurringId: string,
@@ -1077,7 +1080,24 @@ export class JobService implements IJobService {
         );
       }
 
-      return this.exportMasterCsv(jobIds);
+      const jobs = await this.repository.findManyForMasterExport(jobIds);
+      if (!jobs || jobs.length === 0) {
+        throw new NotFoundException(
+          `No jobs found for recurring_id=${recurringId}, recurring_report_bucket_id=${bucketId}`,
+        );
+      }
+
+      const { headers, rows } = buildMasterRows(jobs);
+      if (rows.length === 0) {
+        throw new NotFoundException(
+          'No job items found for the matching jobs to export',
+        );
+      }
+
+      const buffer = this.buildMasterCsvBuffer(rows, headers);
+      const fileName = `${this.buildMasterZipBaseName(jobs)}.csv`;
+
+      return { buffer, fileName };
     } catch (error) {
       this.logger.error(
         `Error exporting master CSV by recurring: ${error.message}`,
