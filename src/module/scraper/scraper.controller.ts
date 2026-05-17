@@ -307,7 +307,20 @@ export class ScraperController {
   private async maybeSyncPropertyCredentialsFromDbms(
     body: PropertyRunJobRequestDto,
   ): Promise<void> {
-    if (!isDbmsOtaProvider(body?.ota_provider.toLowerCase() as 'expedia' | 'agoda' | 'booking')) {
+    // body.ota_provider / body.ota_id are optional fields in the DTO — many
+    // callers (e.g. POST /scraper/api/property-run-job from the frontend)
+    // only send { jobId, startDate, endDate } and rely on the controller
+    // to derive the OTA provider from the job record later. So we must
+    // bail out gracefully here if either field is missing. The previous
+    // code did `body?.ota_provider.toLowerCase()` — the `?.` was only on
+    // body, so an undefined ota_provider threw
+    //   TypeError: Cannot read properties of undefined (reading 'toLowerCase')
+    // before the handler could even start.
+    const provider = body?.ota_provider?.toLowerCase();
+    if (
+      !provider ||
+      !isDbmsOtaProvider(provider as 'expedia' | 'agoda' | 'booking')
+    ) {
       return;
     }
     if (!hasOtaIdForDbmsLookup(body?.ota_id)) {
