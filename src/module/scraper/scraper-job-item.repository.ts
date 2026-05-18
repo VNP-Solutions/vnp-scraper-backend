@@ -1,10 +1,43 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { JobItem, OTAProvider } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
+import { startOfDay } from '../job/job-item-derived.util';
 import {
   DerivedFieldsUpdate,
   IScraperJobItemRepository,
 } from './scraper-job-item.interface';
+
+const OVER_160_DAYS = 160;
+
+/**
+ * Parses a query-string boolean ("true" / "false" / true / false). Returns
+ * `undefined` when the value is missing or unparseable so the caller can
+ * skip the filter entirely.
+ */
+function parseQueryBoolean(value: unknown): boolean | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value === 'boolean') return value;
+  const s = String(value).trim().toLowerCase();
+  if (s === 'true' || s === '1' || s === 'yes') return true;
+  if (s === 'false' || s === '0' || s === 'no') return false;
+  return undefined;
+}
+
+/**
+ * Returns the threshold date used by the `over_160` filter:
+ *   check_out_date < (today − 160 days)  →  over_160 = true
+ *
+ * Computed from the start of today (local time) to match the day-granular
+ * semantics in `daysBetween` / `computeDerivedJobItemFields`. Using a
+ * date-based predicate (rather than the persisted `over_160` column)
+ * keeps the filter consistent with the value the API actually returns,
+ * even when the lazy cache for a row is stale.
+ */
+function getOver160ThresholdDate(today: Date = new Date()): Date {
+  const t = startOfDay(today);
+  t.setDate(t.getDate() - OVER_160_DAYS);
+  return t;
+}
 
 @Injectable()
 export class ScraperJobItemRepository implements IScraperJobItemRepository {
@@ -56,6 +89,7 @@ export class ScraperJobItemRepository implements IScraperJobItemRepository {
         start_date,
         end_date,
         reason_for_charge,
+        over_160,
         ...filters
       } = query || {};
 
@@ -89,6 +123,23 @@ export class ScraperJobItemRepository implements IScraperJobItemRepository {
             reason_for_charge: reason_for_charge,
           },
         };
+      }
+
+      // `over_160` is an Expedia-only derived field equal to
+      // (today − check_out_date) > 160 days. Filter on `check_out_date`
+      // rather than the persisted `over_160` column so the result matches
+      // the value the API returns today, even when a row's lazy cache is
+      // stale. Implicitly restricts to Expedia jobs (Booking/Agoda always
+      // surface this field as `null`).
+      const over160Bool = parseQueryBoolean(over_160);
+      if (over160Bool !== undefined) {
+        const threshold = getOver160ThresholdDate();
+        allFilters.job = {
+          is: { ota_provider: OTAProvider.Expedia },
+        };
+        allFilters.check_out_date = over160Bool
+          ? { lt: threshold }
+          : { gte: threshold };
       }
 
       if (search) {
