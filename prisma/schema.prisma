@@ -470,6 +470,10 @@ model JobItem {
   reservation_status String // e.g., 'Active', 'Cancelled'
   additional_text    String? // Additional text field
 
+  over_160              Boolean?
+  days_since_checkout   Int?
+  derived_calculated_at DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

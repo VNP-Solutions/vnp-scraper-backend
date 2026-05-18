@@ -2056,7 +2056,18 @@ export class ScraperController {
   @Get('/api/jobs/:jobId/items')
   @ApiOperation({
     summary: 'Get job items',
-    description: 'Get scraped reservation data for a specific job',
+    description:
+      'Get scraped reservation data for a specific job.\n\n' +
+      'Each item also carries two Expedia-only derived fields used by the ' +
+      'chargeback dashboard:\n' +
+      '- `over_160` (boolean | null): `true` when (today − check_out_date) ' +
+      'is more than 160 days. `null` for Booking / Agoda or when ' +
+      'check_out_date is missing.\n' +
+      '- `days_since_checkout` (number | null): whole-day count from ' +
+      'check_out_date to today. `null` for Booking / Agoda or when ' +
+      'check_out_date is missing.\n\n' +
+      'These values are lazily refreshed once per day on the first read, ' +
+      'so the response always reflects the current calendar day.',
   })
   @ApiParam({
     name: 'jobId',
@@ -2139,7 +2150,18 @@ export class ScraperController {
   @ApiOperation({
     summary: 'Get all job items',
     description:
-      'Get all scraped reservation data for a specific job (no pagination or filtering)',
+      'Get all scraped reservation data for a specific job (no pagination ' +
+      'or filtering).\n\n' +
+      'Each item also carries two Expedia-only derived fields used by the ' +
+      'chargeback dashboard:\n' +
+      '- `over_160` (boolean | null): `true` when (today − check_out_date) ' +
+      'is more than 160 days. `null` for Booking / Agoda or when ' +
+      'check_out_date is missing.\n' +
+      '- `days_since_checkout` (number | null): whole-day count from ' +
+      'check_out_date to today. `null` for Booking / Agoda or when ' +
+      'check_out_date is missing.\n\n' +
+      'These values are lazily refreshed once per day on the first read, ' +
+      'so the response always reflects the current calendar day.',
   })
   @ApiParam({
     name: 'jobId',

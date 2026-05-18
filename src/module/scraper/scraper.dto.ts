@@ -150,7 +150,14 @@ export class AllJobItemsResponseDto {
   @ApiProperty({ description: 'Response message' })
   message: string;
 
-  @ApiProperty({ description: 'Array of job items', type: 'array' })
+  @ApiProperty({
+    description:
+      'Array of job items. Each item also includes two Expedia-only derived fields used by the chargeback dashboard:\n' +
+      '- `over_160` (boolean | null): `true` when (today − check_out_date) is more than 160 days. `null` for Booking / Agoda or when check_out_date is missing.\n' +
+      '- `days_since_checkout` (number | null): whole-day count from check_out_date to today. `null` for Booking / Agoda or when check_out_date is missing.\n' +
+      'These values are lazily refreshed once per day on the first read, so the response always reflects the current day.',
+    type: 'array',
+  })
   data: any[];
 
   @ApiProperty({
