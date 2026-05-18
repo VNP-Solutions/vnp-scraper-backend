@@ -1,4 +1,5 @@
 import { OTAProvider, PostingType } from '@prisma/client';
+import { computeDerivedJobItemFields } from './job-item-derived.util';
 
 /**
  * Exact column order for the Master export CSV.
@@ -53,22 +54,6 @@ function buildChargebackDaysHeader(today: Date): string {
     year: 'numeric',
   });
   return `Number of days since chargeback date ( Today: ${dateStr})`;
-}
-
-/**
- * Whole-day difference between two dates: `to - from`, measured in
- * calendar days (UTC-based to avoid DST glitches). Positive means `to`
- * is later than `from`. Returns 0 for the same calendar day.
- */
-function daysBetween(from: Date, to: Date): number {
-  const msPerDay = 24 * 60 * 60 * 1000;
-  const fromDay = Date.UTC(
-    from.getFullYear(),
-    from.getMonth(),
-    from.getDate(),
-  );
-  const toDay = Date.UTC(to.getFullYear(), to.getMonth(), to.getDate());
-  return Math.floor((toDay - fromDay) / msPerDay);
 }
 
 /**
@@ -254,22 +239,19 @@ export function buildMasterRow(
   // Computed off `check_out_date` (= the chargeback anchor for the row).
   // Booking never tracks a per-item check-out date, so both cells are
   // "N/A" for Booking rows. Same fallback if the date is missing or
-  // unparseable on any OTA.
-  {
-    const rawCheckOut = item?.check_out_date;
-    let parsedCheckOut: Date | null = null;
-    if (!isBooking && rawCheckOut) {
-      const d =
-        rawCheckOut instanceof Date ? rawCheckOut : new Date(rawCheckOut);
-      if (!isNaN(d.getTime())) parsedCheckOut = d;
-    }
-    if (parsedCheckOut) {
-      const days = daysBetween(parsedCheckOut, today);
-      row[OVER_160_HEADER] = days > 160 ? 'Yes' : 'No';
-      row[chargebackHeader] = days;
-    } else {
+  // unparseable on any OTA. Uses the same helper as the job-items API
+  // so the CSV value and the API value can never diverge.
+  if (isBooking) {
+    row[OVER_160_HEADER] = NA;
+    row[chargebackHeader] = NA;
+  } else {
+    const derived = computeDerivedJobItemFields(item?.check_out_date, today);
+    if (derived.days_since_checkout === null) {
       row[OVER_160_HEADER] = NA;
       row[chargebackHeader] = NA;
+    } else {
+      row[OVER_160_HEADER] = derived.over_160 ? 'Yes' : 'No';
+      row[chargebackHeader] = derived.days_since_checkout;
     }
   }
 
