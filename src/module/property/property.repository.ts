@@ -10,7 +10,10 @@ import * as XLSX from 'xlsx';
 import { getPhoneLastThreeDigitsKey } from '../phone-number-slot/phone-number-slot.utils';
 import { DatabaseService } from '../database/database.service';
 import { CreatePropertyDto, UpdatePropertyDto } from './property.dto';
-import { IPropertyRepository } from './property.interface';
+import {
+  IPropertyRepository,
+  PropertyDropdownItem,
+} from './property.interface';
 import type { UpdateOtaCredentialsBody } from './property.validation';
 
 @Injectable()
@@ -682,72 +685,72 @@ export class PropertyRepository implements IPropertyRepository {
   async findAllByUserPermission(
     userId: string,
     isAdmin: boolean,
-  ): Promise<Property[]> {
+  ): Promise<PropertyDropdownItem[]> {
     try {
+      const dropdownSelect = {
+        id: true,
+        name: true,
+        portfolio_id: true,
+      } as const;
+
       if (isAdmin) {
         return await this.db.property.findMany({
-          include: {
-            credentials: true,
-            phoneNumberSlot: true,
-            portfolio: true,
-            subPortfolio: {
-              include: {
-                portfolio: true,
-              },
-            },
-          },
+          select: dropdownSelect,
         });
       }
 
-      // Non-admin users only see properties they have permissions for
+      // Non-admin users only see properties they have permissions for.
+      // Fetch only the permission ids we need (avoids hydrating full relations).
       const userPermissions =
         await this.db.userFeatureAccessPermission.findMany({
-          where: {
-            user_id: userId,
-          },
-          include: {
-            portfolio: true,
-            subPortFolio: true,
-            property: true,
+          where: { user_id: userId },
+          select: {
+            property_id: true,
+            portfolio_id: true,
+            sub_portfolio_id: true,
           },
         });
 
-      const propertyIds = new Set<string>();
+      const directPropertyIds = new Set<string>();
+      const portfolioIds = new Set<string>();
+      const subPortfolioIds = new Set<string>();
 
       for (const permission of userPermissions) {
         if (permission.property_id) {
-          propertyIds.add(permission.property_id);
+          directPropertyIds.add(permission.property_id);
         }
-
         if (permission.portfolio_id) {
-          const portfolioProperties = await this.db.property.findMany({
-            where: { portfolio_id: permission.portfolio_id },
-            select: { id: true },
-          });
-          portfolioProperties.forEach((p) => propertyIds.add(p.id));
+          portfolioIds.add(permission.portfolio_id);
         }
-
         if (permission.sub_portfolio_id) {
-          const subPortfolioProperties = await this.db.property.findMany({
-            where: { sub_portfolio_id: permission.sub_portfolio_id },
-            select: { id: true },
-          });
-          subPortfolioProperties.forEach((p) => propertyIds.add(p.id));
+          subPortfolioIds.add(permission.sub_portfolio_id);
         }
       }
 
+      // Resolve all portfolio/sub-portfolio scoped properties in a single
+      // OR query instead of one query per permission row.
+      const orConditions: Array<Record<string, any>> = [];
+      if (directPropertyIds.size > 0) {
+        orConditions.push({ id: { in: Array.from(directPropertyIds) } });
+      }
+      if (portfolioIds.size > 0) {
+        orConditions.push({
+          portfolio_id: { in: Array.from(portfolioIds) },
+        });
+      }
+      if (subPortfolioIds.size > 0) {
+        orConditions.push({
+          sub_portfolio_id: { in: Array.from(subPortfolioIds) },
+        });
+      }
+
+      if (orConditions.length === 0) {
+        return [];
+      }
+
       return await this.db.property.findMany({
-        where: {
-          id: {
-            in: Array.from(propertyIds),
-          },
-        },
-        include: {
-          credentials: true,
-          phoneNumberSlot: true,
-          portfolio: true,
-          subPortfolio: true,
-        },
+        where: { OR: orConditions },
+        select: dropdownSelect,
       });
     } catch (error) {
       this.logger.error('Error finding properties by user permission:', error);

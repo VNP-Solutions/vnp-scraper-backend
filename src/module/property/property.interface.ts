@@ -5,6 +5,12 @@ import type {
   UpdateOtaCredentialsBody,
 } from './property.validation';
 
+export interface PropertyDropdownItem {
+  id: string;
+  name: string;
+  portfolio_id: string | null;
+}
+
 export interface IPropertyRepository {
   create(data: CreatePropertyDto): Promise<Property>;
   findAll(
@@ -31,7 +37,7 @@ export interface IPropertyRepository {
   findAllByUserPermission(
     userId: string,
     isAdmin: boolean,
-  ): Promise<Property[]>;
+  ): Promise<PropertyDropdownItem[]>;
   // Portfolio operations
   findPortfolioByName(name: string): Promise<any>;
   createPortfolio(name: string): Promise<any>;
@@ -120,7 +126,7 @@ export interface IPropertyService {
   getAllPropertiesByUserPermission(
     userId: string,
     isAdmin: boolean,
-  ): Promise<Property[]>;
+  ): Promise<PropertyDropdownItem[]>;
   // getPropertyCredentials(propertyId: string): Promise<any>;
   importPropertiesFromExcel(file: Express.Multer.File): Promise<{
     portfoliosCreated: number;
