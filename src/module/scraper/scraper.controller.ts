@@ -2119,6 +2119,20 @@ export class ScraperController {
     description:
       'Filter by reason for charge (partial match, case-insensitive)',
   })
+  @ApiQuery({
+    name: 'over_160',
+    required: false,
+    type: Boolean,
+    description:
+      'Filter by the Expedia-only `over_160` derived field. ' +
+      '`true` returns only items where (today − check_out_date) > 160 days; ' +
+      '`false` returns only items where (today − check_out_date) ≤ 160 days. ' +
+      'Implicitly restricted to Expedia jobs (Booking/Agoda items are ' +
+      'excluded because the field is always `null` for them). Computed ' +
+      'from `check_out_date` at query time, so results match the ' +
+      'response value even when the cached column is stale.',
+    example: true,
+  })
   @ApiResponse({ status: 200, description: 'Job items retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Job not found' })
   @ApiResponse({ status: 500, description: 'Server error' })
