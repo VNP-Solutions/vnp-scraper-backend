@@ -83,7 +83,7 @@ export class ServerService implements IServerService {
       const server = await this.repository.findAvailableServer();
 
       if (!server) {
-        this.logger.warn('No available server found (all servers are at capacity or inactive)');
+        this.logger.warn('No active server found');
       }
 
       return server;
@@ -98,9 +98,9 @@ export class ServerService implements IServerService {
       const server = await this.repository.findAvailableServerByPlatform(platform);
 
       if (!server) {
-        this.logger.warn(`No available server found for platform "${platform}" (all servers are at capacity or inactive)`);
+        this.logger.warn(`No active server found for platform "${platform}"`);
       } else {
-        this.logger.log(`Available server found for platform "${platform}": ${server.name} (job_count: ${server.job_count}/${server.max_concurrent_jobs})`);
+        this.logger.log(`Available server found for platform "${platform}": ${server.name} (job_count: ${server.job_count})`);
       }
 
       return server;
@@ -217,12 +217,6 @@ export class ServerService implements IServerService {
       const server = await this.repository.findById(serverId);
       if (!server) {
         throw new NotFoundException(`Server with ID ${serverId} not found`);
-      }
-
-      if (server.job_count >= 200) {
-        throw new BadRequestException(
-          `Server "${server.name}" is at maximum capacity (200 jobs)`,
-        );
       }
 
       return await this.repository.incrementJobCount(serverId);
