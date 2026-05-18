@@ -3,7 +3,11 @@ import { Property } from '@prisma/client';
 import { EncryptionUtil } from 'src/common/utils/encryption.util';
 import { CreatePropertyDto, UpdatePropertyDto } from './property.dto';
 import type { RevealOtaCredentialsBody } from './property.validation';
-import { IPropertyRepository, IPropertyService } from './property.interface';
+import {
+  IPropertyRepository,
+  IPropertyService,
+  PropertyDropdownItem,
+} from './property.interface';
 import type { UpdateOtaCredentialsBody } from './property.validation';
 
 @Injectable()
@@ -158,13 +162,11 @@ export class PropertyService implements IPropertyService {
   async getAllPropertiesByUserPermission(
     userId: string,
     isAdmin: boolean,
-  ): Promise<Property[]> {
+  ): Promise<PropertyDropdownItem[]> {
     try {
-      const properties = await this.repository.findAllByUserPermission(
-        userId,
-        isAdmin,
-      );
-      return properties.map((property) => this.processProperty(property));
+      // Dropdown payload only needs id/name/portfolio_id – skip decrypt &
+      // credentials reshape work done by processProperty.
+      return await this.repository.findAllByUserPermission(userId, isAdmin);
     } catch (error) {
       this.logger.error(
         `Error getting properties by user permission: ${error.message}`,
