@@ -119,13 +119,9 @@ export class ServerRepository implements IServerRepository {
 
   async findAvailableServer(): Promise<Server | null> {
     try {
-      // Find an active server with job_count < 200, sorted by job_count (descending - highest first)
       return await this.db.server.findFirst({
-        where: {
-          is_active: true,
-          job_count: { lt: 200 },
-        },
-        orderBy: { job_count: 'desc' },
+        where: { is_active: true },
+        orderBy: { job_count: 'asc' },
       });
     } catch (error) {
       this.logger.error('Error finding available server:', error);
@@ -135,23 +131,13 @@ export class ServerRepository implements IServerRepository {
 
   async findAvailableServerByPlatform(platform: OtpPlatform): Promise<Server | null> {
     try {
-      const where: any = {
-        is_active: true,
-        platform,
-      };
-
-      // Find active servers with matching platform, sorted by job_count ascending (lowest first)
-      const servers = await this.db.server.findMany({
-        where,
+      return await this.db.server.findFirst({
+        where: {
+          is_active: true,
+          platform,
+        },
         orderBy: { job_count: 'asc' },
       });
-
-      // Find the first server where job_count < max_concurrent_jobs
-      const availableServer = servers.find(
-        (server) => server.job_count < server.max_concurrent_jobs,
-      );
-
-      return availableServer || null;
     } catch (error) {
       this.logger.error(`Error finding available server for platform ${platform}:`, error);
       throw error;
@@ -233,11 +219,11 @@ export class ServerRepository implements IServerRepository {
   // ========== Date-Based Scheduling Methods ==========
 
   /**
-   * Find server with available capacity on a specific date
+   * Find an active server for a specific date (least loaded first).
+   * No capacity limit is enforced — the global queue handles distribution.
    */
   async findAvailableServerForDate(date: string): Promise<Server | null> {
     try {
-      // Get all active servers with their daily schedules for this date
       const servers = await this.db.server.findMany({
         where: { is_active: true },
         include: {
@@ -247,23 +233,18 @@ export class ServerRepository implements IServerRepository {
         },
       });
 
-      // Filter servers that have capacity on this date
-      const availableServers = servers
+      if (servers.length === 0) return null;
+
+      // Sort by fewest assigned jobs first (best distribution)
+      const sorted = servers
         .map((server) => {
           const dailySchedule = server.dailySchedules[0];
           const assignedJobs = dailySchedule?.assigned_jobs || 0;
-          const availableCapacity = server.max_concurrent_jobs - assignedJobs;
-
-          return {
-            server,
-            assignedJobs,
-            availableCapacity,
-          };
+          return { server, assignedJobs };
         })
-        .filter((s) => s.availableCapacity > 0)
-        .sort((a, b) => b.availableCapacity - a.availableCapacity); // Sort by most available first
+        .sort((a, b) => a.assignedJobs - b.assignedJobs);
 
-      return availableServers.length > 0 ? availableServers[0].server : null;
+      return sorted[0].server;
     } catch (error) {
       this.logger.error(`Error finding available server for date ${date}:`, error);
       throw error;
