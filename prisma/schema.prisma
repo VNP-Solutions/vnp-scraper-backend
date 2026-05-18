@@ -30,6 +30,27 @@ enum JobStatus {
   InQueue
 }
 
+/// Identifies which "kind" of evaluation a JobTagEntry represents.
+/// Add new values here as new tag kinds are introduced.
+///   - over_160: whether (today − check_out_date) > 160 days majority on
+///               the job's items at completion time.
+enum JobTagField {
+  over_160
+}
+
+/// Embedded entry stored inside Job.tags. Each entry records both the
+/// kind of evaluation (`field`) and its outcome (`value`). This shape
+/// lets a tag be explicitly stored as `false` (= evaluated, not
+/// matched) rather than only "present / absent" the way a flat enum
+/// array did.
+///
+/// Example payload:
+///   "tags": [{ "field": "over_160", "value": true }]
+type JobTagEntry {
+  field JobTagField
+  value Boolean
+}
+
 enum PostingType {
   OTA
   OTA_PLUS
@@ -83,12 +104,12 @@ type CardInfo {
 }
 
 type PaymentInfo {
-  total_guest_payment        Float?
-  cancellation_fee           Float?
-  total_payout               Float?
-  amount_to_charge_or_refund Float
-  charge_before              String?
-  amount_to_charge_or_refund_currency     String?
+  total_guest_payment                 Float?
+  cancellation_fee                    Float?
+  total_payout                        Float?
+  amount_to_charge_or_refund          Float
+  charge_before                       String?
+  amount_to_charge_or_refund_currency String?
 }
 
 type DateRange {
@@ -199,66 +220,67 @@ model SubPortfolio {
 }
 
 model Job {
-  id                          String      @id @default(auto()) @map("_id") @db.ObjectId
-  name                        String?
-  job_status                  JobStatus   @default(Pending)
-  portfolio_id                String?     @db.ObjectId
-  sub_portfolio_id            String?     @db.ObjectId
-  property_id                 String?     @db.ObjectId
-  user_id                     String      @db.ObjectId
-  batch_id                    String?     @db.ObjectId
-  recurring_id                String?     @db.ObjectId
-  recurring_report_bucket_id  String?     @db.ObjectId
-  server_id                   String?     @db.ObjectId
-  posting_type                PostingType
-  portfolio_name              String?
-  sub_portfolio_name          String?
-  property_name               String
-  billing_type                String?
-  next_due_date               DateTime?
-  schedule_date               String?
-  ota_provider                OTAProvider @map("OTA")
-  remaining_direct_billed     Float
-  total_collectable           Float
-  total_amount_confirmed      Float
-  execution_type              String
-  retries_attempted           Int         @default(0)
-  max_retries                 Int         @default(3)
-  retry_delay_ms              Int?
-  priority                    Int         @default(0)
-  job_backoff_length_loading  Int
-  job_backoff_length_selector Int
-  queue_name                  String?
-  worker_assigned             String?
-  batch_execution_id          String?
-  start_date                  String?
-  end_date                    String?
-  log_link                    String?
-  failed_reason               String?
-  screenshot_urls             JobScreenshotUrl[]
-  live_url                    String?
-  current_url                 String?
-  case_open                   Boolean?    @default(false)
-  watcher_emails              String[]
-  db_billing_duration         Int?
+  id                                      String             @id @default(auto()) @map("_id") @db.ObjectId
+  name                                    String?
+  job_status                              JobStatus          @default(Pending)
+  portfolio_id                            String?            @db.ObjectId
+  sub_portfolio_id                        String?            @db.ObjectId
+  property_id                             String?            @db.ObjectId
+  user_id                                 String             @db.ObjectId
+  batch_id                                String?            @db.ObjectId
+  recurring_id                            String?            @db.ObjectId
+  recurring_report_bucket_id              String?            @db.ObjectId
+  server_id                               String?            @db.ObjectId
+  posting_type                            PostingType
+  portfolio_name                          String?
+  sub_portfolio_name                      String?
+  property_name                           String
+  billing_type                            String?
+  next_due_date                           DateTime?
+  schedule_date                           String?
+  ota_provider                            OTAProvider        @map("OTA")
+  remaining_direct_billed                 Float
+  total_collectable                       Float
+  total_amount_confirmed                  Float
+  execution_type                          String
+  retries_attempted                       Int                @default(0)
+  max_retries                             Int                @default(3)
+  retry_delay_ms                          Int?
+  priority                                Int                @default(0)
+  job_backoff_length_loading              Int
+  job_backoff_length_selector             Int
+  queue_name                              String?
+  worker_assigned                         String?
+  batch_execution_id                      String?
+  start_date                              String?
+  end_date                                String?
+  log_link                                String?
+  failed_reason                           String?
+  screenshot_urls                         JobScreenshotUrl[]
+  live_url                                String?
+  current_url                             String?
+  case_open                               Boolean?           @default(false)
+  watcher_emails                          String[]
+  tags                                    JobTagEntry[]
+  db_billing_duration                     Int?
   booking_vccs_filtered_reservation_count Int?
-  is_archived                 Boolean     @default(false)
-  createdAt                   DateTime    @default(now())
-  updatedAt                   DateTime    @updatedAt
+  is_archived                             Boolean            @default(false)
+  createdAt                               DateTime           @default(now())
+  updatedAt                               DateTime           @updatedAt
 
-  portfolio     Portfolio?     @relation(fields: [portfolio_id], references: [id])
-  subPortfolio  SubPortfolio?  @relation(fields: [sub_portfolio_id], references: [id])
-  property      Property?      @relation(fields: [property_id], references: [id])
-  user          User?          @relation(fields: [user_id], references: [id])
-  batch         Batch?              @relation(fields: [batch_id], references: [id])
-  recurringJob  RecurringJob?       @relation(fields: [recurring_id], references: [id], onDelete: Cascade)
+  portfolio             Portfolio?             @relation(fields: [portfolio_id], references: [id])
+  subPortfolio          SubPortfolio?          @relation(fields: [sub_portfolio_id], references: [id])
+  property              Property?              @relation(fields: [property_id], references: [id])
+  user                  User?                  @relation(fields: [user_id], references: [id])
+  batch                 Batch?                 @relation(fields: [batch_id], references: [id])
+  recurringJob          RecurringJob?          @relation(fields: [recurring_id], references: [id], onDelete: Cascade)
   recurringReportBucket RecurringReportBucket? @relation(fields: [recurring_report_bucket_id], references: [id], onDelete: Cascade)
-  server        Server?        @relation(fields: [server_id], references: [id])
-  jobItem       JobItem[]
-  OtpStatus         OtpStatus[]
-  phoneNumberSlots  PhoneNumberSlot[]
-  dbData        DbData[]
-  dbEntries     DbEntry[]
+  server                Server?                @relation(fields: [server_id], references: [id])
+  jobItem               JobItem[]
+  OtpStatus             OtpStatus[]
+  phoneNumberSlots      PhoneNumberSlot[]
+  dbData                DbData[]
+  dbEntries             DbEntry[]
 
   @@map("jobs")
 }
@@ -271,21 +293,21 @@ model RecurringJob {
   ota_provider  OTAProvider?
   duration      Int          @default(1) // Number of monthly jobs per cycle
   is_active     Boolean      @default(true)
-  
-  // Portfolio and Property information
-  portfolio_id  String?      @db.ObjectId
-  portfolio_name String?
-  property_id   String?      @db.ObjectId
-  property_name String?
-  
-  // Hotel ID (based on OTA provider)
-  hotel_id      Int?
-  
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
 
-  portfolio Portfolio? @relation(fields: [portfolio_id], references: [id])
-  property  Property?  @relation(fields: [property_id], references: [id])
+  // Portfolio and Property information
+  portfolio_id   String? @db.ObjectId
+  portfolio_name String?
+  property_id    String? @db.ObjectId
+  property_name  String?
+
+  // Hotel ID (based on OTA provider)
+  hotel_id Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  portfolio Portfolio?              @relation(fields: [portfolio_id], references: [id])
+  property  Property?               @relation(fields: [property_id], references: [id])
   jobs      Job[]
   buckets   RecurringReportBucket[]
 
@@ -296,7 +318,7 @@ model RecurringReportBucket {
   id            String   @id @default(auto()) @map("_id") @db.ObjectId
   recurring_id  String   @db.ObjectId
   bucket_number Int
-  name          String   // Auto-generated: "Reporting for {Month-YYYY}"
+  name          String // Auto-generated: "Reporting for {Month-YYYY}"
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -324,12 +346,12 @@ model Property {
   portfolio    Portfolio?    @relation(fields: [portfolio_id], references: [id])
   subPortfolio SubPortfolio? @relation(fields: [sub_portfolio_id], references: [id])
 
-  booking_trusted_status       String? @default("not_trusted")
-  booking_last_login           DateTime?
+  booking_trusted_status String?   @default("not_trusted")
+  booking_last_login     DateTime?
 
-  phone_number            String?
-  slot                    Int?
-  phone_number_slot_id    String?  @db.ObjectId
+  phone_number         String?
+  slot                 Int?
+  phone_number_slot_id String? @db.ObjectId
 
   phoneNumberSlot PhoneNumberSlot? @relation(fields: [phone_number_slot_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
@@ -389,7 +411,7 @@ model File {
   thumbnile_url String?
   originalName  String
   size          Int
-  property_id   String? @db.ObjectId
+  property_id   String?  @db.ObjectId
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -531,23 +553,23 @@ model ActivityLog {
 }
 
 model ActivityLogExport {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  fileName    String
-  s3Url       String
-  exportDate  DateTime @default(now())
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  fileName   String
+  s3Url      String
+  exportDate DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@map("activity_log_exports")
 }
 
 model OtpStatus {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  status      OtpStatusValue
-  platform    OtpPlatform?
-  job_id      String?   @db.ObjectId
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String         @id @default(auto()) @map("_id") @db.ObjectId
+  status    OtpStatusValue
+  platform  OtpPlatform?
+  job_id    String?        @db.ObjectId
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
 
   job Job? @relation(fields: [job_id], references: [id])
 
@@ -555,13 +577,13 @@ model OtpStatus {
 }
 
 model PhoneNumberSlot {
-  id            String                 @id @default(auto()) @map("_id") @db.ObjectId
-  phone_number  String
-  slot          Int
-  status        PhoneNumberSlotStatus  @default(Released)
-  job_id        String?                @db.ObjectId
-  createdAt     DateTime               @default(now())
-  updatedAt     DateTime               @updatedAt
+  id           String                @id @default(auto()) @map("_id") @db.ObjectId
+  phone_number String
+  slot         Int
+  status       PhoneNumberSlotStatus @default(Released)
+  job_id       String?               @db.ObjectId
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
 
   job Job? @relation(fields: [job_id], references: [id])
 
@@ -580,19 +602,19 @@ model Batch {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  jobs Job[]
+  jobs       Job[]
   retrievals Retrieval[]
 
   @@map("batches")
 }
 
 model ParentRetrieval {
-  id   String @id @default(auto()) @map("_id") @db.ObjectId
-  name String
+  id           String       @id @default(auto()) @map("_id") @db.ObjectId
+  name         String
   ota_provider OTAProvider? @map("OTA")
-  is_archived Boolean @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  is_archived  Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   retrievals     Retrieval[]
   retrievalItems RetrievalItem[]
@@ -601,30 +623,30 @@ model ParentRetrieval {
 }
 
 model Retrieval {
-  id                          String      @id @default(auto()) @map("_id") @db.ObjectId
+  id                          String             @id @default(auto()) @map("_id") @db.ObjectId
   name                        String?
-  job_status                  JobStatus   @default(Pending)
-  portfolio_id                String?     @db.ObjectId
-  sub_portfolio_id            String?     @db.ObjectId
-  property_id                 String?     @db.ObjectId
-  user_id                     String      @db.ObjectId
-  batch_id                    String?     @db.ObjectId
-  parent_retrieval_id         String      @db.ObjectId
+  job_status                  JobStatus          @default(Pending)
+  portfolio_id                String?            @db.ObjectId
+  sub_portfolio_id            String?            @db.ObjectId
+  property_id                 String?            @db.ObjectId
+  user_id                     String             @db.ObjectId
+  batch_id                    String?            @db.ObjectId
+  parent_retrieval_id         String             @db.ObjectId
   posting_type                PostingType
   portfolio_name              String?
   sub_portfolio_name          String?
   property_name               String
   billing_type                String?
   next_due_date               DateTime?
-  ota_provider                OTAProvider @map("OTA")
+  ota_provider                OTAProvider        @map("OTA")
   remaining_direct_billed     Float
   total_collectable           Float
   total_amount_confirmed      Float
   execution_type              String
-  retries_attempted           Int         @default(0)
-  max_retries                 Int         @default(3)
+  retries_attempted           Int                @default(0)
+  max_retries                 Int                @default(3)
   retry_delay_ms              Int?
-  priority                    Int         @default(0)
+  priority                    Int                @default(0)
   job_backoff_length_loading  Int
   job_backoff_length_selector Int
   queue_name                  String?
@@ -637,25 +659,25 @@ model Retrieval {
   screenshot_urls             JobScreenshotUrl[]
   live_url                    String?
   current_url                 String?
-  case_open                   Boolean?    @default(false)
+  case_open                   Boolean?           @default(false)
   watcher_emails              String[]
   reservations                String[]
-  is_archived                 Boolean     @default(false)
-  createdAt                   DateTime    @default(now())
-  updatedAt                   DateTime    @updatedAt
+  is_archived                 Boolean            @default(false)
+  createdAt                   DateTime           @default(now())
+  updatedAt                   DateTime           @updatedAt
 
   parentRetrieval ParentRetrieval? @relation(fields: [parent_retrieval_id], references: [id])
   retrievalItems  RetrievalItem[]
-  batch Batch? @relation(fields: [batch_id], references: [id])
+  batch           Batch?           @relation(fields: [batch_id], references: [id])
 
   @@map("retrievals")
 }
 
 model RetrievalItem {
-  id                  String   @id @default(auto()) @map("_id") @db.ObjectId
-  retrieval_id        String   @db.ObjectId
-  parent_retrieval_id String   @db.ObjectId
-  property_id         String   @db.ObjectId
+  id                  String @id @default(auto()) @map("_id") @db.ObjectId
+  retrieval_id        String @db.ObjectId
+  parent_retrieval_id String @db.ObjectId
+  property_id         String @db.ObjectId
   guest_name          String
 
   reservation_id      String?
@@ -699,19 +721,19 @@ model RetrievalItem {
 }
 
 model DbData {
-  id                         String    @id @default(auto()) @map("_id") @db.ObjectId
-  job_id                     String    @db.ObjectId
-  property_name              String
-  property_id                String
-  date_range                 DateRange?
-  reservation_ids            String[]  @default([])
-  gearbox_queue_ids          String[]  @default([])
-  total_invoice_amount       Float?
+  id                            String     @id @default(auto()) @map("_id") @db.ObjectId
+  job_id                        String     @db.ObjectId
+  property_name                 String
+  property_id                   String
+  date_range                    DateRange?
+  reservation_ids               String[]   @default([])
+  gearbox_queue_ids             String[]   @default([])
+  total_invoice_amount          Float?
   total_invoice_amount_currency String?
-  created_at                 DateTime  @default(now())
-  updated_at                 DateTime  @updatedAt
+  created_at                    DateTime   @default(now())
+  updated_at                    DateTime   @updatedAt
 
-  job Job @relation(fields: [job_id], references: [id], onDelete: Cascade)
+  job       Job       @relation(fields: [job_id], references: [id], onDelete: Cascade)
   dbEntries DbEntry[]
 
   @@index([job_id])
@@ -722,30 +744,30 @@ model DbData {
 }
 
 model DbEntry {
-  id                              String   @id @default(auto()) @map("_id") @db.ObjectId
-  job_id                          String   @db.ObjectId
-  property_name                   String
-  property_id                     String
-  db_data_id                      String   @db.ObjectId
-  reservation_id                  String
-  invoice_id                      String
-  guest_name                      String
-  check_in_date                   DateTime
-  check_out_date                  DateTime
-  previously_paid_amount          Float
-  previously_paid_amount_currency String
-  maximum_billable_amount         Float
+  id                               String   @id @default(auto()) @map("_id") @db.ObjectId
+  job_id                           String   @db.ObjectId
+  property_name                    String
+  property_id                      String
+  db_data_id                       String   @db.ObjectId
+  reservation_id                   String
+  invoice_id                       String
+  guest_name                       String
+  check_in_date                    DateTime
+  check_out_date                   DateTime
+  previously_paid_amount           Float
+  previously_paid_amount_currency  String
+  maximum_billable_amount          Float
   maximum_billable_amount_currency String
-  requested_booking_amount        Float
-  requested_taxes                 Float
-  requested_total                 Float
-  requested_total_currency       String
-  gearbox_queue_ids              String[] @default([])
-  created_at                      DateTime @default(now())
-  updated_at                      DateTime @updatedAt
+  requested_booking_amount         Float
+  requested_taxes                  Float
+  requested_total                  Float
+  requested_total_currency         String
+  gearbox_queue_ids                String[] @default([])
+  created_at                       DateTime @default(now())
+  updated_at                       DateTime @updatedAt
 
-  job     Job     @relation(fields: [job_id], references: [id], onDelete: Cascade)
-  dbData  DbData  @relation(fields: [db_data_id], references: [id], onDelete: Cascade)
+  job    Job    @relation(fields: [job_id], references: [id], onDelete: Cascade)
+  dbData DbData @relation(fields: [db_data_id], references: [id], onDelete: Cascade)
 
   @@index([job_id])
   @@index([property_id])
@@ -767,16 +789,16 @@ model DbEntry {
 }
 
 model Notification {
-  id        String            @id @default(auto()) @map("_id") @db.ObjectId
-  user_id   String            @db.ObjectId
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  user_id   String    @db.ObjectId
   title     String?
   message   String
   type      String?
   metadata  Json?
-  is_read   Boolean           @default(false)
+  is_read   Boolean   @default(false)
   readAt    DateTime?
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   user User? @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
@@ -795,8 +817,8 @@ model Server {
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
 
-  jobs                Job[]
-  dailySchedules      ServerDailySchedule[]
+  jobs           Job[]
+  dailySchedules ServerDailySchedule[]
 
   @@map("servers")
 }
@@ -804,7 +826,7 @@ model Server {
 model ServerDailySchedule {
   id            String   @id @default(auto()) @map("_id") @db.ObjectId
   server_id     String   @db.ObjectId
-  date          String   // Format: YYYY-MM-DD
+  date          String // Format: YYYY-MM-DD
   assigned_jobs Int      @default(0)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -819,7 +841,7 @@ model ServerDailySchedule {
 
 model ScheduledJob {
   id            String   @id @default(auto()) @map("_id") @db.ObjectId
-  date          String   // Format: YYYY-MM-DD
+  date          String // Format: YYYY-MM-DD
   job_ids       String[] @db.ObjectId // Array of job IDs
   retrieval_ids String[] @default([]) @db.ObjectId // Array of retrieval IDs
   comment       String   @default("")
