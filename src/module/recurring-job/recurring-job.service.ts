@@ -218,16 +218,16 @@ export class RecurringJobService implements IRecurringJobService {
   }
 
   /**
-   * Assign an available server to a job for a specific date
-   * Uses date-based capacity tracking instead of global count
-   * Returns the server_id if successful, null otherwise
+   * Assign an available server to a job for a specific date.
+   * With the global queue, server assignment is optional — jobs will be
+   * picked up by the queue regardless of whether a server is pre-assigned.
    */
   private async assignServerToJob(scheduleDate: string): Promise<string | null> {
     try {
       const serverId = await this.serverService.assignServerForDate(scheduleDate);
       
       if (!serverId) {
-        this.logger.warn(`No available server found for date ${scheduleDate} (all servers at capacity for this date)`);
+        this.logger.log(`No server pre-assigned for date ${scheduleDate} — job will be handled by global queue`);
         return null;
       }
 
@@ -241,8 +241,9 @@ export class RecurringJobService implements IRecurringJobService {
   }
 
   /**
-   * Create a job using template data, linked to a bucket
-   * Returns null if no server is available for the schedule_date
+   * Create a job using template data, linked to a bucket.
+   * Server assignment is best-effort — jobs without a server will be
+   * picked up by the global queue.
    */
   private async createJobFromTemplate(
     templateData: any,
@@ -253,21 +254,12 @@ export class RecurringJobService implements IRecurringJobService {
       start_date: string;
       end_date: string;
       name: string;
-      server_id?: string | null; // Optional: use provided server_id or assign new one
+      server_id?: string | null;
     },
-  ): Promise<Job | null> {
-    // Use provided server_id if available, otherwise assign a new one for the schedule_date
+  ): Promise<Job> {
     const server_id = overrides.server_id !== undefined 
       ? overrides.server_id 
       : await this.assignServerToJob(overrides.schedule_date);
-    
-    // If no server is available and none was provided, return null
-    if (server_id === null) {
-      this.logger.warn(
-        `Cannot create job for ${overrides.schedule_date}: No available server found (all servers at capacity for this date)`
-      );
-      return null;
-    }
     
     return this.jobRepository.create({
       job_status: JobStatus.Pending,
@@ -277,7 +269,7 @@ export class RecurringJobService implements IRecurringJobService {
       user_id: templateData.user_id,
       recurring_id: overrides.recurring_id,
       recurring_report_bucket_id: overrides.bucket_id,
-      server_id: server_id, // Assign server
+      ...(server_id ? { server_id } : {}),
       posting_type: templateData.posting_type,
       portfolio_name: templateData.portfolio_name,
       sub_portfolio_name: templateData.sub_portfolio_name,
@@ -441,17 +433,7 @@ export class RecurringJobService implements IRecurringJobService {
 
           // Create job for this historical month with the schedule_date for execution
           try {
-            // Assign an available server to this job for the schedule_date
             const server_id = await this.assignServerToJob(schedule_date);
-            
-            // If no server is available, clean up and throw error
-            if (server_id === null) {
-              // Delete the recurring job (cascade will delete buckets and jobs)
-              await this.repository.delete(recurringJob.id);
-              throw new BadRequestException(
-                `Cannot create recurring job: No available server found for date ${schedule_date}. All servers are at capacity for this date.`
-              );
-            }
             
             const historicalJob = await this.jobRepository.create({
               ...jobData,
@@ -461,10 +443,10 @@ export class RecurringJobService implements IRecurringJobService {
               user_id,
               recurring_id: recurringJob.id,
               recurring_report_bucket_id: currentBucket!.id,
-              server_id: server_id, // Assign server
+              ...(server_id ? { server_id } : {}),
               start_date: startDate,
               end_date: endDate,
-              schedule_date: schedule_date, // All historical jobs will run on the same schedule_date
+              schedule_date: schedule_date,
               name: `${recurringJobName} - ${startDate} to ${endDate}`,
               next_due_date: jobData.next_due_date
                 ? new Date(jobData.next_due_date)
@@ -526,17 +508,7 @@ export class RecurringJobService implements IRecurringJobService {
         name: bucketName,
       });
 
-      // Assign an available server to this job for the schedule_date
       const server_id = await this.assignServerToJob(schedule_date);
-
-      // If no server is available, clean up and throw error
-      if (server_id === null) {
-        // Delete the recurring job (cascade will delete bucket)
-        await this.repository.delete(recurringJob.id);
-        throw new BadRequestException(
-          `Cannot create recurring job: No available server found for date ${schedule_date}. All servers are at capacity for this date.`
-        );
-      }
 
       // Create the first job linked to this recurring job and bucket
       const job = await this.jobRepository.create({
@@ -546,7 +518,7 @@ export class RecurringJobService implements IRecurringJobService {
         user_id,
         recurring_id: recurringJob.id,
         recurring_report_bucket_id: bucket.id,
-        server_id: server_id, // Assign server
+        ...(server_id ? { server_id } : {}),
         start_date: startDate,
         end_date: endDate,
         schedule_date: schedule_date,
@@ -715,14 +687,6 @@ export class RecurringJobService implements IRecurringJobService {
             });
 
             // If job creation failed due to no available server, clean up and throw error
-            if (!historicalJob) {
-              // Delete the recurring job (cascade will delete buckets and jobs)
-              await this.repository.delete(recurringJob.id);
-              throw new BadRequestException(
-                `Cannot create recurring job: No available server found for date ${schedule_date}. All servers are at capacity for this date.`
-              );
-            }
-
             this.logger.log(`Created historical job ${historicalJob.id} for period ${startDate} to ${endDate} in bucket ${currentBucket.id}`);
 
             historicalJobs.push(historicalJob);
@@ -787,15 +751,6 @@ export class RecurringJobService implements IRecurringJobService {
         end_date: endDate,
         name: `${recurringJobName} - ${startDate} to ${endDate}`,
       });
-
-      // If no server is available, delete the created resources and throw error
-      if (!job) {
-        // Delete the recurring job (cascade will delete bucket)
-        await this.repository.delete(recurringJob.id);
-        throw new BadRequestException(
-          `Cannot create recurring job: No available server found for date ${schedule_date}. All servers are at capacity for this date.`
-        );
-      }
 
       // Add job to scheduler
       await this.scheduledJobService.createOrUpdateScheduledJob(
@@ -1217,17 +1172,11 @@ export class RecurringJobService implements IRecurringJobService {
         });
 
         // Only add job if it was created successfully
-        if (newJob) {
-          createdJobs.push(newJob);
-          
-          this.logger.log(
-            `Created job ${newJob.id} for ${startDate} to ${endDate}, scheduled on ${nextScheduleDate} in bucket #${targetBucket.bucket_number}`
-          );
-        } else {
-          this.logger.warn(
-            `Could not create job for ${startDate} to ${endDate} on ${nextScheduleDate} - no available server`
-          );
-        }
+        createdJobs.push(newJob);
+        
+        this.logger.log(
+          `Created job ${newJob.id} for ${startDate} to ${endDate}, scheduled on ${nextScheduleDate} in bucket #${targetBucket.bucket_number}`
+        );
       }
 
       // Add all created jobs to scheduler
@@ -1244,10 +1193,6 @@ export class RecurringJobService implements IRecurringJobService {
 
         this.logger.log(
           `Created ${createdJobs.length} job(s) for recurring job ${recurringId}, scheduled for ${nextScheduleDate}`
-        );
-      } else {
-        this.logger.warn(
-          `No jobs were created for recurring job ${recurringId} on ${nextScheduleDate} - all servers at capacity. Scheduled job will not be created.`
         );
       }
 
