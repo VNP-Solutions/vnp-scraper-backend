@@ -124,6 +124,9 @@ export class JobRepository implements IJobRepository {
         schedule_end_date,
         recurring_id,
         recurring_report_bucket_id,
+        portfolio_id,
+        property_id,
+        ota_provider,
         ...filters
       } = query || {};
       let allFilters: any = { ...filters };
@@ -255,6 +258,21 @@ export class JobRepository implements IJobRepository {
       // Filter by recurring_report_bucket_id
       if (recurring_report_bucket_id) {
         allFilters.recurring_report_bucket_id = recurring_report_bucket_id.toString();
+      }
+
+      // Filter by portfolio_id
+      if (portfolio_id) {
+        allFilters.portfolio_id = portfolio_id.toString();
+      }
+
+      // Filter by property_id
+      if (property_id) {
+        allFilters.property_id = property_id.toString();
+      }
+
+      // Filter by ota_provider
+      if (ota_provider) {
+        allFilters.ota_provider = ota_provider.toString();
       }
 
       const skip = page

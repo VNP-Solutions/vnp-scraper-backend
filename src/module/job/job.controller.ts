@@ -204,6 +204,22 @@ export class JobController {
     description: 'End date for filtering by schedule_date (YYYY-MM-DD format)',
   })
   @ApiQuery({
+    name: 'portfolio_id',
+    required: false,
+    description: 'Filter jobs by portfolio ID',
+  })
+  @ApiQuery({
+    name: 'property_id',
+    required: false,
+    description: 'Filter jobs by property ID',
+  })
+  @ApiQuery({
+    name: 'ota_provider',
+    required: false,
+    enum: ['Expedia', 'Booking', 'Agoda'],
+    description: 'Filter jobs by OTA provider',
+  })
+  @ApiQuery({
     name: 'recurring_id',
     required: false,
     description: 'Filter jobs by recurring job ID',
