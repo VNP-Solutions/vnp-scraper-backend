@@ -1,5 +1,8 @@
 import { JobStatus, OTAProvider } from '@prisma/client';
-import type { SearchReportsType } from './reports.validation';
+import type {
+  ExportReportsMasterType,
+  SearchReportsType,
+} from './reports.validation';
 
 /** Per-user permission scope. `null` means "no restriction" (admin). */
 export type ReportsAccessScope =
@@ -107,6 +110,30 @@ export interface ReportsSearchResult {
   metadata: ReportsSearchMetadata;
 }
 
+/**
+ * Lightweight ID-only row that mirrors what the post-filter step needs:
+ * the id, plus start_date / end_date (only relevant when job_dates is
+ * present in the filter and we have to drop rows whose MM/DD/YYYY interval
+ * doesn't overlap the requested window).
+ */
+export interface ReportsIdRow {
+  id: string;
+  start_date?: string | null;
+  end_date?: string | null;
+}
+
+export interface ReportsIdsSearchMetadata {
+  totalDocuments: number;
+  totalJobs: number;
+  totalRetrievals: number;
+}
+
+export interface ReportsIdsSearchResult {
+  job_ids: string[];
+  retrieval_ids: string[];
+  metadata: ReportsIdsSearchMetadata;
+}
+
 export interface IReportsRepository {
   /** Compute the property / portfolio / sub-portfolio IDs a non-admin user can see. */
   getAccessScopeForUser(userId: string): Promise<{
@@ -149,6 +176,24 @@ export interface IReportsRepository {
     sortOrder: 'asc' | 'desc',
     take?: number,
   ): Promise<{ total: number; rows: any[] }>;
+
+  /**
+   * Lightweight variant of countAndFindJobs that pulls only the columns
+   * the service needs to return IDs (plus start_date / end_date for the
+   * optional post-filter on job_dates).
+   */
+  findJobIds(
+    filter: ReportsRepositoryFilter,
+    sortBy: string,
+    sortOrder: 'asc' | 'desc',
+  ): Promise<ReportsIdRow[]>;
+
+  /** Same as findJobIds but for the Retrieval collection. */
+  findRetrievalIds(
+    filter: ReportsRepositoryFilter,
+    sortBy: string,
+    sortOrder: 'asc' | 'desc',
+  ): Promise<ReportsIdRow[]>;
 }
 
 export interface IReportsService {
@@ -156,4 +201,23 @@ export interface IReportsService {
     body: SearchReportsType,
     user: { userId: string; role: string },
   ): Promise<ReportsSearchResult>;
+
+  /**
+   * Same filters as `searchReports`, but ignores pagination and returns
+   * every matching job_id / retrieval_id. Intended to feed `Download All`
+   * → `POST /jobs/export-master`.
+   */
+  searchReportIds(
+    body: SearchReportsType,
+    user: { userId: string; role: string },
+  ): Promise<ReportsIdsSearchResult>;
+
+  /**
+   * Bundle one XLSX per Job + one XLSX per Retrieval (mirroring the
+   * per-job format of /jobs/export-master) into a single downloadable
+   * ZIP. Used by the Reports → "Download as Zip" → "Download All" flow.
+   */
+  exportMaster(
+    body: ExportReportsMasterType,
+  ): Promise<{ buffer: Buffer; fileName: string }>;
 }

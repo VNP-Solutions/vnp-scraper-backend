@@ -148,6 +148,9 @@ export interface IJobService {
   exportMasterCsv(
     jobIds: string[],
   ): Promise<{ buffer: Buffer; fileName: string }>;
+  buildMasterXlsxEntries(
+    jobIds: string[],
+  ): Promise<Array<{ name: string; data: Buffer }>>;
   exportSingleJobMasterCsv(
     jobId: string,
   ): Promise<{ buffer: Buffer; fileName: string }>;

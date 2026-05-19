@@ -473,6 +473,143 @@ export class RetrievalRepository implements IRetrievalRepository {
     }
   }
 
+  /**
+   * Same export-safe raw-MongoDB fetch as
+   * {@link findRetrievalItemsByParentRetrievalIdForExport}, but scoped by
+   * `retrieval_id` (one row in the Reports table = one Retrieval) so we
+   * can produce one XLSX per Retrieval — mirroring the per-Job CSV
+   * behaviour of /jobs/export-master.
+   *
+   * Accepts an array of retrieval IDs in one call to avoid N+1 round
+   * trips, and returns the items grouped by retrieval_id.
+   */
+  async findRetrievalItemsByRetrievalIdsForExport(
+    retrievalIds: string[],
+  ): Promise<Map<string, (RetrievalItem & { retrieval: Retrieval })[]>> {
+    const result = new Map<
+      string,
+      (RetrievalItem & { retrieval: Retrieval })[]
+    >();
+    const unique = Array.from(new Set(retrievalIds ?? [])).filter(Boolean);
+    if (unique.length === 0) return result;
+
+    const url = this.configService.get<string>('DATABASE_URL');
+    if (!url) {
+      throw new Error('DATABASE_URL is not configured');
+    }
+
+    const client = new MongoClient(url);
+    try {
+      await client.connect();
+      const db = client.db();
+      const itemsColl = db.collection<Record<string, unknown>>('retrieval_items');
+      const retrievalsColl =
+        db.collection<Record<string, unknown>>('retrievals');
+
+      const retrievalObjectIds = unique
+        .filter((id) => ObjectId.isValid(id))
+        .map((id) => new ObjectId(id));
+      if (retrievalObjectIds.length === 0) return result;
+
+      const rawItems = await itemsColl
+        .find({ retrieval_id: { $in: retrievalObjectIds } })
+        .sort({ createdAt: 1 })
+        .toArray();
+
+      const rawRetrievals = await retrievalsColl
+        .find({ _id: { $in: retrievalObjectIds } })
+        .toArray();
+
+      const retrievalMap = new Map<string, Retrieval>();
+      for (const r of rawRetrievals) {
+        const id = r._id instanceof ObjectId ? r._id.toString() : String(r._id);
+        retrievalMap.set(id, mapRawDocToRetrieval(r) as Retrieval);
+      }
+
+      const toRetrievalItem = (
+        doc: Record<string, unknown>,
+      ): RetrievalItem & { retrieval: Retrieval } => {
+        const id =
+          doc._id instanceof ObjectId ? doc._id.toString() : String(doc._id);
+        const retrievalId =
+          doc.retrieval_id instanceof ObjectId
+            ? doc.retrieval_id.toString()
+            : String(doc.retrieval_id ?? '');
+        const retrieval: Retrieval =
+          retrievalMap.get(retrievalId) ?? ({} as Retrieval);
+
+        return {
+          id,
+          retrieval_id: retrievalId,
+          parent_retrieval_id: String(doc.parent_retrieval_id ?? ''),
+          property_id: String(doc.property_id ?? ''),
+          guest_name: String(doc.guest_name ?? ''),
+          reservation_id:
+            doc.reservation_id != null ? String(doc.reservation_id) : null,
+          confirmation_number:
+            doc.confirmation_number != null
+              ? String(doc.confirmation_number)
+              : null,
+          check_in_date:
+            doc.check_in_date instanceof Date
+              ? doc.check_in_date
+              : new Date(String(doc.check_in_date)),
+          check_out_date:
+            doc.check_out_date instanceof Date
+              ? doc.check_out_date
+              : new Date(String(doc.check_out_date)),
+          room_type: String(doc.room_type ?? ''),
+          booking_amount:
+            typeof doc.booking_amount === 'number' ? doc.booking_amount : null,
+          booked_date:
+            doc.booked_date instanceof Date
+              ? doc.booked_date
+              : new Date(String(doc.booked_date)),
+          has_card_info: Boolean(doc.has_card_info),
+          card_info:
+            doc.card_info && typeof doc.card_info === 'object'
+              ? normalizeExportCardInfo(
+                  doc.card_info as Record<string, unknown>,
+                )
+              : null,
+          has_payment_info: Boolean(doc.has_payment_info),
+          payment_info:
+            doc.payment_info && typeof doc.payment_info === 'object'
+              ? (doc.payment_info as Record<string, unknown>)
+              : null,
+          reservation_status: String(doc.reservation_status ?? ''),
+          additional_text:
+            doc.additional_text != null ? String(doc.additional_text) : null,
+          createdAt:
+            doc.createdAt instanceof Date
+              ? doc.createdAt
+              : new Date(String(doc.createdAt)),
+          updatedAt:
+            doc.updatedAt instanceof Date
+              ? doc.updatedAt
+              : new Date(String(doc.updatedAt)),
+          retrieval,
+        } as RetrievalItem & { retrieval: Retrieval };
+      };
+
+      const items = rawItems.map((doc) => toRetrievalItem(doc));
+      const sanitized = sanitizeForExport(items) as (RetrievalItem & {
+        retrieval: Retrieval;
+      })[];
+
+      // Seed an empty array for every requested id so callers can iterate
+      // even for retrievals with zero items.
+      for (const id of unique) result.set(id, []);
+      for (const item of sanitized) {
+        const bucket = result.get(item.retrieval_id);
+        if (bucket) bucket.push(item);
+      }
+      return result;
+    } finally {
+      await client.close();
+    }
+  }
+
   async findRetrievalItemsByRetrievalId(
     retrievalId: string,
     query: Record<string, any>,

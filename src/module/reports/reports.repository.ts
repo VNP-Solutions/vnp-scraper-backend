@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import {
   IReportsRepository,
+  ReportsIdRow,
   ReportsRepositoryFilter,
 } from './reports.interface';
 
@@ -418,6 +419,60 @@ export class ReportsRepository implements IReportsRepository {
     } catch (error) {
       this.logger.error(
         `Error querying retrievals for reports search: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async findJobIds(
+    filter: ReportsRepositoryFilter,
+    sortBy: string,
+    sortOrder: 'asc' | 'desc',
+  ): Promise<ReportsIdRow[]> {
+    try {
+      const where = this.buildCommonWhereForJobOrRetrieval(filter, {
+        includeBilling: true,
+        includeCardTags: true,
+      });
+
+      const rows = await this.db.job.findMany({
+        where: where as any,
+        orderBy: { [sortBy]: sortOrder },
+        // Pull start_date / end_date too so the service can apply the
+        // job-dates post-filter without a second query.
+        select: { id: true, start_date: true, end_date: true },
+      });
+      return rows;
+    } catch (error) {
+      this.logger.error(
+        `Error fetching job IDs for reports search: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async findRetrievalIds(
+    filter: ReportsRepositoryFilter,
+    sortBy: string,
+    sortOrder: 'asc' | 'desc',
+  ): Promise<ReportsIdRow[]> {
+    try {
+      const where = this.buildCommonWhereForJobOrRetrieval(filter, {
+        includeBilling: false,
+        includeCardTags: false,
+      });
+
+      const rows = await this.db.retrieval.findMany({
+        where: where as any,
+        orderBy: { [sortBy]: sortOrder },
+        select: { id: true, start_date: true, end_date: true },
+      });
+      return rows;
+    } catch (error) {
+      this.logger.error(
+        `Error fetching retrieval IDs for reports search: ${error.message}`,
         error.stack,
       );
       throw error;

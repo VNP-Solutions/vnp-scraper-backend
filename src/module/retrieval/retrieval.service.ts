@@ -13,6 +13,12 @@ import {
   RetrievalItem,
 } from '@prisma/client';
 import * as XLSX from 'xlsx';
+import { applyExcelTextColumnFormat } from '../../common/utils/excel-text-column.util';
+import {
+  ensureUniqueFilename,
+  formatDateForFilename,
+  sanitizeForFilename,
+} from '../../common/utils/zip-and-filename.util';
 import { IPropertyCredentialsService } from '../property-credentials/property-credentials.interface';
 import {
   IPropertyRepository,
@@ -29,33 +35,6 @@ import {
 import { IRetrievalRepository, IRetrievalService } from './retrieval.interface';
 
 const RETRIEVAL_EXPORT_CVV_COLUMN = 'Card CVV';
-
-/**
- * SheetJS infers `t: 'n'` from numeric JS values. Set each cell to a string
- * cell (`t: 's'`) and Excel's Text number format (`@`) so the column is plain text.
- */
-function applyExcelTextColumnFormat(
-  worksheet: XLSX.WorkSheet,
-  dataRows: ReadonlyArray<Record<string, unknown>>,
-  columnHeader: string,
-): void {
-  if (dataRows.length === 0) return;
-  const columnIndex = Object.keys(dataRows[0]).indexOf(columnHeader);
-  if (columnIndex < 0) return;
-
-  for (let rowIndex = 0; rowIndex <= dataRows.length; rowIndex++) {
-    const address = XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex });
-    const cellValue =
-      rowIndex === 0
-        ? columnHeader
-        : (() => {
-            const raw = dataRows[rowIndex - 1][columnHeader];
-            if (raw == null || raw === '') return '';
-            return String(raw);
-          })();
-    worksheet[address] = { t: 's', v: cellValue, z: '@' };
-  }
-}
 
 @Injectable()
 export class RetrievalService implements IRetrievalService {
@@ -629,6 +608,182 @@ export class RetrievalService implements IRetrievalService {
       );
       throw error;
     }
+  }
+
+  /**
+   * Builds the per-retrieval XLSX row used in both
+   * `exportRetrievalItemsToExcel` and the new bulk export path. Kept in
+   * one place so the two export paths can never drift in column order
+   * or content.
+   */
+  private async buildRetrievalExcelRowsForRetrieval(
+    items: ReadonlyArray<RetrievalItem & { retrieval: Retrieval }>,
+  ): Promise<Record<string, unknown>[]> {
+    const excelData: Record<string, unknown>[] = [];
+    for (const item of items) {
+      const property: any = await this.propertyRepository.findById(
+        item.property_id,
+      );
+      const retrieval: any = (item as any).retrieval;
+
+      let batchName = '';
+      if (retrieval?.batch_id) {
+        const batch = await this.repository.findBatchById(retrieval.batch_id);
+        batchName = batch?.name || '';
+      }
+
+      const credentials =
+        await this.propertyCredentialsService.getPropertyCredentialsByPropertyId(
+          item.property_id,
+        );
+      let username = '';
+      let password = '';
+      if (credentials) {
+        if (retrieval?.ota_provider === 'Agoda') {
+          username = credentials.agodaUsername || '';
+          password = credentials.agodaPassword
+            ? this.propertyCredentialsService.decryptPassword(
+                credentials.agodaPassword,
+              )
+            : '';
+        } else {
+          username = credentials.expediaUsername || '';
+          password = credentials.expediaPassword
+            ? this.propertyCredentialsService.decryptPassword(
+                credentials.expediaPassword,
+              )
+            : '';
+        }
+      }
+
+      const isBookingOta = retrieval?.ota_provider === 'Booking';
+      const checkInOutForExport = (date: Date | string | null | undefined) =>
+        date ? new Date(date).toLocaleDateString() : '';
+
+      const row: Record<string, unknown> = {
+        'Hotel ID':
+          retrieval?.ota_provider === 'Expedia'
+            ? property?.expedia_id || ''
+            : retrieval?.ota_provider === 'Agoda'
+              ? property?.agoda_id || ''
+              : '',
+        Batch: batchName,
+        'Posting Type': retrieval?.posting_type || '',
+        'OTA Provider': retrieval?.ota_provider || '',
+        Portfolio: retrieval?.portfolio_name || '',
+        'Hotel Name': property?.name || '',
+        'Reservation ID': item.reservation_id || '',
+        Name: item.guest_name || '',
+        'Check In': isBookingOta
+          ? 'N/A'
+          : checkInOutForExport(item.check_in_date),
+        'Check Out': isBookingOta
+          ? 'N/A'
+          : checkInOutForExport(item.check_out_date),
+        'User Name': username,
+        Password: password,
+        Currency:
+          (item.payment_info as any)?.amount_to_charge_or_refund_currency ||
+          'USD',
+        'Amount to charge':
+          (item.payment_info as any)?.amount_to_charge_or_refund || 0,
+        'Charge status': item.reservation_status || '',
+        'Card first 4': (item.card_info as any)?.card_number?.slice(0, 4) || '',
+        'Card last 12': (item.card_info as any)?.card_number
+          ? String((item.card_info as any).card_number)
+              .replace(/\D/g, '')
+              .slice(-12)
+          : '',
+        'Card Expire': (item.card_info as any)?.expiry_date || '',
+        'Card CVV':
+          (item.card_info as any)?.cvv == null ||
+          (item.card_info as any)?.cvv === ''
+            ? ''
+            : String((item.card_info as any).cvv),
+        isMissing: item.additional_text || 'Present',
+      };
+      excelData.push(row);
+    }
+    return excelData;
+  }
+
+  /**
+   * Produces one XLSX buffer per retrieval, ready to be placed inside a ZIP
+   * by `/reports/export-master`. Filename for each entry mirrors the
+   * per-job CSV convention used by `/jobs/export-master`:
+   *   `{OTA}-{property}-{startDate}-{endDate}.xlsx`
+   *
+   * Retrievals that have no items are silently skipped (consistent with
+   * how jobs without items are skipped by `exportMasterCsv`).
+   */
+  async buildRetrievalExportEntries(
+    retrievalIds: string[],
+  ): Promise<Array<{ name: string; data: Buffer }>> {
+    try {
+      const unique = Array.from(new Set(retrievalIds ?? [])).filter(Boolean);
+      if (unique.length === 0) return [];
+
+      const grouped =
+        await this.repository.findRetrievalItemsByRetrievalIdsForExport(unique);
+
+      const usedNames = new Set<string>();
+      const entries: Array<{ name: string; data: Buffer }> = [];
+
+      // Preserve the caller-provided order so the export reflects the
+      // sort the user saw on the Reports page.
+      for (const retrievalId of unique) {
+        const items = grouped.get(retrievalId) ?? [];
+        if (items.length === 0) {
+          this.logger.warn(
+            `Retrieval ${retrievalId} has no items — skipping in export`,
+          );
+          continue;
+        }
+
+        const excelRows = await this.buildRetrievalExcelRowsForRetrieval(items);
+        if (excelRows.length === 0) continue;
+
+        const worksheet = XLSX.utils.json_to_sheet(excelRows);
+        applyExcelTextColumnFormat(
+          worksheet,
+          excelRows as ReadonlyArray<Record<string, unknown>>,
+          RETRIEVAL_EXPORT_CVV_COLUMN,
+        );
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Retrieval Items');
+        const buffer = XLSX.write(workbook, {
+          type: 'buffer',
+          bookType: 'xlsx',
+        });
+
+        const retrieval = items[0].retrieval as any;
+        const name = ensureUniqueFilename(
+          `${this.buildRetrievalFileBaseName(retrieval)}.xlsx`,
+          usedNames,
+        );
+        entries.push({ name, data: buffer });
+      }
+
+      return entries;
+    } catch (error) {
+      this.logger.error(
+        `Error building retrieval export entries: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  private buildRetrievalFileBaseName(retrieval: any): string {
+    const ota = sanitizeForFilename(
+      (retrieval?.ota_provider ?? '').toString() || 'OTA',
+    );
+    const property = sanitizeForFilename(
+      retrieval?.property_name ?? 'property',
+    );
+    const startDate = formatDateForFilename(retrieval?.start_date);
+    const endDate = formatDateForFilename(retrieval?.end_date);
+    return `${ota}-${property}-${startDate}-${endDate}`;
   }
 
   async exportRetrievalItemsToExcel(

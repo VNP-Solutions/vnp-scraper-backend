@@ -39,22 +39,27 @@ const jobDatesSchema = z
 
 export const searchReportsSchema = z
   .object({
-    // "Retrieve reports for" mode
-    search_mode: SearchModeEnum,
+    // OPTIONAL hint kept for backwards-compatibility with the original UI
+    // ("Retrieve reports for: Property / Portfolio" radio). The service
+    // no longer uses this for routing — it routes purely on the presence
+    // of `portfolio_id`, `property_ids`, and `search_term`. Sending it,
+    // omitting it, or sending either value is all valid; the result is
+    // identical for the same set of other filters.
+    search_mode: SearchModeEnum.optional().nullable(),
 
-    // Free-text search box.
-    // Property mode: matches Property.name (contains, case-insensitive) OR
-    //                exact match on Property.expedia_id / booking_id / agoda_id
-    //                when the value is purely numeric.
-    // Portfolio mode: same matching, but limited to properties under the
-    //                 selected portfolio.
+    // Free-text search box. Matches Property.name (contains, case-
+    // insensitive) OR exact match on Property.expedia_id / booking_id /
+    // agoda_id when the value is purely numeric. Independent of every
+    // other field — combine freely with portfolio_id / property_ids.
     search_term: z.string().trim().optional().nullable(),
 
-    // Required when search_mode === 'portfolio'.
+    // Optional portfolio scope. When set, the search is restricted to
+    // properties under this portfolio (∩ user access for non-admins).
+    // Independent of `property_ids` and `search_term` — combine freely.
     portfolio_id: objectIdSchema.optional().nullable(),
 
-    // Optional explicit property selection. Used to restrict the search to
-    // the given properties (e.g. user picked a subset under a portfolio).
+    // Optional explicit property selection. Independent of everything
+    // else; restricts the search to the given property IDs.
     property_ids: z.array(objectIdSchema).optional().default([]),
 
     // Advanced Filters
@@ -92,14 +97,29 @@ export const searchReportsSchema = z
     sortBy: ReportsSortByEnum.optional().default('updatedAt'),
     sortOrder: SortOrderEnum.optional().default('desc'),
   })
+  .strict();
+
+export type SearchReportsType = z.infer<typeof searchReportsSchema>;
+
+/**
+ * Body for POST /reports/export-master. Either `job_ids` or
+ * `retrieval_ids` must be non-empty (or both). The endpoint returns a
+ * single ZIP combining the per-job and per-retrieval XLSX files.
+ */
+export const exportReportsMasterSchema = z
+  .object({
+    job_ids: z.array(objectIdSchema).optional().default([]),
+    retrieval_ids: z.array(objectIdSchema).optional().default([]),
+  })
   .strict()
   .refine(
     (val) =>
-      !(val.search_mode === 'portfolio' && !val.portfolio_id),
+      (val.job_ids?.length ?? 0) > 0 || (val.retrieval_ids?.length ?? 0) > 0,
     {
-      message: 'portfolio_id is required when search_mode is "portfolio"',
-      path: ['portfolio_id'],
+      message:
+        'At least one of `job_ids` or `retrieval_ids` must contain one or more IDs',
+      path: ['job_ids'],
     },
   );
 
-export type SearchReportsType = z.infer<typeof searchReportsSchema>;
+export type ExportReportsMasterType = z.infer<typeof exportReportsMasterSchema>;
