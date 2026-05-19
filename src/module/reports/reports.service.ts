@@ -1,12 +1,43 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  buildHumanReadableTimestamp,
+  ensureUniqueFilename,
+  zipFiles,
+} from '../../common/utils/zip-and-filename.util';
+import { IJobService } from '../job/job.interface';
+import { IRetrievalService } from '../retrieval/retrieval.interface';
 import {
   IReportsRepository,
   IReportsService,
+  ReportsIdRow,
+  ReportsIdsSearchResult,
   ReportsRepositoryFilter,
   ReportsResultItem,
   ReportsSearchResult,
 } from './reports.interface';
-import type { SearchReportsType } from './reports.validation';
+import type {
+  ExportReportsMasterType,
+  SearchReportsType,
+} from './reports.validation';
+
+/**
+ * Outcome of the shared "resolve filters + access scope" pass. `null`
+ * means nothing can match (callers should short-circuit to an empty
+ * response); otherwise the returned object carries the repository
+ * filter + which collections to query.
+ */
+type ReportsSearchPlan = {
+  filter: ReportsRepositoryFilter;
+  wantsJobs: boolean;
+  wantsRetrievals: boolean;
+  needsPostDateFilter: boolean;
+} | null;
 
 /**
  * Strict admin role. Non-admins are scoped by UserFeatureAccessPermission.
@@ -44,6 +75,10 @@ export class ReportsService implements IReportsService {
   constructor(
     @Inject('IReportsRepository')
     private readonly repository: IReportsRepository,
+    @Inject('IJobService')
+    private readonly jobService: IJobService,
+    @Inject('IRetrievalService')
+    private readonly retrievalService: IRetrievalService,
     private readonly logger: Logger,
   ) {}
 
@@ -52,139 +87,10 @@ export class ReportsService implements IReportsService {
     user: { userId: string; role: string },
   ): Promise<ReportsSearchResult> {
     try {
-      const isAdmin = user?.role === ADMIN_ROLE;
+      const plan = await this.buildSearchPlan(body, user);
+      if (plan === null) return this.emptyResult(body);
 
-      // ---------- 1. User access scope (permissions for non-admin) ---------
-      let accessPropertyIds: string[] | null = null;
-      let accessPortfolioIds: string[] = [];
-      let accessSubPortfolioIds: string[] = [];
-      if (!isAdmin) {
-        const scope = await this.repository.getAccessScopeForUser(user.userId);
-        accessPropertyIds = scope.propertyIds;
-        accessPortfolioIds = scope.portfolioIds;
-        accessSubPortfolioIds = scope.subPortfolioIds;
-
-        // Non-admin with zero accessible properties / portfolios short-
-        // circuits to an empty result rather than running an expensive
-        // global query.
-        if (
-          accessPropertyIds.length === 0 &&
-          accessPortfolioIds.length === 0 &&
-          accessSubPortfolioIds.length === 0
-        ) {
-          return this.emptyResult(body);
-        }
-      }
-
-      // ---------- 2. Determine which collections to query ------------------
-      const jobTypes = body.job_types ?? [];
-      const wantsJobs =
-        jobTypes.length === 0 ||
-        jobTypes.includes('VCC') ||
-        jobTypes.includes('DB');
-      const wantsRetrievals =
-        jobTypes.length === 0 || jobTypes.includes('Retrieval');
-      const billingTypes = jobTypes.filter(
-        (t) => t === 'VCC' || t === 'DB',
-      ) as string[];
-
-      // ---------- 3. Resolve the property scope ----------------------------
-      // (portfolio mode → properties under selected portfolio, intersected
-      //  with user access; further restricted by search_term/property_ids).
-      let portfolioPropertyIds: string[] | null = null;
-      if (body.search_mode === 'portfolio' && body.portfolio_id) {
-        portfolioPropertyIds =
-          await this.repository.getPropertyIdsForPortfolio(body.portfolio_id);
-
-        // Non-admin user trying to read a portfolio they have no
-        // permission on → constrain to their own accessible IDs.
-        if (!isAdmin && accessPropertyIds) {
-          const accessSet = new Set(accessPropertyIds);
-          portfolioPropertyIds = portfolioPropertyIds.filter((id) =>
-            accessSet.has(id),
-          );
-        }
-
-        if (portfolioPropertyIds.length === 0) {
-          return this.emptyResult(body);
-        }
-      }
-
-      // Combine explicit property_ids + portfolio scope into the seed list
-      // we pass to the property text-search resolver.
-      const resolvedPropertyIds = await this.repository.resolveSearchPropertyIds(
-        {
-          searchTerm: body.search_term,
-          explicitPropertyIds: body.property_ids ?? [],
-          portfolioPropertyIds,
-        },
-      );
-
-      // resolvedPropertyIds === null  → no property-level constraint
-      // resolvedPropertyIds === []    → caller searched for something that
-      //                                  matched no properties (e.g. expedia
-      //                                  id that doesn't exist) → short
-      //                                  circuit to empty.
-      if (resolvedPropertyIds !== null && resolvedPropertyIds.length === 0) {
-        return this.emptyResult(body);
-      }
-
-      let finalPropertyScope: string[] | null = resolvedPropertyIds;
-
-      // Layer the user access permission on top (non-admin only). The
-      // property-id list is the most granular access vector; if both lists
-      // are present we intersect them.
-      if (!isAdmin && accessPropertyIds !== null && finalPropertyScope !== null) {
-        const access = new Set(accessPropertyIds);
-        finalPropertyScope = finalPropertyScope.filter((id) => access.has(id));
-        if (finalPropertyScope.length === 0) {
-          return this.emptyResult(body);
-        }
-      } else if (!isAdmin && finalPropertyScope === null) {
-        // No explicit property scope from the search; fall back to the
-        // user's accessible property IDs.
-        finalPropertyScope = accessPropertyIds;
-      }
-
-      // ---------- 4. Build the repository filter --------------------------
-      const filter: ReportsRepositoryFilter = {
-        propertyIdScope: finalPropertyScope,
-        portfolioScope: this.buildPortfolioScope(
-          body,
-          isAdmin,
-          accessPortfolioIds,
-          accessSubPortfolioIds,
-        ),
-        otaProviders: body.ota_providers ?? [],
-        jobStatuses: body.job_statuses ?? [],
-        executionTypes: this.resolveExecutionTypes(body.frequency_types ?? []),
-        batchIds: body.batch_ids ?? [],
-        runWithin: this.normalizeDateRange(
-          body.run_within?.from,
-          body.run_within?.to,
-        ),
-        startDate: this.normalizeDateRange(
-          body.job_dates?.start_date,
-          body.job_dates?.end_date,
-        ),
-        endDate: this.normalizeDateRange(
-          body.job_dates?.start_date,
-          body.job_dates?.end_date,
-        ),
-        includeArchived: body.include_archived ?? false,
-        cardOver160: this.resolveCardOver160(body.card_periods ?? []),
-        billingTypes,
-      };
-
-      // ---------- 5. Execute queries ---------------------------------------
-      // start_date / end_date are stored as MM/DD/YYYY strings, so when a
-      // job-dates filter is present we have to fetch all matching rows
-      // and post-filter in memory. Otherwise we use Prisma's count + a
-      // bounded take for an efficient merged pagination.
-      const needsPostDateFilter = !!(
-        body.job_dates &&
-        (body.job_dates.start_date || body.job_dates.end_date)
-      );
+      const { filter, wantsJobs, wantsRetrievals, needsPostDateFilter } = plan;
 
       const sortBy = body.sortBy ?? 'updatedAt';
       const sortOrder: 'asc' | 'desc' = body.sortOrder ?? 'desc';
@@ -269,6 +175,134 @@ export class ReportsService implements IReportsService {
     }
   }
 
+  /**
+   * Returns every matching job_id and retrieval_id for the given filter
+   * payload, ignoring pagination. Designed to feed the "Download All"
+   * action → frontend pipes `data.job_ids` straight into the existing
+   * `POST /jobs/export-master`.
+   */
+  async searchReportIds(
+    body: SearchReportsType,
+    user: { userId: string; role: string },
+  ): Promise<ReportsIdsSearchResult> {
+    try {
+      const plan = await this.buildSearchPlan(body, user);
+      if (plan === null) return this.emptyIdsResult();
+
+      const { filter, wantsJobs, wantsRetrievals, needsPostDateFilter } = plan;
+
+      // Sort still matters here — frontend may want the IDs ordered the
+      // same way as the visible list so the export CSVs come out in a
+      // predictable order.
+      const sortBy = body.sortBy ?? 'updatedAt';
+      const sortOrder: 'asc' | 'desc' = body.sortOrder ?? 'desc';
+
+      const [jobRows, retrievalRows] = await Promise.all([
+        wantsJobs
+          ? this.repository.findJobIds(filter, sortBy, sortOrder)
+          : Promise.resolve([] as ReportsIdRow[]),
+        wantsRetrievals
+          ? this.repository.findRetrievalIds(filter, sortBy, sortOrder)
+          : Promise.resolve([] as ReportsIdRow[]),
+      ]);
+
+      let filteredJobs = jobRows;
+      let filteredRetrievals = retrievalRows;
+
+      if (needsPostDateFilter) {
+        const from = parseFlexibleDate(body.job_dates?.start_date);
+        const to = parseFlexibleDate(body.job_dates?.end_date);
+        filteredJobs = jobRows.filter((row) =>
+          this.idRowOverlapsJobDateRange(row, from, to),
+        );
+        filteredRetrievals = retrievalRows.filter((row) =>
+          this.idRowOverlapsJobDateRange(row, from, to),
+        );
+      }
+
+      const job_ids = filteredJobs.map((r) => r.id);
+      const retrieval_ids = filteredRetrievals.map((r) => r.id);
+
+      return {
+        job_ids,
+        retrieval_ids,
+        metadata: {
+          totalJobs: job_ids.length,
+          totalRetrievals: retrieval_ids.length,
+          totalDocuments: job_ids.length + retrieval_ids.length,
+        },
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error fetching report IDs: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Combined Jobs + Retrievals "Download All" export. Produces a single
+   * ZIP containing one XLSX per job and one XLSX per retrieval, named
+   * `{OTA}-{property}-{startDate}-{endDate}.xlsx`.
+   */
+  async exportMaster(
+    body: ExportReportsMasterType,
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    try {
+      const jobIds = Array.from(new Set(body.job_ids ?? [])).filter(Boolean);
+      const retrievalIds = Array.from(new Set(body.retrieval_ids ?? [])).filter(
+        Boolean,
+      );
+
+      if (jobIds.length === 0 && retrievalIds.length === 0) {
+        throw new BadRequestException(
+          'At least one of `job_ids` or `retrieval_ids` must contain one or more IDs',
+        );
+      }
+
+      // Build the two sets of XLSX entries in parallel — both calls are
+      // I/O bound (Mongo + property/credentials lookups) and the two
+      // datasets don't share any state.
+      const [jobEntries, retrievalEntries] = await Promise.all([
+        jobIds.length > 0
+          ? this.jobService.buildMasterXlsxEntries(jobIds)
+          : Promise.resolve([] as Array<{ name: string; data: Buffer }>),
+        retrievalIds.length > 0
+          ? this.retrievalService.buildRetrievalExportEntries(retrievalIds)
+          : Promise.resolve([] as Array<{ name: string; data: Buffer }>),
+      ]);
+
+      // Merge while keeping filenames unique across the combined set —
+      // job and retrieval naming schemes overlap (both use
+      // `{OTA}-{property}-{startDate}-{endDate}.xlsx`), so a collision
+      // is plausible if a property has both a job and a retrieval over
+      // the same window.
+      const usedNames = new Set<string>();
+      const entries: Array<{ name: string; data: Buffer }> = [];
+      for (const entry of [...jobEntries, ...retrievalEntries]) {
+        const name = ensureUniqueFilename(entry.name, usedNames);
+        entries.push({ name, data: entry.data });
+      }
+
+      if (entries.length === 0) {
+        throw new NotFoundException(
+          'No exportable content found for the provided IDs (jobs / retrievals had no items, or all IDs were invalid).',
+        );
+      }
+
+      const buffer = await zipFiles(entries);
+      const fileName = `reports-export-${buildHumanReadableTimestamp()}.zip`;
+      return { buffer, fileName };
+    } catch (error) {
+      this.logger.error(
+        `Error exporting reports master ZIP: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
   private emptyResult(body: SearchReportsType): ReportsSearchResult {
     const page = body.page ?? 1;
     const limit = body.limit ?? 10;
@@ -283,6 +317,163 @@ export class ReportsService implements IReportsService {
         limit,
       },
     };
+  }
+
+  private emptyIdsResult(): ReportsIdsSearchResult {
+    return {
+      job_ids: [],
+      retrieval_ids: [],
+      metadata: { totalJobs: 0, totalRetrievals: 0, totalDocuments: 0 },
+    };
+  }
+
+  /**
+   * Shared filter-and-scope resolution used by both `searchReports` and
+   * `searchReportIds`. Returns `null` when the request can never match
+   * anything (e.g. non-admin with no permissions, or a search term that
+   * resolved to zero properties) so callers can short-circuit.
+   */
+  private async buildSearchPlan(
+    body: SearchReportsType,
+    user: { userId: string; role: string },
+  ): Promise<ReportsSearchPlan> {
+    const isAdmin = user?.role === ADMIN_ROLE;
+
+    // ---------- 1. User access scope (permissions for non-admin) ---------
+    let accessPropertyIds: string[] | null = null;
+    let accessPortfolioIds: string[] = [];
+    let accessSubPortfolioIds: string[] = [];
+    if (!isAdmin) {
+      const scope = await this.repository.getAccessScopeForUser(user.userId);
+      accessPropertyIds = scope.propertyIds;
+      accessPortfolioIds = scope.portfolioIds;
+      accessSubPortfolioIds = scope.subPortfolioIds;
+
+      if (
+        accessPropertyIds.length === 0 &&
+        accessPortfolioIds.length === 0 &&
+        accessSubPortfolioIds.length === 0
+      ) {
+        return null;
+      }
+    }
+
+    // ---------- 2. Determine which collections to query ------------------
+    const jobTypes = body.job_types ?? [];
+    const wantsJobs =
+      jobTypes.length === 0 ||
+      jobTypes.includes('VCC') ||
+      jobTypes.includes('DB');
+    const wantsRetrievals =
+      jobTypes.length === 0 || jobTypes.includes('Retrieval');
+    const billingTypes = jobTypes.filter(
+      (t) => t === 'VCC' || t === 'DB',
+    ) as string[];
+
+    // ---------- 3. Resolve the property scope ----------------------------
+    // Route purely on the presence of `portfolio_id`. `search_mode` is
+    // accepted for backwards-compatibility but no longer affects routing —
+    // sending `portfolio_id` (with or without `search_mode`) always scopes
+    // by portfolio, and omitting it always means "all properties the user
+    // can see".
+    let portfolioPropertyIds: string[] | null = null;
+    if (body.portfolio_id) {
+      portfolioPropertyIds = await this.repository.getPropertyIdsForPortfolio(
+        body.portfolio_id,
+      );
+
+      if (!isAdmin && accessPropertyIds) {
+        const accessSet = new Set(accessPropertyIds);
+        portfolioPropertyIds = portfolioPropertyIds.filter((id) =>
+          accessSet.has(id),
+        );
+      }
+
+      if (portfolioPropertyIds.length === 0) {
+        return null;
+      }
+    }
+
+    const resolvedPropertyIds = await this.repository.resolveSearchPropertyIds(
+      {
+        searchTerm: body.search_term,
+        explicitPropertyIds: body.property_ids ?? [],
+        portfolioPropertyIds,
+      },
+    );
+
+    if (resolvedPropertyIds !== null && resolvedPropertyIds.length === 0) {
+      return null;
+    }
+
+    let finalPropertyScope: string[] | null = resolvedPropertyIds;
+
+    if (!isAdmin && accessPropertyIds !== null && finalPropertyScope !== null) {
+      const access = new Set(accessPropertyIds);
+      finalPropertyScope = finalPropertyScope.filter((id) => access.has(id));
+      if (finalPropertyScope.length === 0) return null;
+    } else if (!isAdmin && finalPropertyScope === null) {
+      finalPropertyScope = accessPropertyIds;
+    }
+
+    // ---------- 4. Build the repository filter --------------------------
+    const filter: ReportsRepositoryFilter = {
+      propertyIdScope: finalPropertyScope,
+      portfolioScope: this.buildPortfolioScope(
+        body,
+        isAdmin,
+        accessPortfolioIds,
+        accessSubPortfolioIds,
+      ),
+      otaProviders: body.ota_providers ?? [],
+      jobStatuses: body.job_statuses ?? [],
+      executionTypes: this.resolveExecutionTypes(body.frequency_types ?? []),
+      batchIds: body.batch_ids ?? [],
+      runWithin: this.normalizeDateRange(
+        body.run_within?.from,
+        body.run_within?.to,
+      ),
+      startDate: this.normalizeDateRange(
+        body.job_dates?.start_date,
+        body.job_dates?.end_date,
+      ),
+      endDate: this.normalizeDateRange(
+        body.job_dates?.start_date,
+        body.job_dates?.end_date,
+      ),
+      includeArchived: body.include_archived ?? false,
+      cardOver160: this.resolveCardOver160(body.card_periods ?? []),
+      billingTypes,
+    };
+
+    const needsPostDateFilter = !!(
+      body.job_dates &&
+      (body.job_dates.start_date || body.job_dates.end_date)
+    );
+
+    return {
+      filter,
+      wantsJobs,
+      wantsRetrievals,
+      needsPostDateFilter,
+    };
+  }
+
+  /** Variant of `rowOverlapsJobDateRange` that works on the id-only row shape. */
+  private idRowOverlapsJobDateRange(
+    row: ReportsIdRow,
+    from: Date | null,
+    to: Date | null,
+  ): boolean {
+    if (!from && !to) return true;
+    const rowStart = parseFlexibleDate(row.start_date ?? null);
+    const rowEnd = parseFlexibleDate(row.end_date ?? null) ?? rowStart;
+    if (!rowStart && !rowEnd) return false;
+    const effectiveStart = rowStart ?? rowEnd!;
+    const effectiveEnd = rowEnd ?? rowStart!;
+    if (from && effectiveEnd < from) return false;
+    if (to && effectiveStart > to) return false;
+    return true;
   }
 
   private buildPortfolioScope(

@@ -25,6 +25,7 @@ import type { JobListItem } from './job-list.types';
 import {
   MASTER_EXPORT_HEADER,
   buildMasterRows,
+  buildMasterXlsxBuffer,
 } from './master-export.util';
 import { triggerLambda } from '../../helpers/lambdaHelper';
 
@@ -1006,6 +1007,53 @@ export class JobService implements IJobService {
     } catch (error) {
       this.logger.error(
         `Error exporting master CSV zip: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Same source data + filename rules as `exportMasterCsv`, but produces
+   * an XLSX buffer per job instead of CSV and returns the individual
+   * entries without zipping them. Reports' combined export endpoint uses
+   * this so it can mix job XLSXs with retrieval XLSXs in a single ZIP.
+   */
+  async buildMasterXlsxEntries(
+    jobIds: string[],
+  ): Promise<Array<{ name: string; data: Buffer }>> {
+    try {
+      const uniqueJobIds = Array.from(new Set(jobIds ?? []));
+      if (uniqueJobIds.length === 0) return [];
+
+      const jobs = await this.repository.findManyForMasterExport(uniqueJobIds);
+      if (!jobs || jobs.length === 0) return [];
+
+      const foundIds = new Set(jobs.map((j: any) => j.id));
+      const missingIds = uniqueJobIds.filter((id) => !foundIds.has(id));
+      if (missingIds.length > 0) {
+        this.logger.warn(
+          `Master XLSX entries: ${missingIds.length} job ID(s) not found and will be skipped: ${missingIds.join(', ')}`,
+        );
+      }
+
+      const usedNames = new Set<string>();
+      const entries: Array<{ name: string; data: Buffer }> = [];
+      for (const job of jobs) {
+        const { rows } = buildMasterRows([job]);
+        if (rows.length === 0) continue;
+
+        const xlsxBuffer = buildMasterXlsxBuffer([job]);
+        const xlsxName = this.ensureUniqueFilename(
+          `${this.buildJobCsvBaseName(job)}.xlsx`,
+          usedNames,
+        );
+        entries.push({ name: xlsxName, data: xlsxBuffer });
+      }
+      return entries;
+    } catch (error) {
+      this.logger.error(
+        `Error building master XLSX entries: ${error.message}`,
         error.stack,
       );
       throw error;

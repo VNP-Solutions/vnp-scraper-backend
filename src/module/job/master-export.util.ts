@@ -1,4 +1,6 @@
 import { OTAProvider, PostingType } from '@prisma/client';
+import * as XLSX from 'xlsx';
+import { applyExcelTextColumnFormat } from '../../common/utils/excel-text-column.util';
 import { computeDerivedJobItemFields } from './job-item-derived.util';
 
 /**
@@ -398,4 +400,53 @@ export function buildMasterRows(jobs: any[]): {
     }
   }
   return { headers, rows };
+}
+
+/**
+ * Reverses {@link asExcelText}: if the value looks like `="..."` (Excel
+ * text-formula wrapper used by the CSV export), returns the inner string
+ * without quotes. Otherwise returns the value unchanged. Used by the
+ * XLSX export path so the wrapper trick doesn't leak into the cell.
+ */
+function unwrapExcelTextValue(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  const m = value.match(/^="(.*)"$/s);
+  if (!m) return value;
+  return m[1].replace(/""/g, '"');
+}
+
+/**
+ * Build an XLSX buffer from the same master rows that {@link buildMasterRows}
+ * produces for the CSV path. Card Number / Expiry date / CVV columns are
+ * forced to Excel "Text" format so leading zeros and long digit strings are
+ * preserved instead of being mangled into scientific notation.
+ *
+ * The headers / column order are guaranteed to match the per-job CSV byte
+ * for byte (modulo CSV-specific quoting), so downstream consumers can use
+ * either CSV or XLSX interchangeably.
+ */
+export function buildMasterXlsxBuffer(jobs: any[]): Buffer {
+  const { headers, rows } = buildMasterRows(jobs);
+
+  // Unwrap the `="..."` Excel-text trick on the way out — XLSX cells are
+  // typed, so we don't need the CSV hack. We instead opt into Excel's
+  // built-in Text format via applyExcelTextColumnFormat() below.
+  const xlsxRows: Record<string, unknown>[] = rows.map((row) => {
+    const next: Record<string, unknown> = {};
+    for (const header of headers) {
+      next[header] = unwrapExcelTextValue((row as any)[header]);
+    }
+    return next;
+  });
+
+  const worksheet = XLSX.utils.json_to_sheet(xlsxRows, { header: headers });
+  // Force the card-related columns to text so Excel doesn't reformat them.
+  // Header strings here MUST match the labels in MASTER_EXPORT_HEADER.
+  applyExcelTextColumnFormat(worksheet, xlsxRows, 'Card Number');
+  applyExcelTextColumnFormat(worksheet, xlsxRows, 'Expiry date');
+  applyExcelTextColumnFormat(worksheet, xlsxRows, 'CVV');
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Master');
+  return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 }

@@ -26,6 +26,9 @@ export interface IRetrievalService {
     retrievalItemsCount: number;
   }>;
   exportRetrievalItemsToExcel(parentRetrievalId: string): Promise<Buffer>;
+  buildRetrievalExportEntries(
+    retrievalIds: string[],
+  ): Promise<Array<{ name: string; data: Buffer }>>;
   createParentRetrieval(
     data: CreateParentRetrievalDto,
   ): Promise<ParentRetrieval>;
@@ -98,6 +101,9 @@ export interface IRetrievalRepository {
   findRetrievalItemsByParentRetrievalIdForExport(
     parentRetrievalId: string,
   ): Promise<(RetrievalItem & { retrieval: Retrieval })[]>;
+  findRetrievalItemsByRetrievalIdsForExport(
+    retrievalIds: string[],
+  ): Promise<Map<string, (RetrievalItem & { retrieval: Retrieval })[]>>;
   findRetrievalItemsByRetrievalId(
     retrievalId: string,
     query: Record<string, any>,

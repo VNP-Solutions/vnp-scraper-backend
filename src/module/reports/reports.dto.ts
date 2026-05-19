@@ -32,31 +32,42 @@ export class ReportsJobDatesDto {
 }
 
 export class SearchReportsRequestDto {
-  @ApiProperty({
+  @ApiPropertyOptional({
     enum: ['property', 'portfolio'],
     description:
-      '"Retrieve reports for" selector. `portfolio` requires `portfolio_id`; `property` allows free-text search across all properties.',
+      'OPTIONAL hint kept for backwards-compatibility with the original ' +
+      '"Retrieve reports for: Property / Portfolio" radio. The backend ' +
+      'no longer uses this for routing — it routes purely on the presence ' +
+      'of `portfolio_id`, `property_ids`, and `search_term`. Sending it, ' +
+      'omitting it, or sending either value produces the same result for ' +
+      'the same set of other filters.',
     example: 'portfolio',
   })
-  search_mode: 'property' | 'portfolio';
+  search_mode?: 'property' | 'portfolio' | null;
 
   @ApiPropertyOptional({
     description:
-      'Free-text search. Matches Property.name (contains, case-insensitive). If the term is numeric it also matches Property.expedia_id / booking_id / agoda_id exactly.',
+      'Free-text search. Matches Property.name (contains, case-insensitive). ' +
+      'If the term is numeric it also matches Property.expedia_id / ' +
+      'booking_id / agoda_id exactly. Independent of every other field — ' +
+      'combine freely with `portfolio_id` / `property_ids`.',
     example: '12345',
   })
   search_term?: string | null;
 
   @ApiPropertyOptional({
     description:
-      'Portfolio ObjectId. Required when search_mode is "portfolio".',
+      'Optional portfolio ObjectId. When set, the search is scoped to ' +
+      'properties under this portfolio (∩ user access for non-admins). ' +
+      'Independent of `property_ids` and `search_term` — combine freely.',
     example: '65f0a3c4e2b7a1d2c3e4f5a6',
   })
   portfolio_id?: string | null;
 
   @ApiPropertyOptional({
     description:
-      'Optional explicit set of property ObjectIds to limit the search to (e.g. user picked a subset under a portfolio).',
+      'Optional explicit set of property ObjectIds. Independent of ' +
+      '`portfolio_id` and `search_term` — combine freely.',
     type: [String],
     example: ['65f0a3c4e2b7a1d2c3e4f5a6'],
   })
@@ -296,4 +307,72 @@ export class SearchReportsResponseDto {
 
   @ApiProperty({ type: ReportsResponseMetadataDto })
   metadata: ReportsResponseMetadataDto;
+}
+
+export class SearchReportIdsDataDto {
+  @ApiProperty({
+    type: [String],
+    description: 'All matching Job IDs (feed into POST /jobs/export-master).',
+    example: ['65f0a3c4e2b7a1d2c3e4f5a6', '65f0a3c4e2b7a1d2c3e4f5a7'],
+  })
+  job_ids: string[];
+
+  @ApiProperty({
+    type: [String],
+    description:
+      'All matching Retrieval IDs. Currently informational — there is no ' +
+      'bulk retrieval-export endpoint yet; included so the frontend can ' +
+      'show "X retrievals will be excluded" and reuse the same payload ' +
+      'when bulk retrieval export ships.',
+    example: ['65f0a3c4e2b7a1d2c3e4f5b3'],
+  })
+  retrieval_ids: string[];
+}
+
+export class SearchReportIdsMetadataDto {
+  @ApiProperty({ example: 47 })
+  totalDocuments: number;
+
+  @ApiProperty({ example: 41 })
+  totalJobs: number;
+
+  @ApiProperty({ example: 6 })
+  totalRetrievals: number;
+}
+
+export class SearchReportIdsResponseDto {
+  @ApiProperty({ example: 200 })
+  statusCode: number;
+
+  @ApiProperty({ example: 'Matching report IDs retrieved successfully' })
+  message: string;
+
+  @ApiProperty({ type: SearchReportIdsDataDto })
+  data: SearchReportIdsDataDto;
+
+  @ApiProperty({ type: SearchReportIdsMetadataDto })
+  metadata: SearchReportIdsMetadataDto;
+}
+
+export class ExportReportsMasterRequestDto {
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      'Job IDs to include in the export. Each becomes one XLSX file ' +
+      'inside the ZIP, named `{OTA}-{property}-{startDate}-{endDate}.xlsx`. ' +
+      'Either this OR `retrieval_ids` (or both) must be non-empty.',
+    example: ['65f0a3c4e2b7a1d2c3e4f5a6', '65f0a3c4e2b7a1d2c3e4f5a7'],
+  })
+  job_ids?: string[];
+
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      'Retrieval IDs to include in the export. Each becomes one XLSX file ' +
+      'inside the ZIP containing that Retrieval\'s items, named the same ' +
+      'way as job entries. Either this OR `job_ids` (or both) must be ' +
+      'non-empty.',
+    example: ['65f0a3c4e2b7a1d2c3e4f5b3'],
+  })
+  retrieval_ids?: string[];
 }

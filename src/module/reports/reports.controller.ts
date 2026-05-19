@@ -20,11 +20,15 @@ import { ValidateBody } from 'src/common/decorators/validate.decorator';
 import { ResponseHandler } from 'src/common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
+  ExportReportsMasterRequestDto,
+  SearchReportIdsResponseDto,
   SearchReportsRequestDto,
   SearchReportsResponseDto,
 } from './reports.dto';
 import { IReportsService } from './reports.interface';
 import {
+  exportReportsMasterSchema,
+  type ExportReportsMasterType,
   searchReportsSchema,
   type SearchReportsType,
 } from './reports.validation';
@@ -45,25 +49,77 @@ export class ReportsController {
   @ApiOperation({
     summary: 'Search Parser Global Reports (jobs + retrievals)',
     description:
-      'Unified search for the Parser Global Reports screen. Returns a single ' +
-      'merged paginated list combining Jobs (VCC / DB) and Retrievals filtered ' +
-      'by:\n' +
-      '- `search_mode` + `search_term` + `portfolio_id` + `property_ids` (the ' +
-      '  "Retrieve reports for" selector)\n' +
-      '- `ota_providers` (Expedia / Booking / Agoda)\n' +
-      '- `job_types` (VCC / DB → Job collection by `billing_type`; Retrieval → ' +
-      '  the Retrieval collection)\n' +
+      'Unified search for the Parser Global Reports screen. Returns a ' +
+      'single merged paginated list combining Jobs (VCC / DB) and ' +
+      'Retrievals.\n\n' +
+      '### All fields are optional and independent\n' +
+      'You can send `{}` to get every job/retrieval the caller can see, ' +
+      'or mix any subset of these filters freely (none of them depend on ' +
+      'any of the others):\n' +
+      '- `search_term` — Property.name (case-insensitive contains) or ' +
+      '  numeric exact match on Property.expedia_id / booking_id / agoda_id\n' +
+      '- `portfolio_id` — scope to properties under one portfolio\n' +
+      '- `property_ids` — restrict to an explicit list of properties\n' +
+      '- `ota_providers` — Expedia / Booking / Agoda\n' +
+      '- `job_types` — VCC / DB → Job collection by `billing_type`; ' +
+      '  Retrieval → the Retrieval collection\n' +
       '- `run_within` → `updatedAt` range\n' +
       '- `job_statuses`, `frequency_types`, `card_periods` (Job-only), ' +
-      '`batch_ids`\n' +
+      '  `batch_ids`\n' +
       '- `job_dates` → Job/Retrieval `start_date` / `end_date` overlap\n' +
       '- `include_archived`\n\n' +
+      '`search_mode` (`property` / `portfolio`) is accepted for backwards ' +
+      'compatibility with the original UI radio but is no longer used for ' +
+      'routing — the backend routes purely on whether `portfolio_id` is ' +
+      'set. Send it, omit it, or send either value — the result is the ' +
+      'same for the same set of other filters.\n\n' +
       'Non-admin users are automatically scoped to their ' +
       '`UserFeatureAccessPermission` entries.',
   })
   @ApiBody({
     type: SearchReportsRequestDto,
     examples: {
+      // ───────────────────── No-mode / minimal payloads ────────────────────
+      a00_empty: {
+        summary:
+          '00) Empty body {} — every job/retrieval the user can see',
+        description:
+          'All filter fields are optional. With an empty body the endpoint ' +
+          'returns every job and retrieval the caller has permission to ' +
+          'view (admin → all; non-admin → only items inside their ' +
+          'UserFeatureAccessPermission scope).',
+        value: {},
+      },
+      a00b_search_only: {
+        summary:
+          '00b) Just a search term — no search_mode, no portfolio',
+        description:
+          'Demonstrates that fields are now independent. No `search_mode` ' +
+          'needed; the endpoint searches Property.name (and numeric ' +
+          'matches on expedia/booking/agoda IDs) across everything the ' +
+          'caller can see.',
+        value: { search_term: 'Moxy' },
+      },
+      a00c_portfolio_only: {
+        summary:
+          '00c) Just a portfolio_id — no search_mode required',
+        description:
+          'Sending `portfolio_id` alone scopes the search to that ' +
+          'portfolio. `search_mode` is no longer required (or used) for ' +
+          'this behaviour.',
+        value: { portfolio_id: '65f0a3c4e2b7a1d2c3e4f5a6' },
+      },
+      a00d_portfolio_plus_search: {
+        summary:
+          '00d) portfolio_id + search_term combined (independent)',
+        description:
+          'Both fields are honoured independently — the term is matched ' +
+          'against properties under the portfolio.',
+        value: {
+          portfolio_id: '65f0a3c4e2b7a1d2c3e4f5a6',
+          search_term: 'Moxy',
+        },
+      },
       // ─────────────────────────── Search basics ───────────────────────────
       a01_minimal_property: {
         summary: '01) Minimal — Property mode, no filters',
@@ -636,5 +692,354 @@ export class ReportsController {
       },
       this.logger,
     );
+  }
+
+  @Post('/global/ids')
+  @UseGuards(JwtAuthGuard)
+  @ValidateBody(searchReportsSchema)
+  @ApiOperation({
+    summary:
+      'List ALL matching job_ids + retrieval_ids (for "Download All" → /jobs/export-master)',
+    description:
+      'Accepts the **same body shape** as `POST /reports/global` (every ' +
+      'filter behaves identically), but ignores pagination and returns the ' +
+      'complete set of matching IDs.\n\n' +
+      'Intended flow for the Reports → "Download as Zip" → "Download All" action:\n' +
+      '  1. Frontend POSTs the current filter payload here.\n' +
+      '  2. Backend returns `{ data: { job_ids, retrieval_ids }, metadata }`.\n' +
+      '  3. Frontend takes `data.job_ids` and POSTs it to ' +
+      '`/jobs/export-master` (`{ job_ids: [...] }`) which streams a ZIP.\n\n' +
+      '`retrieval_ids` is also returned for forward-compat; there is no ' +
+      'bulk retrieval-export endpoint today, but the frontend can use the ' +
+      'count to inform the user (e.g. "41 jobs and 6 retrievals match — ' +
+      'only the 41 jobs will be exported to the ZIP").\n\n' +
+      'Pagination/sort fields (`page`, `limit`, `sortBy`, `sortOrder`) are ' +
+      'accepted (so the frontend can resend the exact same payload) — ' +
+      '`page` and `limit` are ignored; `sortBy` / `sortOrder` still control ' +
+      'the order of the returned ID arrays so the export reflects the ' +
+      'same ordering the user sees on screen.\n\n' +
+      'Non-admin users are scoped to their `UserFeatureAccessPermission` ' +
+      'entries — they can never receive IDs they could not see via ' +
+      '`POST /reports/global`.',
+  })
+  @ApiBody({
+    type: SearchReportsRequestDto,
+    examples: {
+      ids_minimal: {
+        summary: '01) Minimal — every job/retrieval the user can see',
+        description:
+          'Returns ALL matching IDs the caller has access to. Equivalent ' +
+          'to running `/reports/global` with no filters and no pagination.',
+        value: { search_mode: 'property' },
+      },
+      ids_property_term: {
+        summary: '02) Property mode — filtered by property name',
+        description:
+          'Same payload as a paginated search; pagination fields are ' +
+          'simply ignored here.',
+        value: {
+          search_mode: 'property',
+          search_term: 'Moxy',
+          page: 1,
+          limit: 10,
+        },
+      },
+      ids_portfolio_all: {
+        summary: '03) Portfolio mode — every job under a portfolio',
+        value: {
+          search_mode: 'portfolio',
+          portfolio_id: '65f0a3c4e2b7a1d2c3e4f5b1',
+        },
+      },
+      ids_only_jobs: {
+        summary: '04) Only Jobs (VCC + DB) — no retrievals',
+        description:
+          'When you only intend to call `/jobs/export-master` you can ' +
+          'restrict to Job collection up front. Same as the Reports page ' +
+          'filtering "Job Types" to VCC + DB.',
+        value: {
+          search_mode: 'property',
+          job_types: ['VCC', 'DB'],
+        },
+      },
+      ids_with_status_and_dates: {
+        summary: '05) Failed jobs in a date window',
+        description:
+          'Real-world "download all failures from Feb 2026" use case. ' +
+          'Combines `job_statuses`, `job_dates` (post-filtered against ' +
+          'MM/DD/YYYY strings) and the default OTA list.',
+        value: {
+          search_mode: 'property',
+          job_statuses: ['Failed'],
+          job_dates: {
+            start_date: '02/01/2026',
+            end_date: '02/28/2026',
+          },
+        },
+      },
+      ids_batch: {
+        summary: '06) Single batch — export everything in that batch',
+        value: {
+          search_mode: 'property',
+          batch_ids: ['65f0a3c4e2b7a1d2c3e4f5c1'],
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Matching IDs retrieved successfully',
+    type: SearchReportIdsResponseDto,
+    schema: {
+      example: {
+        statusCode: 200,
+        message: 'Matching report IDs retrieved successfully',
+        data: {
+          job_ids: [
+            '65f0a3c4e2b7a1d2c3e4f5a6',
+            '65f0a3c4e2b7a1d2c3e4f5a7',
+            '65f0a3c4e2b7a1d2c3e4f5a8',
+          ],
+          retrieval_ids: ['65f0a3c4e2b7a1d2c3e4f5b3'],
+        },
+        metadata: {
+          totalJobs: 41,
+          totalRetrievals: 6,
+          totalDocuments: 47,
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation failed',
+    schema: {
+      example: {
+        statusCode: 400,
+        message: 'Validation failed',
+        errors: [
+          {
+            field: 'portfolio_id',
+            message: 'portfolio_id is required when search_mode is "portfolio"',
+          },
+        ],
+      },
+    },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Valid JWT token required',
+    schema: {
+      example: { statusCode: 401, message: 'Unauthorized', data: null },
+    },
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error',
+    schema: {
+      example: {
+        statusCode: 500,
+        message: 'Unexpected error while fetching report IDs',
+        data: null,
+      },
+    },
+  })
+  async searchReportIds(
+    @Req() request: any,
+    @Body() body: SearchReportsType,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const user = request.user;
+        if (!user) {
+          return {
+            statusCode: 401,
+            message: 'User not authenticated',
+            data: null,
+          };
+        }
+
+        const result = await this.reportsService.searchReportIds(body, {
+          userId: user.userId,
+          role: user.role,
+        });
+
+        return {
+          statusCode: 200,
+          message: 'Matching report IDs retrieved successfully',
+          data: {
+            job_ids: result.job_ids,
+            retrieval_ids: result.retrieval_ids,
+          },
+          metadata: result.metadata,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Post('/export-master')
+  @UseGuards(JwtAuthGuard)
+  @ValidateBody(exportReportsMasterSchema)
+  @ApiOperation({
+    summary:
+      'Download as ZIP — combined Jobs + Retrievals master export (XLSX per item)',
+    description:
+      'Accepts an array of `job_ids` and/or `retrieval_ids` and returns a ' +
+      'single ZIP file containing one XLSX per ID:\n\n' +
+      '- **Per job** — same columns and per-OTA logic as ' +
+      '  `POST /jobs/export-master`, but rendered as XLSX with Card Number / ' +
+      '  Expiry date / CVV columns forced to Excel "Text" format so leading ' +
+      '  zeros and long digit strings are preserved.\n' +
+      '- **Per retrieval** — one XLSX containing that Retrieval\'s items, ' +
+      '  same columns as `GET /retrieval/export/:parentRetrievalId` but ' +
+      '  scoped to a single Retrieval instead of the parent.\n\n' +
+      'At least one of `job_ids` or `retrieval_ids` must be non-empty. ' +
+      'Either can be omitted or empty — the endpoint just skips that side.\n\n' +
+      'Inside the ZIP each file is named ' +
+      '`{OTA}-{property}-{startDate}-{endDate}.xlsx`. Collisions (e.g. a ' +
+      'property that has both a job and a retrieval over the same window) ' +
+      'are disambiguated with a `-2`, `-3` suffix so nothing gets ' +
+      'overwritten.\n\n' +
+      'The ZIP itself is named ' +
+      '`reports-export-{D Month YYYY-HH.MM AM/PM}.zip`. A dot is used ' +
+      'instead of `:` so the filename is valid on every OS.\n\n' +
+      '**Recommended frontend flow ("Download All"):**\n' +
+      '1. `POST /reports/global/ids` with the current Reports filter payload → ' +
+      '   `{ job_ids, retrieval_ids }`.\n' +
+      '2. `POST /reports/export-master` with that same payload → ZIP downloads.',
+  })
+  @ApiBody({
+    type: ExportReportsMasterRequestDto,
+    examples: {
+      both: {
+        summary: '01) Mixed — jobs + retrievals in one ZIP',
+        description:
+          'Typical "Download All" payload after a `/reports/global/ids` call.',
+        value: {
+          job_ids: [
+            '65f0a3c4e2b7a1d2c3e4f5a6',
+            '65f0a3c4e2b7a1d2c3e4f5a7',
+          ],
+          retrieval_ids: ['65f0a3c4e2b7a1d2c3e4f5b3'],
+        },
+      },
+      jobs_only: {
+        summary: '02) Jobs only',
+        description:
+          'Equivalent to `POST /jobs/export-master` but the resulting ZIP ' +
+          'contains XLSX files instead of CSV.',
+        value: {
+          job_ids: ['65f0a3c4e2b7a1d2c3e4f5a6'],
+        },
+      },
+      retrievals_only: {
+        summary: '03) Retrievals only',
+        description:
+          'Useful when the user filtered the Reports page to Retrieval ' +
+          'rows only.',
+        value: {
+          retrieval_ids: [
+            '65f0a3c4e2b7a1d2c3e4f5b3',
+            '65f0a3c4e2b7a1d2c3e4f5b4',
+          ],
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'ZIP file. Response Content-Type is `application/zip` and ' +
+      '`Content-Disposition` carries the suggested filename.',
+    content: { 'application/zip': {} },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation failed (both arrays empty, or malformed IDs)',
+    schema: {
+      example: {
+        statusCode: 400,
+        message: 'Validation failed',
+        errors: [
+          {
+            field: 'job_ids',
+            message:
+              'At least one of `job_ids` or `retrieval_ids` must contain one or more IDs',
+          },
+        ],
+      },
+    },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Valid JWT token required',
+    schema: {
+      example: { statusCode: 401, message: 'Unauthorized', data: null },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description:
+      'No exportable content for the provided IDs (jobs/retrievals exist but ' +
+      'have no items, or every ID was missing).',
+    schema: {
+      example: {
+        statusCode: 404,
+        message: 'No exportable content found for the provided IDs',
+        data: null,
+      },
+    },
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error',
+    schema: {
+      example: {
+        statusCode: 500,
+        message: 'Unexpected error while exporting reports',
+        data: null,
+      },
+    },
+  })
+  async exportReportsMaster(
+    @Req() request: any,
+    @Body() body: ExportReportsMasterType,
+    @Res() response: Response,
+  ) {
+    try {
+      if (!request.user) {
+        response.status(401).json({
+          statusCode: 401,
+          message: 'User not authenticated',
+          data: null,
+        });
+        return;
+      }
+
+      const { buffer, fileName } = await this.reportsService.exportMaster(body);
+
+      response.setHeader('Content-Type', 'application/zip');
+      response.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${fileName}"`,
+      );
+      response.setHeader('Content-Length', buffer.length);
+      response.send(buffer);
+    } catch (error) {
+      this.logger.error(
+        `Error in POST /reports/export-master: ${error.message}`,
+        error.stack,
+      );
+      const status =
+        typeof error?.getStatus === 'function' ? error.getStatus() : 500;
+      response.status(status).json({
+        statusCode: status,
+        message: error?.message ?? 'Unexpected error while exporting reports',
+        data: null,
+      });
+    }
   }
 }
