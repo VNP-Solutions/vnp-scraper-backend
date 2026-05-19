@@ -21,6 +21,7 @@ import { PortfolioModule } from './module/portfolio/portfolio.module';
 import { PropertyCredentialsModule } from './module/property-credentials/property-credentials.module';
 import { PropertyModule } from './module/property/property.module';
 import { RecurringJobModule } from './module/recurring-job/recurring-job.module';
+import { ReportsModule } from './module/reports/reports.module';
 import { RetrievalModule } from './module/retrieval/retrieval.module';
 import { ScraperModule } from './module/scraper/scraper.module';
 import { ServerModule } from './module/server/server.module';
@@ -57,6 +58,7 @@ import { UserModule } from './module/user/user.module';
     OtpStatusModule,
     PhoneNumberSlotModule,
     RetrievalModule,
+    ReportsModule,
     DbDataModule,
     NotificationModule,
     GoogleOAuthModule,
