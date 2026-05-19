@@ -151,6 +151,15 @@ export interface IJobService {
   buildMasterXlsxEntries(
     jobIds: string[],
   ): Promise<Array<{ name: string; data: Buffer }>>;
+  /**
+   * Consolidated export — every (job, jobItem) row from the given
+   * jobIds rendered into ONE XLSX workbook (single "Master" sheet),
+   * using the exact same headers / per-OTA logic as the per-job CSV.
+   * Returns a single buffer ready to stream as the response body.
+   */
+  buildConsolidatedMasterXlsx(
+    jobIds: string[],
+  ): Promise<{ buffer: Buffer; fileName: string }>;
   exportSingleJobMasterCsv(
     jobId: string,
   ): Promise<{ buffer: Buffer; fileName: string }>;

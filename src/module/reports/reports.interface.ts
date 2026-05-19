@@ -14,10 +14,9 @@ export type ReportsAccessScope =
     };
 
 /**
- * Filter the repository layer applies against either the Job or the
- * Retrieval collection. Built once in the service so both collections
- * see the exact same shape and the service layer keeps DB knowledge
- * out of the controller.
+ * Filter the repository layer applies against the Job collection. Built
+ * once in the service so the controller stays free of DB knowledge.
+ * (Was previously shared with Retrievals — that path is gone.)
  */
 export interface ReportsRepositoryFilter {
   /**
@@ -56,7 +55,7 @@ export interface ReportsRepositoryFilter {
    */
   cardOver160?: boolean;
 
-  /** When 'DB'/'VCC' restrict Job.billing_type; ignored for retrievals. */
+  /** When 'DB' / 'VCC' restrict Job.billing_type. */
   billingTypes: string[];
 }
 
@@ -189,8 +188,8 @@ export interface IReportsService {
 
   /**
    * Same filters as `searchReports`, but ignores pagination and returns
-   * every matching job_id / retrieval_id. Intended to feed `Download All`
-   * → `POST /jobs/export-master`.
+   * every matching job_id. Intended to feed `Download All` →
+   * `POST /reports/export-master` or `POST /reports/export-consolidated`.
    */
   searchReportIds(
     body: SearchReportsType,
@@ -198,11 +197,21 @@ export interface IReportsService {
   ): Promise<ReportsIdsSearchResult>;
 
   /**
-   * Bundle one XLSX per Job + one XLSX per Retrieval (mirroring the
-   * per-job format of /jobs/export-master) into a single downloadable
-   * ZIP. Used by the Reports → "Download as Zip" → "Download All" flow.
+   * Bundle one XLSX per Job (mirroring the per-job format of
+   * `/jobs/export-master`) into a single downloadable ZIP. Used by the
+   * Reports → "Download as Zip" → "Download All" flow.
    */
   exportMaster(
+    body: ExportReportsMasterType,
+  ): Promise<{ buffer: Buffer; fileName: string }>;
+
+  /**
+   * Consolidated export — produces a single XLSX (not a ZIP) where every
+   * job_id's items are written into one shared "Master" sheet, using the
+   * same headers / per-OTA logic as `/jobs/export-master`. Used by the
+   * Reports → "Download as XLSX" / "Consolidated Report" action.
+   */
+  exportConsolidated(
     body: ExportReportsMasterType,
   ): Promise<{ buffer: Buffer; fileName: string }>;
 }
