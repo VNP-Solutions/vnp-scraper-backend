@@ -1014,6 +1014,81 @@ export class JobService implements IJobService {
   }
 
   /**
+   * Consolidated XLSX export — every (job, jobItem) row from the given
+   * jobIds rendered into ONE workbook with a single "Master" sheet.
+   *
+   * Uses the exact same headers and per-OTA logic as the per-job CSV
+   * (`buildMasterRows`) so the columns line up byte-for-byte with what
+   * `/jobs/export-master` produces — the only difference is that here all
+   * jobs share one sheet instead of one CSV/XLSX per job.
+   *
+   * Notes on mixed-OTA inputs:
+   * - If ANY job in the input is Expedia, the Expedia-specific columns
+   *   (`Card Activity`, `Calculated Amount to Charge`, `Amount Match`, and
+   *   `Card Activity Approved Amount N`) are appended to the header.
+   *   Non-Expedia rows simply leave those cells blank — exactly how the
+   *   underlying `buildMasterRow` function already behaves.
+   * - `Over 160` / `Number of days since chargeback date` use "N/A" for
+   *   Booking rows (no check-out date) on every row, regardless of the
+   *   other jobs in the workbook.
+   *
+   * Filename:
+   *   `consolidated-report-{D Month YYYY-HH.MM AM/PM}.xlsx`
+   *   (e.g. `consolidated-report-19 May 2026-05.30 PM.xlsx`).
+   *
+   * Errors:
+   * - `BadRequestException` if `jobIds` is empty after dedupe.
+   * - `NotFoundException` if none of the IDs match a job, or if the
+   *   matching jobs collectively have no job items to export.
+   */
+  async buildConsolidatedMasterXlsx(
+    jobIds: string[],
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    try {
+      const uniqueJobIds = Array.from(new Set(jobIds ?? [])).filter(Boolean);
+      if (uniqueJobIds.length === 0) {
+        throw new BadRequestException('At least one job ID is required');
+      }
+
+      const jobs = await this.repository.findManyForMasterExport(uniqueJobIds);
+      if (!jobs || jobs.length === 0) {
+        throw new NotFoundException(
+          `No jobs found for the given IDs: ${uniqueJobIds.join(', ')}`,
+        );
+      }
+
+      const foundIds = new Set(jobs.map((j: any) => j.id));
+      const missingIds = uniqueJobIds.filter((id) => !foundIds.has(id));
+      if (missingIds.length > 0) {
+        this.logger.warn(
+          `Consolidated master XLSX: ${missingIds.length} job ID(s) not found and will be skipped: ${missingIds.join(', ')}`,
+        );
+      }
+
+      // Sanity-check that at least one row will be written. We re-use
+      // `buildMasterRows` for this so the empty-detection logic is in one
+      // place (a job with zero `jobItem[]` produces zero rows and is
+      // silently skipped by the underlying builder).
+      const { rows } = buildMasterRows(jobs);
+      if (rows.length === 0) {
+        throw new NotFoundException(
+          'No job items found for the provided job IDs to export',
+        );
+      }
+
+      const buffer = buildMasterXlsxBuffer(jobs);
+      const fileName = `consolidated-report-${this.buildHumanReadableTimestamp()}.xlsx`;
+      return { buffer, fileName };
+    } catch (error) {
+      this.logger.error(
+        `Error building consolidated master XLSX: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  /**
    * Same source data + filename rules as `exportMasterCsv`, but produces
    * an XLSX buffer per job instead of CSV and returns the individual
    * entries without zipping them. Reports' combined export endpoint uses

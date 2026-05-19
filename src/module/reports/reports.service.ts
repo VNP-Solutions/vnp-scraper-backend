@@ -246,6 +246,37 @@ export class ReportsService implements IReportsService {
     }
   }
 
+  /**
+   * Consolidated report export. Loads every job referenced by
+   * `body.job_ids` and renders ALL of their job items into a single
+   * "Master" sheet inside one XLSX workbook — same columns and per-OTA
+   * rules as the per-job CSV produced by `/jobs/export-master`.
+   *
+   * Returns the XLSX directly (not a ZIP) so the frontend can hand it
+   * straight to the user without an extra unzip step.
+   */
+  async exportConsolidated(
+    body: ExportReportsMasterType,
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    try {
+      const jobIds = Array.from(new Set(body.job_ids ?? [])).filter(Boolean);
+      if (jobIds.length === 0) {
+        throw new BadRequestException('At least one job ID is required');
+      }
+
+      // The heavy lifting (loading, header derivation, per-row rendering,
+      // text-format application) lives on the Job service so the same
+      // logic powers both this endpoint and the legacy per-job export.
+      return await this.jobService.buildConsolidatedMasterXlsx(jobIds);
+    } catch (error) {
+      this.logger.error(
+        `Error exporting consolidated reports XLSX: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
   private emptyResult(body: SearchReportsType): ReportsSearchResult {
     const page = body.page ?? 1;
     const limit = body.limit ?? 10;

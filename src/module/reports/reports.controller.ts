@@ -1005,4 +1005,184 @@ export class ReportsController {
       });
     }
   }
+
+  @Post('/export-consolidated')
+  @UseGuards(JwtAuthGuard)
+  @ValidateBody(exportReportsMasterSchema)
+  @ApiOperation({
+    summary: 'Download Consolidated Report — single XLSX of all selected jobs',
+    description:
+      'Accepts an array of `job_ids` and returns ONE XLSX file (not a ZIP) ' +
+      'where every job\'s items are merged into a single "Master" sheet.\n\n' +
+      'Use this when the user wants a single spreadsheet they can scroll ' +
+      'through, instead of a ZIP with one file per job (which is what ' +
+      '`POST /reports/export-master` produces).\n\n' +
+      '### Columns\n' +
+      'Same headers and per-OTA rules as `POST /jobs/export-master`:\n' +
+      '- `OTA`, `OTA Posting Type`, `OTA ID`, `Batch`, `Review Collection Date`, ' +
+      '  `Portfolio`, `Property Name`, `Reservation ID`, `Hotel Confirmation Code`, ' +
+      '  `Guest name`, `Check In`, `Check Out`, **`Over 160`**, ' +
+      '  **`Number of days since chargeback date ( Today: <date>)`**, ' +
+      '  `Charge Before`, `Currency`, `Booking Amount`, `Amount to Charge`, ' +
+      '  `Card Status`, `Card Number`, `Expiry date`, `CVV`, `Due to Property`, ' +
+      '  `Due to VNP/Invoice`, `Processor (DBMS Based on OTA)`, ' +
+      '  `QP Username (From DBMS)`, `Case Contact (From DBMS)`, ' +
+      '  `Reporting Contact (From DBMS)`.\n' +
+      '- If any of the selected jobs is **Expedia**, the Expedia-only ' +
+      '  columns are appended after the static set: `Card Activity`, ' +
+      '  `Calculated Amount to Charge`, `Amount Match`, and N × ' +
+      '  `Card Activity Approved Amount K` columns (N = maximum approved ' +
+      '  authorizations across all Expedia items in the export). ' +
+      '  Non-Expedia rows simply leave those cells blank.\n' +
+      '- `Card Number`, `Expiry date`, and `CVV` are forced to Excel ' +
+      '  "Text" format so leading zeros and long digit strings are ' +
+      '  preserved instead of being mangled into scientific notation.\n' +
+      '- For **Booking** rows, `Check In` / `Check Out` / `Over 160` / ' +
+      '  `Number of days since chargeback date` are all `"N/A"`, ' +
+      '  matching the spec for the per-job CSV.\n\n' +
+      '### Row ordering\n' +
+      'Rows are written in the order the jobs are returned by the ' +
+      'database (matching `/reports/global/ids`\'s `sortOrder`), with all ' +
+      'items of one job emitted before moving on to the next job. Jobs ' +
+      'with no items are silently skipped.\n\n' +
+      '### Filename\n' +
+      '`consolidated-report-{D Month YYYY-HH.MM AM/PM}.xlsx` (e.g. ' +
+      '`consolidated-report-19 May 2026-05.30 PM.xlsx`). A dot replaces ' +
+      'the time `:` so the filename is valid on every OS.\n\n' +
+      '### Recommended frontend flow\n' +
+      '1. `POST /reports/global/ids` with the current Reports filter ' +
+      '   payload → `{ job_ids }`.\n' +
+      '2. `POST /reports/export-consolidated` with `{ job_ids }` → XLSX ' +
+      '   downloads.\n\n' +
+      '(If the user instead wants one file per job in a ZIP, hit ' +
+      '`POST /reports/export-master` with the same body.)',
+  })
+  @ApiBody({
+    type: ExportReportsMasterRequestDto,
+    examples: {
+      single_job: {
+        summary: '01) Single job',
+        description:
+          'Smallest valid payload — a single job rendered as a one-job ' +
+          'consolidated XLSX.',
+        value: {
+          job_ids: ['65f0a3c4e2b7a1d2c3e4f5a6'],
+        },
+      },
+      multiple_jobs: {
+        summary: '02) Multiple jobs (typical "Consolidated Report")',
+        description:
+          'Typical payload after a `/reports/global/ids` call — paste the ' +
+          'returned `data.job_ids` array verbatim.',
+        value: {
+          job_ids: [
+            '65f0a3c4e2b7a1d2c3e4f5a6',
+            '65f0a3c4e2b7a1d2c3e4f5a7',
+            '65f0a3c4e2b7a1d2c3e4f5a8',
+          ],
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'XLSX file. Response Content-Type is ' +
+      '`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` ' +
+      'and `Content-Disposition` carries the suggested filename.',
+    content: {
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {},
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation failed (empty `job_ids` or malformed IDs)',
+    schema: {
+      example: {
+        statusCode: 400,
+        message: 'Validation failed',
+        errors: [
+          {
+            field: 'job_ids',
+            message: 'At least one job ID is required',
+          },
+        ],
+      },
+    },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Valid JWT token required',
+    schema: {
+      example: { statusCode: 401, message: 'Unauthorized', data: null },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description:
+      'No exportable content for the provided IDs (no matching job, or ' +
+      'matching jobs have no items).',
+    schema: {
+      example: {
+        statusCode: 404,
+        message: 'No job items found for the provided job IDs to export',
+        data: null,
+      },
+    },
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error',
+    schema: {
+      example: {
+        statusCode: 500,
+        message: 'Unexpected error while exporting consolidated report',
+        data: null,
+      },
+    },
+  })
+  async exportConsolidatedReport(
+    @Req() request: any,
+    @Body() body: ExportReportsMasterType,
+    @Res() response: Response,
+  ) {
+    try {
+      if (!request.user) {
+        response.status(401).json({
+          statusCode: 401,
+          message: 'User not authenticated',
+          data: null,
+        });
+        return;
+      }
+
+      const { buffer, fileName } =
+        await this.reportsService.exportConsolidated(body);
+
+      response.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      response.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${fileName}"`,
+      );
+      response.setHeader('Content-Length', buffer.length);
+      response.send(buffer);
+    } catch (error) {
+      this.logger.error(
+        `Error in POST /reports/export-consolidated: ${error.message}`,
+        error.stack,
+      );
+      const status =
+        typeof error?.getStatus === 'function' ? error.getStatus() : 500;
+      response.status(status).json({
+        statusCode: status,
+        message:
+          error?.message ??
+          'Unexpected error while exporting consolidated report',
+        data: null,
+      });
+    }
+  }
 }
