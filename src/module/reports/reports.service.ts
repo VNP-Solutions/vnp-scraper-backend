@@ -7,11 +7,9 @@ import {
 } from '@nestjs/common';
 import {
   buildHumanReadableTimestamp,
-  ensureUniqueFilename,
   zipFiles,
 } from '../../common/utils/zip-and-filename.util';
 import { IJobService } from '../job/job.interface';
-import { IRetrievalService } from '../retrieval/retrieval.interface';
 import {
   IReportsRepository,
   IReportsService,
@@ -30,12 +28,13 @@ import type {
  * Outcome of the shared "resolve filters + access scope" pass. `null`
  * means nothing can match (callers should short-circuit to an empty
  * response); otherwise the returned object carries the repository
- * filter + which collections to query.
+ * filter ready to be applied against the Job collection.
+ *
+ * (Retrievals were dropped from the Reports module — every Reports
+ * endpoint now operates on Jobs only.)
  */
 type ReportsSearchPlan = {
   filter: ReportsRepositoryFilter;
-  wantsJobs: boolean;
-  wantsRetrievals: boolean;
   needsPostDateFilter: boolean;
 } | null;
 
@@ -77,8 +76,6 @@ export class ReportsService implements IReportsService {
     private readonly repository: IReportsRepository,
     @Inject('IJobService')
     private readonly jobService: IJobService,
-    @Inject('IRetrievalService')
-    private readonly retrievalService: IRetrievalService,
     private readonly logger: Logger,
   ) {}
 
@@ -90,7 +87,7 @@ export class ReportsService implements IReportsService {
       const plan = await this.buildSearchPlan(body, user);
       if (plan === null) return this.emptyResult(body);
 
-      const { filter, wantsJobs, wantsRetrievals, needsPostDateFilter } = plan;
+      const { filter, needsPostDateFilter } = plan;
 
       const sortBy = body.sortBy ?? 'updatedAt';
       const sortOrder: 'asc' | 'desc' = body.sortOrder ?? 'desc';
@@ -98,35 +95,24 @@ export class ReportsService implements IReportsService {
       const limit = body.limit ?? 10;
       const skip = (page - 1) * limit;
 
-      // In the no-post-filter path we still need enough rows from each
-      // collection to cover the requested page after merging — fetch up
-      // to (skip + limit) from each.
+      // In the no-post-filter path we still need enough rows to cover the
+      // requested page — fetch up to (skip + limit) from the Job collection.
       const take = needsPostDateFilter ? undefined : skip + limit;
 
-      const [jobsResult, retrievalsResult] = await Promise.all([
-        wantsJobs
-          ? this.repository.countAndFindJobs(filter, sortBy, sortOrder, take)
-          : Promise.resolve({ total: 0, rows: [] as any[] }),
-        wantsRetrievals
-          ? this.repository.countAndFindRetrievals(
-              filter,
-              sortBy,
-              sortOrder,
-              take,
-            )
-          : Promise.resolve({ total: 0, rows: [] as any[] }),
-      ]);
+      const jobsResult = await this.repository.countAndFindJobs(
+        filter,
+        sortBy,
+        sortOrder,
+        take,
+      );
 
       // ---------- 6. Normalize ----------------------------------------------
       let normalizedJobs: ReportsResultItem[] = jobsResult.rows.map((j) =>
         this.normalizeJob(j),
       );
-      let normalizedRetrievals: ReportsResultItem[] =
-        retrievalsResult.rows.map((r) => this.normalizeRetrieval(r));
 
-      // ---------- 7. Post-filter on Job/Retrieval start_date/end_date ------
+      // ---------- 7. Post-filter on Job.start_date/end_date ----------------
       let totalJobs = jobsResult.total;
-      let totalRetrievals = retrievalsResult.total;
 
       if (needsPostDateFilter) {
         const from = parseFlexibleDate(body.job_dates?.start_date);
@@ -135,32 +121,23 @@ export class ReportsService implements IReportsService {
         normalizedJobs = normalizedJobs.filter((row) =>
           this.rowOverlapsJobDateRange(row, from, to),
         );
-        normalizedRetrievals = normalizedRetrievals.filter((row) =>
-          this.rowOverlapsJobDateRange(row, from, to),
-        );
 
-        // After post-filter the Prisma counts are stale; use the filtered
-        // lengths so the metadata reflects what the client actually sees.
+        // After post-filter the Prisma count is stale; use the filtered
+        // length so the metadata reflects what the client actually sees.
         totalJobs = normalizedJobs.length;
-        totalRetrievals = normalizedRetrievals.length;
       }
 
-      // ---------- 8. Merge + sort + paginate -------------------------------
-      const merged = this.sortMerged(
-        [...normalizedJobs, ...normalizedRetrievals],
-        sortBy,
-        sortOrder,
-      );
+      // ---------- 8. Sort + paginate ----------------------------------------
+      const sorted = this.sortMerged(normalizedJobs, sortBy, sortOrder);
 
-      const totalDocuments = totalJobs + totalRetrievals;
-      const pageRows = merged.slice(skip, skip + limit);
+      const totalDocuments = totalJobs;
+      const pageRows = sorted.slice(skip, skip + limit);
 
       return {
         data: pageRows,
         metadata: {
           totalDocuments,
           totalJobs,
-          totalRetrievals,
           currentPage: page,
           totalPage: Math.max(1, Math.ceil(totalDocuments / limit)),
           limit,
@@ -176,10 +153,10 @@ export class ReportsService implements IReportsService {
   }
 
   /**
-   * Returns every matching job_id and retrieval_id for the given filter
-   * payload, ignoring pagination. Designed to feed the "Download All"
-   * action → frontend pipes `data.job_ids` straight into the existing
-   * `POST /jobs/export-master`.
+   * Returns every matching job_id for the given filter payload, ignoring
+   * pagination. Designed to feed the "Download All" action → frontend
+   * pipes `data.job_ids` straight into `POST /reports/export-master`
+   * (or the legacy `POST /jobs/export-master`).
    */
   async searchReportIds(
     body: SearchReportsType,
@@ -189,7 +166,7 @@ export class ReportsService implements IReportsService {
       const plan = await this.buildSearchPlan(body, user);
       if (plan === null) return this.emptyIdsResult();
 
-      const { filter, wantsJobs, wantsRetrievals, needsPostDateFilter } = plan;
+      const { filter, needsPostDateFilter } = plan;
 
       // Sort still matters here — frontend may want the IDs ordered the
       // same way as the visible list so the export CSVs come out in a
@@ -197,17 +174,13 @@ export class ReportsService implements IReportsService {
       const sortBy = body.sortBy ?? 'updatedAt';
       const sortOrder: 'asc' | 'desc' = body.sortOrder ?? 'desc';
 
-      const [jobRows, retrievalRows] = await Promise.all([
-        wantsJobs
-          ? this.repository.findJobIds(filter, sortBy, sortOrder)
-          : Promise.resolve([] as ReportsIdRow[]),
-        wantsRetrievals
-          ? this.repository.findRetrievalIds(filter, sortBy, sortOrder)
-          : Promise.resolve([] as ReportsIdRow[]),
-      ]);
+      const jobRows: ReportsIdRow[] = await this.repository.findJobIds(
+        filter,
+        sortBy,
+        sortOrder,
+      );
 
       let filteredJobs = jobRows;
-      let filteredRetrievals = retrievalRows;
 
       if (needsPostDateFilter) {
         const from = parseFlexibleDate(body.job_dates?.start_date);
@@ -215,21 +188,15 @@ export class ReportsService implements IReportsService {
         filteredJobs = jobRows.filter((row) =>
           this.idRowOverlapsJobDateRange(row, from, to),
         );
-        filteredRetrievals = retrievalRows.filter((row) =>
-          this.idRowOverlapsJobDateRange(row, from, to),
-        );
       }
 
       const job_ids = filteredJobs.map((r) => r.id);
-      const retrieval_ids = filteredRetrievals.map((r) => r.id);
 
       return {
         job_ids,
-        retrieval_ids,
         metadata: {
           totalJobs: job_ids.length,
-          totalRetrievals: retrieval_ids.length,
-          totalDocuments: job_ids.length + retrieval_ids.length,
+          totalDocuments: job_ids.length,
         },
       };
     } catch (error) {
@@ -242,52 +209,28 @@ export class ReportsService implements IReportsService {
   }
 
   /**
-   * Combined Jobs + Retrievals "Download All" export. Produces a single
-   * ZIP containing one XLSX per job and one XLSX per retrieval, named
-   * `{OTA}-{property}-{startDate}-{endDate}.xlsx`.
+   * Jobs-only "Download All" export. Produces a single ZIP containing
+   * one XLSX per job, named `{OTA}-{property}-{startDate}-{endDate}.xlsx`.
+   *
+   * (Retrievals were dropped from the Reports module — if/when a bulk
+   * retrieval export is needed it should live under the retrieval
+   * module, not here.)
    */
   async exportMaster(
     body: ExportReportsMasterType,
   ): Promise<{ buffer: Buffer; fileName: string }> {
     try {
       const jobIds = Array.from(new Set(body.job_ids ?? [])).filter(Boolean);
-      const retrievalIds = Array.from(new Set(body.retrieval_ids ?? [])).filter(
-        Boolean,
-      );
 
-      if (jobIds.length === 0 && retrievalIds.length === 0) {
-        throw new BadRequestException(
-          'At least one of `job_ids` or `retrieval_ids` must contain one or more IDs',
-        );
+      if (jobIds.length === 0) {
+        throw new BadRequestException('At least one job ID is required');
       }
 
-      // Build the two sets of XLSX entries in parallel — both calls are
-      // I/O bound (Mongo + property/credentials lookups) and the two
-      // datasets don't share any state.
-      const [jobEntries, retrievalEntries] = await Promise.all([
-        jobIds.length > 0
-          ? this.jobService.buildMasterXlsxEntries(jobIds)
-          : Promise.resolve([] as Array<{ name: string; data: Buffer }>),
-        retrievalIds.length > 0
-          ? this.retrievalService.buildRetrievalExportEntries(retrievalIds)
-          : Promise.resolve([] as Array<{ name: string; data: Buffer }>),
-      ]);
-
-      // Merge while keeping filenames unique across the combined set —
-      // job and retrieval naming schemes overlap (both use
-      // `{OTA}-{property}-{startDate}-{endDate}.xlsx`), so a collision
-      // is plausible if a property has both a job and a retrieval over
-      // the same window.
-      const usedNames = new Set<string>();
-      const entries: Array<{ name: string; data: Buffer }> = [];
-      for (const entry of [...jobEntries, ...retrievalEntries]) {
-        const name = ensureUniqueFilename(entry.name, usedNames);
-        entries.push({ name, data: entry.data });
-      }
+      const entries = await this.jobService.buildMasterXlsxEntries(jobIds);
 
       if (entries.length === 0) {
         throw new NotFoundException(
-          'No exportable content found for the provided IDs (jobs / retrievals had no items, or all IDs were invalid).',
+          'No exportable content found for the provided job IDs (jobs had no items, or all IDs were invalid).',
         );
       }
 
@@ -311,7 +254,6 @@ export class ReportsService implements IReportsService {
       metadata: {
         totalDocuments: 0,
         totalJobs: 0,
-        totalRetrievals: 0,
         currentPage: page,
         totalPage: 0,
         limit,
@@ -322,8 +264,7 @@ export class ReportsService implements IReportsService {
   private emptyIdsResult(): ReportsIdsSearchResult {
     return {
       job_ids: [],
-      retrieval_ids: [],
-      metadata: { totalJobs: 0, totalRetrievals: 0, totalDocuments: 0 },
+      metadata: { totalJobs: 0, totalDocuments: 0 },
     };
   }
 
@@ -358,14 +299,12 @@ export class ReportsService implements IReportsService {
       }
     }
 
-    // ---------- 2. Determine which collections to query ------------------
+    // ---------- 2. Job-type → billing_type filter ------------------------
+    // The Reports module queries only the Job collection now (retrievals
+    // were dropped). A `'Retrieval'` value inside `job_types` is silently
+    // accepted for backwards compatibility but contributes nothing to
+    // the where clause.
     const jobTypes = body.job_types ?? [];
-    const wantsJobs =
-      jobTypes.length === 0 ||
-      jobTypes.includes('VCC') ||
-      jobTypes.includes('DB');
-    const wantsRetrievals =
-      jobTypes.length === 0 || jobTypes.includes('Retrieval');
     const billingTypes = jobTypes.filter(
       (t) => t === 'VCC' || t === 'DB',
     ) as string[];
@@ -453,8 +392,6 @@ export class ReportsService implements IReportsService {
 
     return {
       filter,
-      wantsJobs,
-      wantsRetrievals,
       needsPostDateFilter,
     };
   }
@@ -654,42 +591,4 @@ export class ReportsService implements IReportsService {
     };
   }
 
-  private normalizeRetrieval(r: any): ReportsResultItem {
-    return {
-      source: 'retrieval',
-      id: r.id,
-      name: r.name ?? null,
-      job_status: r.job_status,
-      ota_provider: r.ota_provider,
-      // Retrieval has a billing_type column too; surface it as-is.
-      billing_type: r.billing_type ?? null,
-      execution_type: r.execution_type ?? null,
-      portfolio_id: r.portfolio_id ?? null,
-      portfolio_name: r.portfolio?.name ?? r.portfolio_name ?? null,
-      sub_portfolio_id: r.sub_portfolio_id ?? null,
-      sub_portfolio_name: r.subPortfolio?.name ?? r.sub_portfolio_name ?? null,
-      property_id: r.property_id ?? null,
-      property_name: r.property_name ?? r.property?.name ?? '',
-      batch_id: r.batch_id ?? null,
-      batch_name: r.batch?.name ?? null,
-      start_date: r.start_date ?? null,
-      end_date: r.end_date ?? null,
-      is_archived: r.is_archived ?? false,
-      property: r.property
-        ? {
-            id: r.property.id,
-            name: r.property.name,
-            expedia_id: r.property.expedia_id ?? null,
-            booking_id: r.property.booking_id ?? null,
-            agoda_id: r.property.agoda_id ?? null,
-          }
-        : null,
-      failed_reason: r.failed_reason ?? '',
-      screenshot_urls: Array.isArray(r.screenshot_urls)
-        ? r.screenshot_urls
-        : [],
-      createdAt: r.createdAt,
-      updatedAt: r.updatedAt,
-    };
-  }
 }

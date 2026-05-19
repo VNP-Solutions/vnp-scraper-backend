@@ -64,23 +64,25 @@ export const searchReportsSchema = z
 
     // Advanced Filters
     ota_providers: z.array(z.nativeEnum(OTAProvider)).optional().default([]),
+    // `Retrieval` stays in the enum for backwards-compat so existing
+    // frontends don't 400, but the reports module no longer queries the
+    // Retrieval collection — VCC/DB are the only values that affect
+    // results.
     job_types: z.array(JobTypeEnum).optional().default([]),
 
-    // "Run within" -> filters by record updatedAt (Jobs + Retrievals).
+    // "Run within" -> filters by Job.updatedAt.
     run_within: dateRangeSchema,
 
-    // "All Status" -> matches Job.job_status / Retrieval.job_status.
+    // "All Status" -> matches Job.job_status.
     job_statuses: z.array(z.nativeEnum(JobStatus)).optional().default([]),
 
     // "Frequency Type" -> matches execution_type.
     frequency_types: z.array(FrequencyTypeEnum).optional().default([]),
 
     // "Card Period" -> matches Job.tags entry { field: 'over_160' }.
-    // Currently applies to Jobs only. Will also apply to Retrievals once
-    // the equivalent tag is added there.
     card_periods: z.array(CardPeriodEnum).optional().default([]),
 
-    // "Job dates within" -> filters by Job/Retrieval.start_date and end_date
+    // "Job dates within" -> filters by Job.start_date and end_date
     // (stored as MM/DD/YYYY strings in the DB).
     job_dates: jobDatesSchema,
 
@@ -102,24 +104,19 @@ export const searchReportsSchema = z
 export type SearchReportsType = z.infer<typeof searchReportsSchema>;
 
 /**
- * Body for POST /reports/export-master. Either `job_ids` or
- * `retrieval_ids` must be non-empty (or both). The endpoint returns a
- * single ZIP combining the per-job and per-retrieval XLSX files.
+ * Body for POST /reports/export-master. Requires at least one `job_id`.
+ * The endpoint returns a ZIP containing one XLSX per job.
+ *
+ * (Retrievals are intentionally not supported by the Reports module's
+ * export — if/when bulk-retrieval export is added, it will live under
+ * the retrieval module.)
  */
 export const exportReportsMasterSchema = z
   .object({
-    job_ids: z.array(objectIdSchema).optional().default([]),
-    retrieval_ids: z.array(objectIdSchema).optional().default([]),
+    job_ids: z
+      .array(objectIdSchema)
+      .min(1, 'At least one job ID is required'),
   })
-  .strict()
-  .refine(
-    (val) =>
-      (val.job_ids?.length ?? 0) > 0 || (val.retrieval_ids?.length ?? 0) > 0,
-    {
-      message:
-        'At least one of `job_ids` or `retrieval_ids` must contain one or more IDs',
-      path: ['job_ids'],
-    },
-  );
+  .strict();
 
 export type ExportReportsMasterType = z.infer<typeof exportReportsMasterSchema>;

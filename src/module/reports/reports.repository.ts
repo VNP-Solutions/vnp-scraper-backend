@@ -181,9 +181,8 @@ export class ReportsRepository implements IReportsRepository {
     }
   }
 
-  private buildCommonWhereForJobOrRetrieval(
+  private buildJobWhereClause(
     filter: ReportsRepositoryFilter,
-    opts: { includeBilling: boolean; includeCardTags: boolean },
   ): Record<string, any> {
     const where: Record<string, any> = {};
 
@@ -249,7 +248,7 @@ export class ReportsRepository implements IReportsRepository {
       where.is_archived = false;
     }
 
-    if (opts.includeBilling && filter.billingTypes.length > 0) {
+    if (filter.billingTypes.length > 0) {
       // billing_type is stored as a free string (e.g. "DB", "VCC"). Match
       // case-insensitively by issuing one regex per value.
       where.OR = (where.OR ?? []).concat(
@@ -259,7 +258,7 @@ export class ReportsRepository implements IReportsRepository {
       );
     }
 
-    if (opts.includeCardTags && filter.cardOver160 !== undefined) {
+    if (filter.cardOver160 !== undefined) {
       where.tags = {
         some: { field: 'over_160', value: filter.cardOver160 },
       };
@@ -275,10 +274,7 @@ export class ReportsRepository implements IReportsRepository {
     take?: number,
   ): Promise<{ total: number; rows: any[] }> {
     try {
-      const where = this.buildCommonWhereForJobOrRetrieval(filter, {
-        includeBilling: true,
-        includeCardTags: true,
-      });
+      const where = this.buildJobWhereClause(filter);
 
       const orderBy: Record<string, 'asc' | 'desc'> = { [sortBy]: sortOrder };
 
@@ -315,126 +311,13 @@ export class ReportsRepository implements IReportsRepository {
     }
   }
 
-  async countAndFindRetrievals(
-    filter: ReportsRepositoryFilter,
-    sortBy: string,
-    sortOrder: 'asc' | 'desc',
-    take?: number,
-  ): Promise<{ total: number; rows: any[] }> {
-    try {
-      const where = this.buildCommonWhereForJobOrRetrieval(filter, {
-        // Retrieval has billing_type but for now we treat the "Retrieval"
-        // job_type as the entire collection — selecting Retrieval does
-        // not further constrain billing_type.
-        includeBilling: false,
-        // Retrieval does not yet have a `tags` field, so we never apply
-        // the card-period filter here. Documented in the validation file.
-        includeCardTags: false,
-      });
-
-      const orderBy: Record<string, 'asc' | 'desc'> = { [sortBy]: sortOrder };
-
-      const [total, rows] = await Promise.all([
-        this.db.retrieval.count({ where: where as any }),
-        this.db.retrieval.findMany({
-          where: where as any,
-          orderBy,
-          ...(typeof take === 'number' ? { take } : {}),
-          include: {
-            batch: { select: { id: true, name: true } },
-          },
-        }),
-      ]);
-
-      // Retrieval doesn't have Prisma relations back to Property /
-      // Portfolio / SubPortfolio, so we hydrate them here in bulk to
-      // match the Job shape downstream.
-      const propertyIds = Array.from(
-        new Set(
-          rows
-            .map((r: any) => r.property_id)
-            .filter((id: string | null | undefined) => !!id),
-        ),
-      ) as string[];
-      const portfolioIds = Array.from(
-        new Set(
-          rows
-            .map((r: any) => r.portfolio_id)
-            .filter((id: string | null | undefined) => !!id),
-        ),
-      ) as string[];
-      const subPortfolioIds = Array.from(
-        new Set(
-          rows
-            .map((r: any) => r.sub_portfolio_id)
-            .filter((id: string | null | undefined) => !!id),
-        ),
-      ) as string[];
-
-      const [properties, portfolios, subPortfolios] = await Promise.all([
-        propertyIds.length > 0
-          ? this.db.property.findMany({
-              where: { id: { in: propertyIds } },
-              select: {
-                id: true,
-                name: true,
-                expedia_id: true,
-                booking_id: true,
-                agoda_id: true,
-              },
-            })
-          : Promise.resolve([] as any[]),
-        portfolioIds.length > 0
-          ? this.db.portfolio.findMany({
-              where: { id: { in: portfolioIds } },
-              select: { id: true, name: true },
-            })
-          : Promise.resolve([] as any[]),
-        subPortfolioIds.length > 0
-          ? this.db.subPortfolio.findMany({
-              where: { id: { in: subPortfolioIds } },
-              select: { id: true, name: true },
-            })
-          : Promise.resolve([] as any[]),
-      ]);
-
-      const propertyMap = new Map(properties.map((p: any) => [p.id, p]));
-      const portfolioMap = new Map(portfolios.map((p: any) => [p.id, p]));
-      const subPortfolioMap = new Map(
-        subPortfolios.map((sp: any) => [sp.id, sp]),
-      );
-
-      const hydrated = rows.map((r: any) => ({
-        ...r,
-        property: r.property_id ? propertyMap.get(r.property_id) ?? null : null,
-        portfolio: r.portfolio_id
-          ? portfolioMap.get(r.portfolio_id) ?? null
-          : null,
-        subPortfolio: r.sub_portfolio_id
-          ? subPortfolioMap.get(r.sub_portfolio_id) ?? null
-          : null,
-      }));
-
-      return { total, rows: hydrated };
-    } catch (error) {
-      this.logger.error(
-        `Error querying retrievals for reports search: ${error.message}`,
-        error.stack,
-      );
-      throw error;
-    }
-  }
-
   async findJobIds(
     filter: ReportsRepositoryFilter,
     sortBy: string,
     sortOrder: 'asc' | 'desc',
   ): Promise<ReportsIdRow[]> {
     try {
-      const where = this.buildCommonWhereForJobOrRetrieval(filter, {
-        includeBilling: true,
-        includeCardTags: true,
-      });
+      const where = this.buildJobWhereClause(filter);
 
       const rows = await this.db.job.findMany({
         where: where as any,
@@ -453,29 +336,4 @@ export class ReportsRepository implements IReportsRepository {
     }
   }
 
-  async findRetrievalIds(
-    filter: ReportsRepositoryFilter,
-    sortBy: string,
-    sortOrder: 'asc' | 'desc',
-  ): Promise<ReportsIdRow[]> {
-    try {
-      const where = this.buildCommonWhereForJobOrRetrieval(filter, {
-        includeBilling: false,
-        includeCardTags: false,
-      });
-
-      const rows = await this.db.retrieval.findMany({
-        where: where as any,
-        orderBy: { [sortBy]: sortOrder },
-        select: { id: true, start_date: true, end_date: true },
-      });
-      return rows;
-    } catch (error) {
-      this.logger.error(
-        `Error fetching retrieval IDs for reports search: ${error.message}`,
-        error.stack,
-      );
-      throw error;
-    }
-  }
 }

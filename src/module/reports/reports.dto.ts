@@ -18,14 +18,14 @@ export class ReportsRunWithinDto {
 export class ReportsJobDatesDto {
   @ApiPropertyOptional({
     description:
-      'Inclusive lower bound for Job/Retrieval.start_date. Accepts MM/DD/YYYY or any string parseable as a Date.',
+      'Inclusive lower bound for Job.start_date. Accepts MM/DD/YYYY or any string parseable as a Date.',
     example: '01/01/2026',
   })
   start_date?: string | null;
 
   @ApiPropertyOptional({
     description:
-      'Inclusive upper bound for Job/Retrieval.end_date. Accepts MM/DD/YYYY or any string parseable as a Date.',
+      'Inclusive upper bound for Job.end_date. Accepts MM/DD/YYYY or any string parseable as a Date.',
     example: '03/31/2026',
   })
   end_date?: string | null;
@@ -82,13 +82,16 @@ export class SearchReportsRequestDto {
   ota_providers?: OTAProvider[];
 
   @ApiPropertyOptional({
-    enum: ['VCC', 'DB', 'Retrieval'],
+    enum: ['VCC', 'DB'],
     isArray: true,
     description:
-      'Job types. VCC/DB match Job.billing_type. Retrieval searches the Retrieval collection.',
+      'Job types. `VCC` / `DB` match Job.billing_type. ' +
+      '(`Retrieval` is still accepted by the request validator for ' +
+      'backwards compatibility but is silently ignored — the Reports ' +
+      'module no longer queries the Retrieval collection.)',
     example: ['VCC', 'DB'],
   })
-  job_types?: ('VCC' | 'DB' | 'Retrieval')[];
+  job_types?: ('VCC' | 'DB')[];
 
   @ApiPropertyOptional({
     description: '"Run within" date range — filters by updatedAt.',
@@ -129,7 +132,7 @@ export class SearchReportsRequestDto {
 
   @ApiPropertyOptional({
     description:
-      '"Job dates within" — filters by Job/Retrieval.start_date and end_date.',
+      '"Job dates within" — filters by Job.start_date and end_date.',
     type: ReportsJobDatesDto,
   })
   job_dates?: ReportsJobDatesDto | null;
@@ -202,11 +205,13 @@ export class ReportsResultPropertyDto {
 
 export class ReportsResultItemDto {
   @ApiProperty({
-    enum: ['job', 'retrieval'],
+    enum: ['job'],
     description:
-      'Which collection this row came from. `retrieval` rows omit job-only fields like `tags` and `billing_type`.',
+      'Always `"job"`. Retained as a constant for response-shape stability ' +
+      '(used to also be `"retrieval"` before the Reports module dropped ' +
+      'retrieval support).',
   })
-  source: 'job' | 'retrieval';
+  source: 'job';
 
   @ApiProperty()
   id: string;
@@ -283,9 +288,6 @@ export class ReportsResponseMetadataDto {
   totalJobs: number;
 
   @ApiProperty()
-  totalRetrievals: number;
-
-  @ApiProperty()
   currentPage: number;
 
   @ApiProperty()
@@ -312,32 +314,21 @@ export class SearchReportsResponseDto {
 export class SearchReportIdsDataDto {
   @ApiProperty({
     type: [String],
-    description: 'All matching Job IDs (feed into POST /jobs/export-master).',
+    description:
+      'All matching Job IDs. Feed directly into ' +
+      '`POST /reports/export-master` (or the legacy ' +
+      '`POST /jobs/export-master`).',
     example: ['65f0a3c4e2b7a1d2c3e4f5a6', '65f0a3c4e2b7a1d2c3e4f5a7'],
   })
   job_ids: string[];
-
-  @ApiProperty({
-    type: [String],
-    description:
-      'All matching Retrieval IDs. Currently informational — there is no ' +
-      'bulk retrieval-export endpoint yet; included so the frontend can ' +
-      'show "X retrievals will be excluded" and reuse the same payload ' +
-      'when bulk retrieval export ships.',
-    example: ['65f0a3c4e2b7a1d2c3e4f5b3'],
-  })
-  retrieval_ids: string[];
 }
 
 export class SearchReportIdsMetadataDto {
-  @ApiProperty({ example: 47 })
+  @ApiProperty({ example: 41 })
   totalDocuments: number;
 
   @ApiProperty({ example: 41 })
   totalJobs: number;
-
-  @ApiProperty({ example: 6 })
-  totalRetrievals: number;
 }
 
 export class SearchReportIdsResponseDto {
@@ -355,24 +346,14 @@ export class SearchReportIdsResponseDto {
 }
 
 export class ExportReportsMasterRequestDto {
-  @ApiPropertyOptional({
+  @ApiProperty({
     type: [String],
     description:
       'Job IDs to include in the export. Each becomes one XLSX file ' +
-      'inside the ZIP, named `{OTA}-{property}-{startDate}-{endDate}.xlsx`. ' +
-      'Either this OR `retrieval_ids` (or both) must be non-empty.',
+      'inside the ZIP, named ' +
+      '`{OTA}-{property}-{startDate}-{endDate}.xlsx`. Must contain at ' +
+      'least one ID.',
     example: ['65f0a3c4e2b7a1d2c3e4f5a6', '65f0a3c4e2b7a1d2c3e4f5a7'],
   })
-  job_ids?: string[];
-
-  @ApiPropertyOptional({
-    type: [String],
-    description:
-      'Retrieval IDs to include in the export. Each becomes one XLSX file ' +
-      'inside the ZIP containing that Retrieval\'s items, named the same ' +
-      'way as job entries. Either this OR `job_ids` (or both) must be ' +
-      'non-empty.',
-    example: ['65f0a3c4e2b7a1d2c3e4f5b3'],
-  })
-  retrieval_ids?: string[];
+  job_ids: string[];
 }
