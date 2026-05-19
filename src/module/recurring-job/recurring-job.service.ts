@@ -54,7 +54,8 @@ export class RecurringJobService implements IRecurringJobService {
   /**
    * Get single month date range (previous month relative to schedule date).
    * Each job always covers exactly 1 month of data.
-   * For schedule_date 2026-02-15 → covers Jan 2026 (start: 2026-01-01, end: 2026-01-31)
+   * For schedule_date 2026-02-15 → covers Jan 2026 (start: 01/01/2026, end: 01/31/2026)
+   * Returns dates in MM/DD/YYYY format.
    */
   private getMonthlyDateRange(scheduleDate: string): {
     startDate: string;
@@ -68,8 +69,9 @@ export class RecurringJobService implements IRecurringJobService {
     const prevYear = month === 0 ? year - 1 : year;
     const lastDay = this.getLastDayOfMonth(prevYear, prevMonth + 1);
 
-    const startDate = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-01`;
-    const endDate = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    const mm = String(prevMonth + 1).padStart(2, '0');
+    const startDate = `${mm}/01/${prevYear}`;
+    const endDate = `${mm}/${String(lastDay).padStart(2, '0')}/${prevYear}`;
 
     return { startDate, endDate };
   }
@@ -425,11 +427,11 @@ export class RecurringJobService implements IRecurringJobService {
             jobsInCurrentBucket = 0;
           }
 
-          // Calculate date range for this month
+          // Calculate date range for this month (MM/DD/YYYY)
           const [year, month] = monthStr.split('-');
-          const startDate = `${year}-${month}-01`;
           const lastDay = this.getLastDayOfMonth(parseInt(year), parseInt(month));
-          const endDate = `${year}-${month}-${String(lastDay).padStart(2, '0')}`;
+          const startDate = `${month}/01/${year}`;
+          const endDate = `${month}/${String(lastDay).padStart(2, '0')}/${year}`;
 
           // Create job for this historical month with the schedule_date for execution
           try {
@@ -669,11 +671,11 @@ export class RecurringJobService implements IRecurringJobService {
             jobsInCurrentBucket = 0;
           }
 
-          // Calculate date range for this month
+          // Calculate date range for this month (MM/DD/YYYY)
           const [year, month] = monthStr.split('-');
-          const startDate = `${year}-${month}-01`;
           const lastDay = this.getLastDayOfMonth(parseInt(year), parseInt(month));
-          const endDate = `${year}-${month}-${String(lastDay).padStart(2, '0')}`;
+          const startDate = `${month}/01/${year}`;
+          const endDate = `${month}/${String(lastDay).padStart(2, '0')}/${year}`;
 
           // Create job for this historical month with the schedule_date for execution
           try {
