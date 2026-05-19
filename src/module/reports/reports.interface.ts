@@ -61,11 +61,13 @@ export interface ReportsRepositoryFilter {
 }
 
 /**
- * Normalized row shape returned to the controller. Both Jobs and
- * Retrievals are mapped to this shape before being merged + paginated.
+ * Normalized row shape returned to the controller. Every result row is
+ * a Job today. `source` is kept as a constant `'job'` so the response
+ * shape is stable for the frontend (it used to also be `'retrieval'`
+ * before the reports module dropped retrieval support).
  */
 export interface ReportsResultItem {
-  source: 'job' | 'retrieval';
+  source: 'job';
   id: string;
   name: string | null;
   job_status: JobStatus;
@@ -99,7 +101,6 @@ export interface ReportsResultItem {
 export interface ReportsSearchMetadata {
   totalDocuments: number;
   totalJobs: number;
-  totalRetrievals: number;
   currentPage: number;
   totalPage: number;
   limit: number;
@@ -125,12 +126,10 @@ export interface ReportsIdRow {
 export interface ReportsIdsSearchMetadata {
   totalDocuments: number;
   totalJobs: number;
-  totalRetrievals: number;
 }
 
 export interface ReportsIdsSearchResult {
   job_ids: string[];
-  retrieval_ids: string[];
   metadata: ReportsIdsSearchMetadata;
 }
 
@@ -170,26 +169,12 @@ export interface IReportsRepository {
     take?: number,
   ): Promise<{ total: number; rows: any[] }>;
 
-  countAndFindRetrievals(
-    filter: ReportsRepositoryFilter,
-    sortBy: string,
-    sortOrder: 'asc' | 'desc',
-    take?: number,
-  ): Promise<{ total: number; rows: any[] }>;
-
   /**
    * Lightweight variant of countAndFindJobs that pulls only the columns
    * the service needs to return IDs (plus start_date / end_date for the
    * optional post-filter on job_dates).
    */
   findJobIds(
-    filter: ReportsRepositoryFilter,
-    sortBy: string,
-    sortOrder: 'asc' | 'desc',
-  ): Promise<ReportsIdRow[]>;
-
-  /** Same as findJobIds but for the Retrieval collection. */
-  findRetrievalIds(
     filter: ReportsRepositoryFilter,
     sortBy: string,
     sortOrder: 'asc' | 'desc',

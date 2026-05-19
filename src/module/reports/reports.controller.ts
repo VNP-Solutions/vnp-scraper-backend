@@ -47,32 +47,31 @@ export class ReportsController {
   @UseGuards(JwtAuthGuard)
   @ValidateBody(searchReportsSchema)
   @ApiOperation({
-    summary: 'Search Parser Global Reports (jobs + retrievals)',
+    summary: 'Search Parser Global Reports (Jobs only)',
     description:
       'Unified search for the Parser Global Reports screen. Returns a ' +
-      'single merged paginated list combining Jobs (VCC / DB) and ' +
-      'Retrievals.\n\n' +
+      'paginated list of Jobs (VCC / DB).\n\n' +
       '### All fields are optional and independent\n' +
-      'You can send `{}` to get every job/retrieval the caller can see, ' +
-      'or mix any subset of these filters freely (none of them depend on ' +
-      'any of the others):\n' +
+      'You can send `{}` to get every job the caller can see, or mix any ' +
+      'subset of these filters freely (none of them depend on any of the ' +
+      'others):\n' +
       '- `search_term` — Property.name (case-insensitive contains) or ' +
       '  numeric exact match on Property.expedia_id / booking_id / agoda_id\n' +
       '- `portfolio_id` — scope to properties under one portfolio\n' +
       '- `property_ids` — restrict to an explicit list of properties\n' +
       '- `ota_providers` — Expedia / Booking / Agoda\n' +
-      '- `job_types` — VCC / DB → Job collection by `billing_type`; ' +
-      '  Retrieval → the Retrieval collection\n' +
+      '- `job_types` — `VCC` / `DB` filter on `Job.billing_type`. ' +
+      '  (`Retrieval` is still accepted by the validator for backwards ' +
+      '  compatibility but is silently ignored — this endpoint no longer ' +
+      '  queries the Retrieval collection.)\n' +
       '- `run_within` → `updatedAt` range\n' +
-      '- `job_statuses`, `frequency_types`, `card_periods` (Job-only), ' +
-      '  `batch_ids`\n' +
-      '- `job_dates` → Job/Retrieval `start_date` / `end_date` overlap\n' +
+      '- `job_statuses`, `frequency_types`, `card_periods`, `batch_ids`\n' +
+      '- `job_dates` → Job `start_date` / `end_date` overlap\n' +
       '- `include_archived`\n\n' +
       '`search_mode` (`property` / `portfolio`) is accepted for backwards ' +
       'compatibility with the original UI radio but is no longer used for ' +
       'routing — the backend routes purely on whether `portfolio_id` is ' +
-      'set. Send it, omit it, or send either value — the result is the ' +
-      'same for the same set of other filters.\n\n' +
+      'set.\n\n' +
       'Non-admin users are automatically scoped to their ' +
       '`UserFeatureAccessPermission` entries.',
   })
@@ -82,11 +81,11 @@ export class ReportsController {
       // ───────────────────── No-mode / minimal payloads ────────────────────
       a00_empty: {
         summary:
-          '00) Empty body {} — every job/retrieval the user can see',
+          '00) Empty body {} — every job the user can see',
         description:
           'All filter fields are optional. With an empty body the endpoint ' +
-          'returns every job and retrieval the caller has permission to ' +
-          'view (admin → all; non-admin → only items inside their ' +
+          'returns every job the caller has permission to view (admin → ' +
+          'all; non-admin → only items inside their ' +
           'UserFeatureAccessPermission scope).',
         value: {},
       },
@@ -124,7 +123,7 @@ export class ReportsController {
       a01_minimal_property: {
         summary: '01) Minimal — Property mode, no filters',
         description:
-          'Smallest valid request. Returns every job/retrieval the user can see, sorted by updatedAt desc.',
+          'Smallest valid request. Returns every job the user can see, sorted by updatedAt desc.',
         value: {
           search_mode: 'property',
           page: 1,
@@ -194,7 +193,7 @@ export class ReportsController {
       b01_portfolio_all_properties: {
         summary: '07) Portfolio mode — all properties under a portfolio',
         description:
-          'No search_term and no property_ids → every job/retrieval for any property under the portfolio (direct or via sub-portfolio).',
+          'No search_term and no property_ids → every job for any property under the portfolio (direct or via sub-portfolio).',
         value: {
           search_mode: 'portfolio',
           portfolio_id: '65f0a3c4e2b7a1d2c3e4f5a6',
@@ -273,24 +272,15 @@ export class ReportsController {
           limit: 10,
         },
       },
-      d03_job_type_retrieval: {
-        summary: '14) Job Type — Retrieval only',
+      d03_job_type_combined: {
+        summary: '14) Job Type — VCC + DB',
         description:
-          'Restricts the search to the Retrieval collection (Jobs are excluded).',
+          'Multi-select returns matching Jobs from both billing_types in ' +
+          'one list. (`Retrieval` is no longer supported by this endpoint; ' +
+          'sending it is silently ignored.)',
         value: {
           search_mode: 'property',
-          job_types: ['Retrieval'],
-          page: 1,
-          limit: 10,
-        },
-      },
-      d04_job_type_combined: {
-        summary: '15) Job Type — VCC + DB + Retrieval',
-        description:
-          'Multi-select returns matching Jobs AND matching Retrievals in one merged list.',
-        value: {
-          search_mode: 'property',
-          job_types: ['VCC', 'DB', 'Retrieval'],
+          job_types: ['VCC', 'DB'],
           page: 1,
           limit: 10,
         },
@@ -298,9 +288,9 @@ export class ReportsController {
 
       // ─────────────────────────── Run within (updatedAt) ──────────────────
       e01_run_within_quarter: {
-        summary: '16) Run within — updatedAt between two dates',
+        summary: '15) Run within — updatedAt between two dates',
         description:
-          'Filters by Job/Retrieval.updatedAt. `to` is inclusive to end-of-day. Either bound may be omitted for open-ended ranges.',
+          'Filters by Job.updatedAt. `to` is inclusive to end-of-day. Either bound may be omitted for open-ended ranges.',
         value: {
           search_mode: 'property',
           run_within: {
@@ -518,7 +508,7 @@ export class ReportsController {
           ],
           search_term: 'Hilton',
           ota_providers: ['Expedia', 'Booking'],
-          job_types: ['VCC', 'DB', 'Retrieval'],
+          job_types: ['VCC', 'DB'],
           run_within: {
             from: '2026-01-01',
             to: '2026-03-31',
@@ -581,12 +571,12 @@ export class ReportsController {
             updatedAt: '2026-02-01T09:45:11.000Z',
           },
           {
-            source: 'retrieval',
-            id: '65f0a3c4e2b7a1d2c3e4f701',
-            name: 'Hilton London - Feb 2026 Retrieval',
+            source: 'job',
+            id: '65f0a3c4e2b7a1d2c3e4f602',
+            name: 'Hilton London - Feb 2026',
             job_status: 'Running',
             ota_provider: 'Booking',
-            billing_type: null,
+            billing_type: 'VCC',
             execution_type: 'Manual',
             portfolio_id: '65f0a3c4e2b7a1d2c3e4f5a6',
             portfolio_name: 'Hilton Group',
@@ -613,9 +603,8 @@ export class ReportsController {
           },
         ],
         metadata: {
-          totalDocuments: 47,
+          totalDocuments: 41,
           totalJobs: 41,
-          totalRetrievals: 6,
           currentPage: 1,
           totalPage: 5,
           limit: 10,
@@ -633,7 +622,7 @@ export class ReportsController {
         errors: [
           {
             field: 'portfolio_id',
-            message: 'portfolio_id is required when search_mode is "portfolio"',
+            message: 'Invalid ObjectId format. Must be a 24-character hex string.',
           },
         ],
       },
@@ -699,24 +688,20 @@ export class ReportsController {
   @ValidateBody(searchReportsSchema)
   @ApiOperation({
     summary:
-      'List ALL matching job_ids + retrieval_ids (for "Download All" → /jobs/export-master)',
+      'List ALL matching job_ids (for "Download All" → /reports/export-master)',
     description:
       'Accepts the **same body shape** as `POST /reports/global` (every ' +
       'filter behaves identically), but ignores pagination and returns the ' +
-      'complete set of matching IDs.\n\n' +
+      'complete set of matching Job IDs.\n\n' +
       'Intended flow for the Reports → "Download as Zip" → "Download All" action:\n' +
       '  1. Frontend POSTs the current filter payload here.\n' +
-      '  2. Backend returns `{ data: { job_ids, retrieval_ids }, metadata }`.\n' +
-      '  3. Frontend takes `data.job_ids` and POSTs it to ' +
-      '`/jobs/export-master` (`{ job_ids: [...] }`) which streams a ZIP.\n\n' +
-      '`retrieval_ids` is also returned for forward-compat; there is no ' +
-      'bulk retrieval-export endpoint today, but the frontend can use the ' +
-      'count to inform the user (e.g. "41 jobs and 6 retrievals match — ' +
-      'only the 41 jobs will be exported to the ZIP").\n\n' +
+      '  2. Backend returns `{ data: { job_ids }, metadata }`.\n' +
+      '  3. Frontend POSTs `{ job_ids }` to `POST /reports/export-master` ' +
+      '     (or the legacy `POST /jobs/export-master`) which streams a ZIP.\n\n' +
       'Pagination/sort fields (`page`, `limit`, `sortBy`, `sortOrder`) are ' +
       'accepted (so the frontend can resend the exact same payload) — ' +
       '`page` and `limit` are ignored; `sortBy` / `sortOrder` still control ' +
-      'the order of the returned ID arrays so the export reflects the ' +
+      'the order of the returned ID array so the export reflects the ' +
       'same ordering the user sees on screen.\n\n' +
       'Non-admin users are scoped to their `UserFeatureAccessPermission` ' +
       'entries — they can never receive IDs they could not see via ' +
@@ -726,7 +711,7 @@ export class ReportsController {
     type: SearchReportsRequestDto,
     examples: {
       ids_minimal: {
-        summary: '01) Minimal — every job/retrieval the user can see',
+        summary: '01) Minimal — every job the user can see',
         description:
           'Returns ALL matching IDs the caller has access to. Equivalent ' +
           'to running `/reports/global` with no filters and no pagination.',
@@ -751,12 +736,12 @@ export class ReportsController {
           portfolio_id: '65f0a3c4e2b7a1d2c3e4f5b1',
         },
       },
-      ids_only_jobs: {
-        summary: '04) Only Jobs (VCC + DB) — no retrievals',
+      ids_explicit_billing_types: {
+        summary: '04) Restrict by billing type — VCC + DB',
         description:
-          'When you only intend to call `/jobs/export-master` you can ' +
-          'restrict to Job collection up front. Same as the Reports page ' +
-          'filtering "Job Types" to VCC + DB.',
+          'Identical effect to leaving `job_types` empty (the endpoint ' +
+          'always queries the Job collection only), but documents the ' +
+          'explicit form the frontend usually sends.',
         value: {
           search_mode: 'property',
           job_types: ['VCC', 'DB'],
@@ -800,12 +785,10 @@ export class ReportsController {
             '65f0a3c4e2b7a1d2c3e4f5a7',
             '65f0a3c4e2b7a1d2c3e4f5a8',
           ],
-          retrieval_ids: ['65f0a3c4e2b7a1d2c3e4f5b3'],
         },
         metadata: {
           totalJobs: 41,
-          totalRetrievals: 6,
-          totalDocuments: 47,
+          totalDocuments: 41,
         },
       },
     },
@@ -820,7 +803,7 @@ export class ReportsController {
         errors: [
           {
             field: 'portfolio_id',
-            message: 'portfolio_id is required when search_mode is "portfolio"',
+            message: 'Invalid ObjectId format. Must be a 24-character hex string.',
           },
         ],
       },
@@ -871,7 +854,6 @@ export class ReportsController {
           message: 'Matching report IDs retrieved successfully',
           data: {
             job_ids: result.job_ids,
-            retrieval_ids: result.retrieval_ids,
           },
           metadata: result.metadata,
         };
@@ -884,66 +866,48 @@ export class ReportsController {
   @UseGuards(JwtAuthGuard)
   @ValidateBody(exportReportsMasterSchema)
   @ApiOperation({
-    summary:
-      'Download as ZIP — combined Jobs + Retrievals master export (XLSX per item)',
+    summary: 'Download as ZIP — Jobs master export (XLSX per job)',
     description:
-      'Accepts an array of `job_ids` and/or `retrieval_ids` and returns a ' +
-      'single ZIP file containing one XLSX per ID:\n\n' +
-      '- **Per job** — same columns and per-OTA logic as ' +
-      '  `POST /jobs/export-master`, but rendered as XLSX with Card Number / ' +
-      '  Expiry date / CVV columns forced to Excel "Text" format so leading ' +
-      '  zeros and long digit strings are preserved.\n' +
-      '- **Per retrieval** — one XLSX containing that Retrieval\'s items, ' +
-      '  same columns as `GET /retrieval/export/:parentRetrievalId` but ' +
-      '  scoped to a single Retrieval instead of the parent.\n\n' +
-      'At least one of `job_ids` or `retrieval_ids` must be non-empty. ' +
-      'Either can be omitted or empty — the endpoint just skips that side.\n\n' +
+      'Accepts an array of `job_ids` and returns a single ZIP file ' +
+      'containing one XLSX per job.\n\n' +
+      'Each XLSX uses the same columns and per-OTA logic as ' +
+      '`POST /jobs/export-master`, but is rendered as XLSX with Card ' +
+      'Number / Expiry date / CVV columns forced to Excel "Text" format ' +
+      'so leading zeros and long digit strings are preserved.\n\n' +
+      '`job_ids` must contain at least one ID — sending an empty array ' +
+      'is rejected with 400.\n\n' +
       'Inside the ZIP each file is named ' +
-      '`{OTA}-{property}-{startDate}-{endDate}.xlsx`. Collisions (e.g. a ' +
-      'property that has both a job and a retrieval over the same window) ' +
-      'are disambiguated with a `-2`, `-3` suffix so nothing gets ' +
+      '`{OTA}-{property}-{startDate}-{endDate}.xlsx`. Collisions are ' +
+      'disambiguated with a `-2`, `-3` suffix so nothing gets ' +
       'overwritten.\n\n' +
       'The ZIP itself is named ' +
       '`reports-export-{D Month YYYY-HH.MM AM/PM}.zip`. A dot is used ' +
       'instead of `:` so the filename is valid on every OS.\n\n' +
       '**Recommended frontend flow ("Download All"):**\n' +
-      '1. `POST /reports/global/ids` with the current Reports filter payload → ' +
-      '   `{ job_ids, retrieval_ids }`.\n' +
-      '2. `POST /reports/export-master` with that same payload → ZIP downloads.',
+      '1. `POST /reports/global/ids` with the current Reports filter ' +
+      '   payload → `{ job_ids }`.\n' +
+      '2. `POST /reports/export-master` with `{ job_ids }` → ZIP downloads.',
   })
   @ApiBody({
     type: ExportReportsMasterRequestDto,
     examples: {
-      both: {
-        summary: '01) Mixed — jobs + retrievals in one ZIP',
-        description:
-          'Typical "Download All" payload after a `/reports/global/ids` call.',
-        value: {
-          job_ids: [
-            '65f0a3c4e2b7a1d2c3e4f5a6',
-            '65f0a3c4e2b7a1d2c3e4f5a7',
-          ],
-          retrieval_ids: ['65f0a3c4e2b7a1d2c3e4f5b3'],
-        },
-      },
-      jobs_only: {
-        summary: '02) Jobs only',
-        description:
-          'Equivalent to `POST /jobs/export-master` but the resulting ZIP ' +
-          'contains XLSX files instead of CSV.',
+      single_job: {
+        summary: '01) Single job',
+        description: 'Smallest valid payload — a single job exported as a one-entry ZIP.',
         value: {
           job_ids: ['65f0a3c4e2b7a1d2c3e4f5a6'],
         },
       },
-      retrievals_only: {
-        summary: '03) Retrievals only',
+      multiple_jobs: {
+        summary: '02) Multiple jobs (typical "Download All")',
         description:
-          'Useful when the user filtered the Reports page to Retrieval ' +
-          'rows only.',
+          'Typical payload after a `/reports/global/ids` call — paste the ' +
+          'returned `data.job_ids` array verbatim.',
         value: {
-          retrieval_ids: [
-            '65f0a3c4e2b7a1d2c3e4f5b3',
-            '65f0a3c4e2b7a1d2c3e4f5b4',
+          job_ids: [
+            '65f0a3c4e2b7a1d2c3e4f5a6',
+            '65f0a3c4e2b7a1d2c3e4f5a7',
+            '65f0a3c4e2b7a1d2c3e4f5a8',
           ],
         },
       },
@@ -958,7 +922,7 @@ export class ReportsController {
   })
   @ApiResponse({
     status: 400,
-    description: 'Validation failed (both arrays empty, or malformed IDs)',
+    description: 'Validation failed (empty `job_ids` or malformed IDs)',
     schema: {
       example: {
         statusCode: 400,
@@ -966,8 +930,7 @@ export class ReportsController {
         errors: [
           {
             field: 'job_ids',
-            message:
-              'At least one of `job_ids` or `retrieval_ids` must contain one or more IDs',
+            message: 'At least one job ID is required',
           },
         ],
       },
@@ -983,12 +946,12 @@ export class ReportsController {
   @ApiResponse({
     status: 404,
     description:
-      'No exportable content for the provided IDs (jobs/retrievals exist but ' +
-      'have no items, or every ID was missing).',
+      'No exportable content for the provided IDs (jobs exist but have ' +
+      'no items, or every ID was missing).',
     schema: {
       example: {
         statusCode: 404,
-        message: 'No exportable content found for the provided IDs',
+        message: 'No exportable content found for the provided job IDs',
         data: null,
       },
     },
