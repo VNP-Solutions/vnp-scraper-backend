@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { ScheduledJob } from '@prisma/client';
+import { Job, JobStatus, ScheduledJob } from '@prisma/client';
 import {
   IScheduledJobRepository,
   IScheduledJobService,
@@ -12,6 +12,45 @@ export class ScheduledJobService implements IScheduledJobService {
     private readonly repository: IScheduledJobRepository,
     private readonly logger: Logger,
   ) {}
+
+  async getJobsByScheduleDateAndStatus(
+    scheduleDate: string,
+    status: JobStatus,
+  ): Promise<Job[]> {
+    try {
+      if (!scheduleDate || !/^\d{4}-\d{2}-\d{2}$/.test(scheduleDate)) {
+        throw new Error('Schedule date must be in YYYY-MM-DD format');
+      }
+      return await this.repository.getJobsByScheduleDateAndStatus(
+        scheduleDate,
+        status,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Error fetching jobs by schedule_date and status: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async createScheduledJobByDate(
+    date: string,
+    jobIds: string[] = [],
+  ): Promise<ScheduledJob> {
+    try {
+      if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        throw new Error('Date must be in YYYY-MM-DD format');
+      }
+      return await this.repository.createScheduledJobByDate(date, jobIds);
+    } catch (error) {
+      this.logger.error(
+        `Error creating scheduled job by date: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
 
   async createOrUpdateScheduledJob(
     date: string,

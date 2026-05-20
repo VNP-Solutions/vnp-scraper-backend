@@ -108,12 +108,17 @@ export class SearchReportsRequestDto {
   job_statuses?: JobStatus[];
 
   @ApiPropertyOptional({
-    enum: ['Manual', 'Recurring'],
+    enum: ['Manual', 'immediate'],
     isArray: true,
-    description: 'Frequency Type — filters by Job.execution_type.',
-    example: ['Manual'],
+    description:
+      'Frequency Type — filters by `Job.execution_type`.\n' +
+      '- `Manual`    → matches DB values `Manual` / `manual`.\n' +
+      '- `immediate` → matches DB values `Immediate` / `immediate` ' +
+      '  (this is the default `execution_type` written by the Excel ' +
+      '  import path when no execution-type cell is provided).',
+    example: ['Manual', 'immediate'],
   })
-  frequency_types?: ('Manual' | 'Recurring')[];
+  frequency_types?: ('Manual' | 'immediate')[];
 
   @ApiPropertyOptional({
     enum: ['Over160', 'Under160'],

@@ -7,7 +7,13 @@ const objectIdSchema = z.string().regex(/^[0-9a-fA-F]{24}$/, {
 
 export const SearchModeEnum = z.enum(['property', 'portfolio']);
 export const JobTypeEnum = z.enum(['VCC', 'DB', 'Retrieval']);
-export const FrequencyTypeEnum = z.enum(['Manual', 'Recurring']);
+// Frequency Type — UI labels for the `frequency_types` filter.
+// These map onto `Job.execution_type` values stored in the DB:
+//   'Manual'    → matches DB values 'Manual' / 'manual'
+//   'immediate' → matches DB values 'Immediate' / 'immediate'
+//                 (the Excel import path defaults to 'Immediate' when no
+//                  execution-type cell is present — see job.service.ts).
+export const FrequencyTypeEnum = z.enum(['Manual', 'immediate']);
 export const CardPeriodEnum = z.enum(['Over160', 'Under160']);
 export const SortOrderEnum = z.enum(['asc', 'desc']);
 export const ReportsSortByEnum = z.enum([

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ScheduledJob } from '@prisma/client';
+import { Job, JobStatus, OTAProvider, ScheduledJob } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { IScheduledJobRepository } from './scheduled-job.interface';
 
@@ -9,6 +9,67 @@ export class ScheduledJobRepository implements IScheduledJobRepository {
     private readonly db: DatabaseService,
     private readonly logger: Logger,
   ) {}
+
+  async getJobsByScheduleDateAndStatus(
+    scheduleDate: string,
+    status: JobStatus,
+  ): Promise<Job[]> {
+    try {
+      const jobs = await this.db.job.findMany({
+        where: {
+          schedule_date: scheduleDate,
+          job_status: status,
+          ota_provider: OTAProvider.Expedia,
+        },
+        orderBy: { id: 'asc' },
+      });
+      return jobs;
+    } catch (error) {
+      this.logger.error(
+        `Error fetching jobs by schedule_date and status: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async createScheduledJobByDate(
+    date: string,
+    jobIds: string[] = [],
+  ): Promise<ScheduledJob> {
+    try {
+      const existing = await this.db.scheduledJob.findFirst({
+        where: { date },
+      });
+
+      if (existing) {
+        // Merge new job IDs that are not already present
+        const existingIds = existing.job_ids || [];
+        const newIds = jobIds.filter((id) => !existingIds.includes(id));
+        if (newIds.length === 0) {
+          return existing;
+        }
+        return await this.db.scheduledJob.update({
+          where: { id: existing.id },
+          data: { job_ids: [...existingIds, ...newIds] },
+        });
+      }
+
+      return await this.db.scheduledJob.create({
+        data: {
+          date,
+          job_ids: jobIds,
+          retrieval_ids: [],
+        },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Error creating scheduled job by date: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
 
   async createOrUpdateScheduledJob(
     date: string,

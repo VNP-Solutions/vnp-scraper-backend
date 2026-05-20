@@ -1,3 +1,4 @@
+import { JobStatus } from '@prisma/client';
 import { z } from 'zod';
 
 // MongoDB ObjectId validation
@@ -51,4 +52,25 @@ export type RemoveJobsFromScheduledJobType = z.infer<
 >;
 export type RemoveJobIdsFromAllScheduledJobsType = z.infer<
   typeof removeJobIdsFromAllScheduledJobsSchema
+>;
+
+export const getJobsByScheduleDateAndStatusSchema = z.object({
+  creating_date: dateStringSchema,
+  schedule_date: dateStringSchema,
+  status: z.nativeEnum(JobStatus, {
+    errorMap: () => ({
+      message: `Status must be one of: ${Object.values(JobStatus).join(', ')}`,
+    }),
+  }),
+});
+
+export const createScheduledJobByDateSchema = z.object({
+  date: dateStringSchema,
+});
+
+export type GetJobsByScheduleDateAndStatusType = z.infer<
+  typeof getJobsByScheduleDateAndStatusSchema
+>;
+export type CreateScheduledJobByDateType = z.infer<
+  typeof createScheduledJobByDateSchema
 >;

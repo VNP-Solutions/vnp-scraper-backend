@@ -361,7 +361,9 @@ export class ReportsController {
       // ─────────────────────────── Frequency type ──────────────────────────
       g01_frequency_manual: {
         summary: '22) Frequency Type — Manual only',
-        description: 'Matches Job.execution_type = "Manual".',
+        description:
+          'Matches Job.execution_type in (`Manual`, `manual`). Use when ' +
+          'you only want jobs the user explicitly triggered.',
         value: {
           search_mode: 'property',
           frequency_types: ['Manual'],
@@ -369,21 +371,25 @@ export class ReportsController {
           limit: 10,
         },
       },
-      g02_frequency_recurring: {
-        summary: '23) Frequency Type — Recurring only',
-        description: 'Matches Job.execution_type = "Recurring".',
+      g02_frequency_immediate: {
+        summary: '23) Frequency Type — Immediate only',
+        description:
+          'Matches Job.execution_type in (`Immediate`, `immediate`). ' +
+          '`Immediate` is the default `execution_type` written by the ' +
+          'Excel-import path when no execution-type cell is provided, so ' +
+          'this typically captures bulk-imported one-off jobs.',
         value: {
           search_mode: 'property',
-          frequency_types: ['Recurring'],
+          frequency_types: ['immediate'],
           page: 1,
           limit: 10,
         },
       },
       g03_frequency_both: {
-        summary: '24) Frequency Type — Manual + Recurring',
+        summary: '24) Frequency Type — Manual + Immediate',
         value: {
           search_mode: 'property',
-          frequency_types: ['Manual', 'Recurring'],
+          frequency_types: ['Manual', 'immediate'],
           page: 1,
           limit: 10,
         },
@@ -514,7 +520,7 @@ export class ReportsController {
             to: '2026-03-31',
           },
           job_statuses: ['Completed', 'Failed'],
-          frequency_types: ['Manual', 'Recurring'],
+          frequency_types: ['Manual', 'immediate'],
           card_periods: ['Over160'],
           job_dates: {
             start_date: '01/01/2026',
