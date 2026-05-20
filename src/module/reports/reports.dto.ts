@@ -108,17 +108,21 @@ export class SearchReportsRequestDto {
   job_statuses?: JobStatus[];
 
   @ApiPropertyOptional({
-    enum: ['Manual', 'immediate'],
+    enum: ['Manual', 'manual', 'Immediate', 'immediate'],
     isArray: true,
     description:
-      'Frequency Type — filters by `Job.execution_type`.\n' +
-      '- `Manual`    → matches DB values `Manual` / `manual`.\n' +
-      '- `immediate` → matches DB values `Immediate` / `immediate` ' +
-      '  (this is the default `execution_type` written by the Excel ' +
-      '  import path when no execution-type cell is provided).',
+      'Frequency Type — filters by `Job.execution_type`. ' +
+      '**Case-insensitive** — `Manual` / `manual` / `MANUAL` are all ' +
+      'treated as equivalent, and likewise for `Immediate` / ' +
+      '`immediate` / `IMMEDIATE`. The canonical UI labels are `Manual` ' +
+      'and `Immediate`.\n\n' +
+      '- `Manual` / `manual` → matches DB values `Manual` / `manual`.\n' +
+      '- `Immediate` / `immediate` → matches DB values `Immediate` / ' +
+      '  `immediate` (this is the default `execution_type` written by ' +
+      '  the Excel-import path when no execution-type cell is provided).',
     example: ['Manual', 'immediate'],
   })
-  frequency_types?: ('Manual' | 'immediate')[];
+  frequency_types?: ('Manual' | 'manual' | 'Immediate' | 'immediate')[];
 
   @ApiPropertyOptional({
     enum: ['Over160', 'Under160'],
