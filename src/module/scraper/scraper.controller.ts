@@ -45,6 +45,7 @@ import {
 import { IScheduledJobService } from './scheduled-job.interface';
 import {
     createScheduledJobSchema,
+    getJobsByScheduleDateAndStatusSchema,
     removeJobIdsFromAllScheduledJobsSchema,
     removeJobsFromScheduledJobSchema,
 } from './scheduled-job.validation';
@@ -60,7 +61,9 @@ import {
     CreateScheduledJobDto,
     CreateScheduledJobResponseDto,
     ErrorResponseDto,
+    GetJobsByScheduleDateAndStatusQueryDto,
     HealthResponseDto,
+    JobsWithScheduledJobResponseDto,
     PauseResumeStopResponseDto,
     PropertyRunJobRequestDto,
     PropertyRunJobResponseDto,
@@ -3016,6 +3019,54 @@ export class ScraperController {
           statusCode: 200,
           message,
           data: result,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Post('/scheduled/jobs')
+  @UseGuards(JwtAuthGuard)
+  @ValidateBody(getJobsByScheduleDateAndStatusSchema)
+  @ApiOperation({
+    summary: 'Get jobs by schedule date and status, and create scheduled job record',
+    description:
+      'Creates a ScheduledJob record in the database for the provided schedule date (or returns the existing one), then returns all Job records whose schedule_date and job_status match the given values.',
+  })
+  @ApiBody({ type: GetJobsByScheduleDateAndStatusQueryDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Scheduled job created/retrieved and matching jobs returned',
+    type: JobsWithScheduledJobResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid request body' })
+  async getJobsAndCreateScheduledJob(
+    @Body() body: GetJobsByScheduleDateAndStatusQueryDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        // 1. Query jobs by schedule_date + status first
+        const jobs = await this.scheduledJobService.getJobsByScheduleDateAndStatus(
+          body.schedule_date,
+          body.status,
+        );
+        const jobIds = jobs.map((j) => j.id);
+
+        // 2. Create (or update) ScheduledJob with creating_date, seeding it with the found job IDs
+        const existingBefore = await this.scheduledJobService.getScheduledJobByDate(
+          body.creating_date,
+        );
+        const scheduledJob = await this.scheduledJobService.createScheduledJobByDate(
+          body.creating_date,
+          jobIds,
+        );
+
+        return {
+          statusCode: 200,
+          message: `${existingBefore ? 'Existing' : 'New'} scheduled job for ${body.creating_date}. Found ${jobs.length} job(s) with schedule date ${body.schedule_date} and status ${body.status}.`,
+          data: { scheduledJob, created: !existingBefore, jobs, total: jobs.length },
         };
       },
       this.logger,

@@ -1,6 +1,11 @@
-import { ScheduledJob } from '@prisma/client';
+import { Job, JobStatus, ScheduledJob } from '@prisma/client';
 
 export interface IScheduledJobRepository {
+  getJobsByScheduleDateAndStatus(
+    scheduleDate: string,
+    status: JobStatus,
+  ): Promise<Job[]>;
+  createScheduledJobByDate(date: string, jobIds?: string[]): Promise<ScheduledJob>;
   createOrUpdateScheduledJob(
     date: string,
     jobIds: string[],
@@ -40,6 +45,11 @@ export interface IScheduledJobRepository {
 }
 
 export interface IScheduledJobService {
+  getJobsByScheduleDateAndStatus(
+    scheduleDate: string,
+    status: JobStatus,
+  ): Promise<Job[]>;
+  createScheduledJobByDate(date: string, jobIds?: string[]): Promise<ScheduledJob>;
   createOrUpdateScheduledJob(
     date: string,
     jobIds: string[],

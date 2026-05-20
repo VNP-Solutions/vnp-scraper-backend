@@ -475,20 +475,25 @@ export class ReportsService implements IReportsService {
   }
 
   /**
-   * Maps "Manual"/"Recurring" UI labels to the values stored in
-   * Job.execution_type. The current data layer stores Manual / Recurring
-   * verbatim (matched case-insensitively at the DB layer via `in`).
+   * Maps the `frequency_types` UI labels onto the literal strings stored
+   * in `Job.execution_type`. Both casings are emitted for each label so
+   * the DB-side `in` clause matches the historical mix of values.
+   *
+   *   'Manual'    → 'Manual',    'manual'
+   *   'immediate' → 'Immediate', 'immediate'  (this is the default value
+   *                  the Excel-import path writes when no execution-type
+   *                  cell is present — see `job.service.ts`).
    */
-  private resolveExecutionTypes(types: ('Manual' | 'Recurring')[]): string[] {
+  private resolveExecutionTypes(types: ('Manual' | 'immediate')[]): string[] {
     if (types.length === 0) return [];
     const set = new Set<string>();
     for (const t of types) {
       if (t === 'Manual') {
         set.add('Manual');
         set.add('manual');
-      } else if (t === 'Recurring') {
-        set.add('Recurring');
-        set.add('recurring');
+      } else if (t === 'immediate') {
+        set.add('Immediate');
+        set.add('immediate');
       }
     }
     return Array.from(set);

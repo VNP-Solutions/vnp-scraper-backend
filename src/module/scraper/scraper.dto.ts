@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { JobStatus } from '@prisma/client';
 
 export class HealthResponseDto {
   @ApiProperty({ example: 'Connection established' })
@@ -615,4 +616,70 @@ export class RemoveJobIdsFromAllScheduledJobsResponseDto {
     example: 2,
   })
   deletedScheduledJobsCount: number;
+}
+
+// ─── Get Jobs by Schedule Date + Status, and Create Scheduled Job ────────────
+
+export class GetJobsByScheduleDateAndStatusQueryDto {
+  @ApiProperty({
+    description: 'Date used to create the ScheduledJob record in DB (YYYY-MM-DD)',
+    example: '2024-06-15',
+  })
+  creating_date: string;
+
+  @ApiProperty({
+    description: 'Date used to query jobs by their schedule_date field (YYYY-MM-DD)',
+    example: '2024-06-15',
+  })
+  schedule_date: string;
+
+  @ApiProperty({
+    description: 'Job status to filter by',
+    enum: JobStatus,
+    example: JobStatus.Pending,
+  })
+  status: JobStatus;
+}
+
+export class JobSummaryDto {
+  @ApiProperty({ example: '664f1a2b3c4d5e6f7a8b9c0d' })
+  id: string;
+
+  @ApiProperty({ example: 'Property A Expedia Job', required: false, nullable: true })
+  name: string | null;
+
+  @ApiProperty({ enum: JobStatus, example: JobStatus.Pending })
+  job_status: JobStatus;
+
+  @ApiProperty({ example: '2024-06-15', required: false, nullable: true })
+  schedule_date: string | null;
+
+  @ApiProperty({ example: 'Expedia' })
+  ota_provider: string;
+
+  @ApiProperty({ example: 'My Portfolio', required: false, nullable: true })
+  portfolio_name: string | null;
+
+  @ApiProperty({ example: 'Property Name' })
+  property_name: string;
+}
+
+export class JobsWithScheduledJobResponseDto {
+  @ApiProperty({
+    description: 'The ScheduledJob record that was created or already existed',
+    type: ScheduledJobResponseDto,
+  })
+  scheduledJob: ScheduledJobResponseDto;
+
+  @ApiProperty({
+    description: 'Whether the ScheduledJob record was freshly created (true) or already existed (false)',
+    example: true,
+  })
+  created: boolean;
+
+  @ApiProperty({ description: 'Jobs matching the given schedule date and status', type: [JobSummaryDto] })
+  jobs: JobSummaryDto[];
+
+  @ApiProperty({ example: 5 })
+  total: number;
 }
