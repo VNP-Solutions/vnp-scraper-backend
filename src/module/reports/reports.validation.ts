@@ -8,12 +8,24 @@ const objectIdSchema = z.string().regex(/^[0-9a-fA-F]{24}$/, {
 export const SearchModeEnum = z.enum(['property', 'portfolio']);
 export const JobTypeEnum = z.enum(['VCC', 'DB', 'Retrieval']);
 // Frequency Type — UI labels for the `frequency_types` filter.
+//
+// Accepted as case-INSENSITIVE: callers may send any of
+//   'Manual'   / 'manual'   / 'MANUAL'
+//   'Immediate'/ 'immediate'/ 'IMMEDIATE'
+// The schema normalizes every value to lowercase BEFORE the enum check,
+// so the only valid post-normalization tokens are 'manual' and
+// 'immediate'. Downstream consumers (service / repository) should treat
+// the value as already lowercased.
+//
 // These map onto `Job.execution_type` values stored in the DB:
-//   'Manual'    → matches DB values 'Manual' / 'manual'
-//   'immediate' → matches DB values 'Immediate' / 'immediate'
-//                 (the Excel import path defaults to 'Immediate' when no
+//   'manual'    → DB values 'Manual' / 'manual'
+//   'immediate' → DB values 'Immediate' / 'immediate'
+//                 (the Excel-import path defaults to 'Immediate' when no
 //                  execution-type cell is present — see job.service.ts).
-export const FrequencyTypeEnum = z.enum(['Manual', 'immediate']);
+export const FrequencyTypeEnum = z.preprocess(
+  (val) => (typeof val === 'string' ? val.toLowerCase() : val),
+  z.enum(['manual', 'immediate']),
+);
 export const CardPeriodEnum = z.enum(['Over160', 'Under160']);
 export const SortOrderEnum = z.enum(['asc', 'desc']);
 export const ReportsSortByEnum = z.enum([

@@ -475,20 +475,21 @@ export class ReportsService implements IReportsService {
   }
 
   /**
-   * Maps the `frequency_types` UI labels onto the literal strings stored
+   * Maps the `frequency_types` UI labels (already lowercased by the Zod
+   * preprocess on `FrequencyTypeEnum`) onto the literal strings stored
    * in `Job.execution_type`. Both casings are emitted for each label so
    * the DB-side `in` clause matches the historical mix of values.
    *
-   *   'Manual'    → 'Manual',    'manual'
+   *   'manual'    → 'Manual',    'manual'
    *   'immediate' → 'Immediate', 'immediate'  (this is the default value
    *                  the Excel-import path writes when no execution-type
    *                  cell is present — see `job.service.ts`).
    */
-  private resolveExecutionTypes(types: ('Manual' | 'immediate')[]): string[] {
+  private resolveExecutionTypes(types: ('manual' | 'immediate')[]): string[] {
     if (types.length === 0) return [];
     const set = new Set<string>();
     for (const t of types) {
-      if (t === 'Manual') {
+      if (t === 'manual') {
         set.add('Manual');
         set.add('manual');
       } else if (t === 'immediate') {
