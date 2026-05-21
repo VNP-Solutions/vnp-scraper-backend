@@ -32,6 +32,9 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
   CreateRecurringJobDto,
   CreateRecurringJobFromJobDto,
+  DbmsIngestDto,
+  DbmsIngestErrorDto,
+  DbmsIngestResponseDto,
   RecurringJobResponseDto,
   RecurringJobWithBucketsResponseDto,
   UpdateRecurringJobDto,
@@ -44,6 +47,7 @@ import { IRecurringJobService } from './recurring-job.interface';
 import {
   createRecurringJobFromJobSchema,
   createRecurringJobSchema,
+  dbmsIngestSchema,
   updateRecurringJobSchema,
   updateRecurringJobStatusSchema,
   bulkDeleteRecurringJobSchema,
@@ -635,6 +639,50 @@ export class RecurringJobController {
           statusCode: 200,
           message: `Successfully transferred ${result.recurringJobsUpdated} recurring job(s) from ${transferDto.from_date} to ${transferDto.to_date}`,
           data: result,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Post('/dbms-ingest')
+  @ValidateBody(dbmsIngestSchema)
+  @ApiOperation({
+    summary: 'DBMS ingest — create recurring jobs from external DBMS backend',
+    description:
+      'Machine-to-machine endpoint. Validates each property by expedia_id lookup and checks for existing recurring jobs. ' +
+      'Returns 400 with an error list of expedia_ids if any validation fails — no jobs are created. ' +
+      'Returns 200 "Processing" when all properties pass validation and creation begins.',
+  })
+  @ApiBody({ type: DbmsIngestDto })
+  @ApiResponse({
+    status: 200,
+    description: 'All properties validated — recurring jobs are being created',
+    type: DbmsIngestResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'One or more properties failed validation — no jobs were created',
+    type: DbmsIngestErrorDto,
+  })
+  async dbmsIngest(@Body() body: DbmsIngestDto, @Res() response: Response) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result = await this.recurringJobService.dbmsIngest(body);
+
+        if ('errors' in result) {
+          return {
+            statusCode: 400,
+            message: result.message,
+            data: result.errors,  // { expedia_ids: number[], descriptions: [{name, error_message}] }
+          };
+        }
+
+        return {
+          statusCode: 200,
+          message: result.message,
+          data: null,
         };
       },
       this.logger,

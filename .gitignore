@@ -136,3 +136,4 @@ dist
 .pnp.*
 
 decrypt-password.ts
+.docs/
