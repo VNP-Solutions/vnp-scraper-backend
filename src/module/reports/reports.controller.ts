@@ -1222,8 +1222,9 @@ export class ReportsController {
       '   `job.portfolio.name`).\n' +
       '6. `Hotel Name*` — `job.property_name`.\n' +
       '7. `Reservation ID*` — `jobItem.reservation_id`.\n' +
-      '8. `Status*` — **currently blank** (no DB source decided yet — ' +
-      '   wire it once the source field is finalized).\n' +
+      '8. `Status*` — hard-coded to the literal string `"TBD"` for ' +
+      '   every row (no DB source decided yet — will be wired once the ' +
+      '   source field is finalized).\n' +
       '9. `Name` — `jobItem.guest_name`.\n' +
       '10. `Check In` — `jobItem.check_in_date` formatted as ' +
       '    `"MMM dd, yyyy"`.\n' +
