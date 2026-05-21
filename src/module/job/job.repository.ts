@@ -1205,31 +1205,74 @@ export class JobRepository implements IJobRepository {
     }
   }
 
+  /**
+   * Load every job referenced by `jobIds` with the relations the master /
+   * dashboard / consolidated XLSX exporters need (`batch`, `portfolio`,
+   * `property`, `jobItem` + `cardActivity`).
+   *
+   * Why chunked: a single `findMany({ where: { id: { in: [...] } }, include:
+   * { jobItem: { include: { cardActivity: true } } } })` makes Prisma issue
+   * one Mongo aggregation per relation. When too many jobs are requested,
+   * the `card_activities` aggregation result can blow past Mongo's hard
+   * 16 MB BSON limit and the entire query fails with:
+   *
+   *   "BSONObj size: 25859571 is invalid. Size must be between 0 and
+   *    16809984(16MB) First element: aggregate: \"card_activities\"…"
+   *
+   * That limit lives inside `mongod` — there is no driver / Prisma / Nest
+   * setting that can lift it. The only safe fix is to keep each batch's
+   * aggregation result small. Splitting jobIds into chunks of
+   * `MASTER_EXPORT_JOB_CHUNK_SIZE` and concatenating the results gives the
+   * caller the same shape it always got, without any single aggregation
+   * approaching 16 MB.
+   *
+   * Chunks are issued sequentially. Parallelizing would shave wall-clock
+   * time but multiplies peak Mongo load (an export of 500 jobs already
+   * fans out to 4+ aggregations per chunk for the included relations).
+   */
   async findManyForMasterExport(jobIds: string[]): Promise<any[]> {
     try {
-      const jobs = await this.db.job.findMany({
-        where: { id: { in: jobIds } },
-        include: {
-          batch: { select: { id: true, name: true } },
-          portfolio: { select: { id: true, name: true } },
-          property: {
-            select: {
-              id: true,
-              name: true,
-              expedia_id: true,
-              booking_id: true,
-              agoda_id: true,
-            },
-          },
-          jobItem: {
-            orderBy: { createdAt: 'asc' },
-            include: {
-              cardActivity: true,
-            },
+      const uniqueIds = Array.from(new Set(jobIds ?? [])).filter(Boolean);
+      if (uniqueIds.length === 0) return [];
+
+      // 25 jobs per chunk is a conservative balance:
+      //   - even pathological Expedia jobs (large `cardActivity.authorizations`
+      //     arrays) stay well below 16MB per batch;
+      //   - request count stays reasonable (1k jobs → 40 round-trips).
+      // Bump this only after measuring the actual per-job payload for your
+      // largest exports.
+      const MASTER_EXPORT_JOB_CHUNK_SIZE = 25;
+
+      const include = {
+        batch: { select: { id: true, name: true } },
+        portfolio: { select: { id: true, name: true } },
+        property: {
+          select: {
+            id: true,
+            name: true,
+            expedia_id: true,
+            booking_id: true,
+            agoda_id: true,
           },
         },
-      });
-      return jobs;
+        jobItem: {
+          orderBy: { createdAt: 'asc' as const },
+          include: {
+            cardActivity: true,
+          },
+        },
+      };
+
+      const all: any[] = [];
+      for (let i = 0; i < uniqueIds.length; i += MASTER_EXPORT_JOB_CHUNK_SIZE) {
+        const chunk = uniqueIds.slice(i, i + MASTER_EXPORT_JOB_CHUNK_SIZE);
+        const jobs = await this.db.job.findMany({
+          where: { id: { in: chunk } },
+          include,
+        });
+        all.push(...jobs);
+      }
+      return all;
     } catch (error) {
       this.logger.error(
         `Error loading jobs for master export: ${error.message}`,

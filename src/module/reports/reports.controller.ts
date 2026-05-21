@@ -1191,4 +1191,193 @@ export class ReportsController {
       });
     }
   }
+
+  @Post('/export-dashboard')
+  @UseGuards(JwtAuthGuard)
+  @ValidateBody(exportReportsMasterSchema)
+  @ApiOperation({
+    summary: 'Download for Dashboard — single XLSX (simplified column spec)',
+    description:
+      'Accepts an array of `job_ids` and returns ONE XLSX file containing ' +
+      'every selected job\'s items rendered with the simplified ' +
+      '**Dashboard** column spec — a different (and shorter) layout from ' +
+      'the one `POST /reports/export-consolidated` produces.\n\n' +
+      'Use this when the user clicks **"Download for Dashboard"** on the ' +
+      'Reports page (vs. **"Download as ZIP"** → `/reports/export-master`, ' +
+      'or **"Consolidated Report"** → `/reports/export-consolidated`).\n\n' +
+      '### Columns (in order)\n' +
+      '_Headers carry a trailing `*` for required columns, matching the_ ' +
+      '_downstream spreadsheet template exactly._\n\n' +
+      '1. `OTA*` — `job.ota_provider` (`Expedia` / `Booking` / `Agoda`).\n' +
+      '2. `Hotel ID*` — the OTA-specific property ID: ' +
+      '   `property.expedia_id` for Expedia jobs, `property.booking_id` ' +
+      '   for Booking jobs, `property.agoda_id` for Agoda jobs.\n' +
+      '3. `Batch` — `job.batch.name` (falls back to denormalized ' +
+      '   `job.batch_name`).\n' +
+      '4. `Review/Collection Date` — `job.end_date` formatted as ' +
+      '   `"MMM dd, yyyy"` (e.g. `Feb 28, 2026`).\n' +
+      '5. `Portfolio*` — `job.portfolio_name` (falls back to ' +
+      '   `job.portfolio.name`).\n' +
+      '6. `Hotel Name*` — `job.property_name`.\n' +
+      '7. `Reservation ID*` — `jobItem.reservation_id`.\n' +
+      '8. `Status*` — **currently blank** (no DB source decided yet — ' +
+      '   wire it once the source field is finalized).\n' +
+      '9. `Name` — `jobItem.guest_name`.\n' +
+      '10. `Check In` — `jobItem.check_in_date` formatted as ' +
+      '    `"MMM dd, yyyy"`.\n' +
+      '11. `Check Out` — `jobItem.check_out_date` formatted as ' +
+      '    `"MMM dd, yyyy"`.\n' +
+      '12. `Currency*` — ' +
+      '    `jobItem.payment_info.amount_to_charge_or_refund_currency` ' +
+      '    (defaults to `"USD"` when missing).\n' +
+      '13. `Amount Collected*` — ' +
+      '    `jobItem.payment_info.amount_to_charge_or_refund`.\n' +
+      '14. `Due To Property*` — `Amount Collected × 0.85`, rounded to 4 ' +
+      '    decimals. **Expedia and Booking only** — `"N/A"` for Agoda ' +
+      '    rows or when `Amount Collected` is missing / non-numeric.\n' +
+      '15. `Due To VNP*` — `Amount Collected × 0.15`, rounded to 4 ' +
+      '    decimals. Same Expedia / Booking eligibility as ' +
+      '    `Due To Property*`.\n\n' +
+      '### Row ordering\n' +
+      'Rows are emitted in the order the jobs come back from the database ' +
+      '(driven by the optional `sortBy` / `sortOrder` the frontend used to ' +
+      'fetch `/reports/global/ids`). All items of one job are written ' +
+      'before moving to the next. Jobs with zero items are skipped.\n\n' +
+      '### Filename\n' +
+      '`dashboard-report-{D Month YYYY-HH.MM AM/PM}.xlsx` (e.g. ' +
+      '`dashboard-report-21 May 2026-01.16 PM.xlsx`).\n\n' +
+      '### Recommended frontend flow\n' +
+      '1. `POST /reports/global/ids` with the current Reports filter ' +
+      '   payload → `{ job_ids }`.\n' +
+      '2. `POST /reports/export-dashboard` with `{ job_ids }` → XLSX ' +
+      '   downloads.',
+  })
+  @ApiBody({
+    type: ExportReportsMasterRequestDto,
+    examples: {
+      single_job: {
+        summary: '01) Single job',
+        description:
+          'Smallest valid payload — a single job rendered as a one-job ' +
+          'dashboard XLSX.',
+        value: {
+          job_ids: ['65f0a3c4e2b7a1d2c3e4f5a6'],
+        },
+      },
+      multiple_jobs: {
+        summary: '02) Multiple jobs (typical "Download for Dashboard")',
+        description:
+          'Typical payload after a `/reports/global/ids` call — paste the ' +
+          'returned `data.job_ids` array verbatim.',
+        value: {
+          job_ids: [
+            '65f0a3c4e2b7a1d2c3e4f5a6',
+            '65f0a3c4e2b7a1d2c3e4f5a7',
+            '65f0a3c4e2b7a1d2c3e4f5a8',
+          ],
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'XLSX file. Response Content-Type is ' +
+      '`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` ' +
+      'and `Content-Disposition` carries the suggested filename.',
+    content: {
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {},
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation failed (empty `job_ids` or malformed IDs)',
+    schema: {
+      example: {
+        statusCode: 400,
+        message: 'Validation failed',
+        errors: [
+          {
+            field: 'job_ids',
+            message: 'At least one job ID is required',
+          },
+        ],
+      },
+    },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Valid JWT token required',
+    schema: {
+      example: { statusCode: 401, message: 'Unauthorized', data: null },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description:
+      'No exportable content for the provided IDs (no matching job, or ' +
+      'matching jobs have no items).',
+    schema: {
+      example: {
+        statusCode: 404,
+        message: 'No job items found for the provided job IDs to export',
+        data: null,
+      },
+    },
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error',
+    schema: {
+      example: {
+        statusCode: 500,
+        message: 'Unexpected error while exporting dashboard report',
+        data: null,
+      },
+    },
+  })
+  async exportDashboardReport(
+    @Req() request: any,
+    @Body() body: ExportReportsMasterType,
+    @Res() response: Response,
+  ) {
+    try {
+      if (!request.user) {
+        response.status(401).json({
+          statusCode: 401,
+          message: 'User not authenticated',
+          data: null,
+        });
+        return;
+      }
+
+      const { buffer, fileName } =
+        await this.reportsService.exportDashboard(body);
+
+      response.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      response.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${fileName}"`,
+      );
+      response.setHeader('Content-Length', buffer.length);
+      response.send(buffer);
+    } catch (error) {
+      this.logger.error(
+        `Error in POST /reports/export-dashboard: ${error.message}`,
+        error.stack,
+      );
+      const status =
+        typeof error?.getStatus === 'function' ? error.getStatus() : 500;
+      response.status(status).json({
+        statusCode: status,
+        message:
+          error?.message ??
+          'Unexpected error while exporting dashboard report',
+        data: null,
+      });
+    }
+  }
 }

@@ -160,6 +160,18 @@ export interface IJobService {
   buildConsolidatedMasterXlsx(
     jobIds: string[],
   ): Promise<{ buffer: Buffer; fileName: string }>;
+  /**
+   * Dashboard export — every (job, jobItem) row from the given jobIds
+   * rendered into ONE XLSX workbook (single "Dashboard" sheet) using
+   * the simplified dashboard column spec (OTA, Hotel ID, Batch, Review
+   * Collection Date, Portfolio, Hotel Name, Reservation ID, Status,
+   * Name, Check In/Out, Currency, Amount Collected, and the 85 / 15
+   * Due To Property / Due To VNP split). Distinct from
+   * `buildConsolidatedMasterXlsx`, which emits the full master spec.
+   */
+  buildDashboardXlsx(
+    jobIds: string[],
+  ): Promise<{ buffer: Buffer; fileName: string }>;
   exportSingleJobMasterCsv(
     jobId: string,
   ): Promise<{ buffer: Buffer; fileName: string }>;
