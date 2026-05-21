@@ -27,6 +27,10 @@ import {
   buildMasterRows,
   buildMasterXlsxBuffer,
 } from './master-export.util';
+import {
+  buildDashboardRows,
+  buildDashboardXlsxBuffer,
+} from './dashboard-export.util';
 import { triggerLambda } from '../../helpers/lambdaHelper';
 
 @Injectable()
@@ -1082,6 +1086,77 @@ export class JobService implements IJobService {
     } catch (error) {
       this.logger.error(
         `Error building consolidated master XLSX: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Dashboard XLSX export — every (job, jobItem) row from the provided
+   * jobIds rendered into one workbook with a single "Dashboard" sheet,
+   * using the simplified dashboard column spec defined in
+   * `dashboard-export.util.ts`.
+   *
+   * Per-row business rules of note:
+   * - `Hotel ID` is the OTA-specific property ID (Expedia → `expedia_id`,
+   *   Booking → `booking_id`, Agoda → `agoda_id`) — chosen per job's
+   *   `ota_provider`.
+   * - `Due To Property` / `Due To VNP` are an 85 / 15 split of
+   *   `payment_info.amount_to_charge_or_refund`, rounded to 4 decimals,
+   *   applied ONLY for Expedia / Booking rows where a numeric amount is
+   *   present. Anything else (Agoda, missing amount, non-numeric) →
+   *   `"N/A"` on both columns.
+   * - `Status` is intentionally blank pending a source-of-truth decision
+   *   (see TODO in `buildDashboardRow`).
+   *
+   * Filename: `dashboard-report-{D Month YYYY-HH.MM AM/PM}.xlsx`.
+   *
+   * Errors:
+   * - `BadRequestException` if `jobIds` is empty after dedupe.
+   * - `NotFoundException` if no jobs match the IDs, or if the matching
+   *   jobs collectively have no items.
+   */
+  async buildDashboardXlsx(
+    jobIds: string[],
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    try {
+      const uniqueJobIds = Array.from(new Set(jobIds ?? [])).filter(Boolean);
+      if (uniqueJobIds.length === 0) {
+        throw new BadRequestException('At least one job ID is required');
+      }
+
+      const jobs = await this.repository.findManyForMasterExport(uniqueJobIds);
+      if (!jobs || jobs.length === 0) {
+        throw new NotFoundException(
+          `No jobs found for the given IDs: ${uniqueJobIds.join(', ')}`,
+        );
+      }
+
+      const foundIds = new Set(jobs.map((j: any) => j.id));
+      const missingIds = uniqueJobIds.filter((id) => !foundIds.has(id));
+      if (missingIds.length > 0) {
+        this.logger.warn(
+          `Dashboard XLSX: ${missingIds.length} job ID(s) not found and will be skipped: ${missingIds.join(', ')}`,
+        );
+      }
+
+      // Re-use `buildDashboardRows` for the empty-detection check so we
+      // only throw 404 once we've confirmed every matching job has zero
+      // exportable items.
+      const { rows } = buildDashboardRows(jobs);
+      if (rows.length === 0) {
+        throw new NotFoundException(
+          'No job items found for the provided job IDs to export',
+        );
+      }
+
+      const buffer = buildDashboardXlsxBuffer(jobs);
+      const fileName = `dashboard-report-${this.buildHumanReadableTimestamp()}.xlsx`;
+      return { buffer, fileName };
+    } catch (error) {
+      this.logger.error(
+        `Error building dashboard XLSX: ${error.message}`,
         error.stack,
       );
       throw error;

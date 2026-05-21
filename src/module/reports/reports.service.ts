@@ -277,6 +277,35 @@ export class ReportsService implements IReportsService {
     }
   }
 
+  /**
+   * Dashboard report export. Same body shape as `exportConsolidated`,
+   * but renders rows using the simplified dashboard column spec
+   * (OTA / Hotel ID / Batch / Review Collection Date / Portfolio /
+   * Hotel Name / Reservation ID / Status / Name / Check In / Check Out /
+   * Currency / Amount Collected / Due To Property / Due To VNP).
+   *
+   * Returns a single XLSX (not a ZIP). All per-row business logic
+   * (Hotel-ID-by-OTA, the 85 / 15 Due-To-Property/VNP split, etc.) lives
+   * inside the job service so this method is a thin orchestration layer.
+   */
+  async exportDashboard(
+    body: ExportReportsMasterType,
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    try {
+      const jobIds = Array.from(new Set(body.job_ids ?? [])).filter(Boolean);
+      if (jobIds.length === 0) {
+        throw new BadRequestException('At least one job ID is required');
+      }
+      return await this.jobService.buildDashboardXlsx(jobIds);
+    } catch (error) {
+      this.logger.error(
+        `Error exporting dashboard reports XLSX: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
   private emptyResult(body: SearchReportsType): ReportsSearchResult {
     const page = body.page ?? 1;
     const limit = body.limit ?? 10;

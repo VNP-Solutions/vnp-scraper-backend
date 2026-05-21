@@ -214,4 +214,15 @@ export interface IReportsService {
   exportConsolidated(
     body: ExportReportsMasterType,
   ): Promise<{ buffer: Buffer; fileName: string }>;
+
+  /**
+   * Dashboard export — single XLSX with the simplified dashboard column
+   * spec (OTA, Hotel ID, Batch, Review Collection Date, Portfolio, Hotel
+   * Name, Reservation ID, Status, Name, Check In/Out, Currency, Amount
+   * Collected, Due To Property, Due To VNP). Used by the Reports →
+   * "Download for Dashboard" action.
+   */
+  exportDashboard(
+    body: ExportReportsMasterType,
+  ): Promise<{ buffer: Buffer; fileName: string }>;
 }
