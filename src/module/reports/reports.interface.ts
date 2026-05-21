@@ -1,8 +1,18 @@
-import { JobStatus, OTAProvider } from '@prisma/client';
+import { JobStatus, JobTagField, OTAProvider } from '@prisma/client';
 import type {
   ExportReportsMasterType,
   SearchReportsType,
 } from './reports.validation';
+
+/**
+ * Shape of a single entry inside `Job.tags`. Mirrors the Prisma embedded
+ * `JobTagEntry` type — re-declared here because Prisma's embedded types
+ * aren't exported as a runtime symbol, only via the generated row types.
+ */
+export interface ReportsJobTagEntry {
+  field: JobTagField;
+  value: boolean;
+}
 
 /** Per-user permission scope. `null` means "no restriction" (admin). */
 export type ReportsAccessScope =
@@ -93,6 +103,13 @@ export interface ReportsResultItem {
   } | null;
   failed_reason: string;
   screenshot_urls: unknown[];
+  /**
+   * Embedded `Job.tags` array as stored in MongoDB. Currently the only
+   * tag kind that exists is `{ field: 'over_160', value: boolean }` —
+   * see `JobTagField` enum in the Prisma schema. Always returned (empty
+   * array if the job has no tags).
+   */
+  tags: ReportsJobTagEntry[];
   createdAt: Date;
   updatedAt: Date;
 }
