@@ -652,6 +652,10 @@ export class ReportsService implements IReportsService {
       screenshot_urls: Array.isArray(j.screenshot_urls)
         ? j.screenshot_urls
         : [],
+      // `Job.tags` is an embedded array of { field, value } entries.
+      // Always emit an array (empty when the job has no tags) so the
+      // frontend can assume a stable shape.
+      tags: Array.isArray(j.tags) ? j.tags : [],
       createdAt: j.createdAt,
       updatedAt: j.updatedAt,
     };

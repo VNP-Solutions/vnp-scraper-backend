@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { JobStatus, OTAProvider } from '@prisma/client';
+import { JobStatus, JobTagField, OTAProvider } from '@prisma/client';
 
 export class ReportsRunWithinDto {
   @ApiPropertyOptional({
@@ -164,7 +164,14 @@ export class SearchReportsRequestDto {
   @ApiPropertyOptional({ description: 'Page number (1-indexed)', example: 1 })
   page?: number;
 
-  @ApiPropertyOptional({ description: 'Items per page (max 200)', example: 10 })
+  @ApiPropertyOptional({
+    description:
+      'Items per page. Default `10`. No upper bound — the caller is ' +
+      'trusted to pick a sensible page size; very large values will ' +
+      'fetch that many Job rows (plus relations) in one shot, which ' +
+      'can be slow and memory-heavy.',
+    example: 10,
+  })
   limit?: number;
 
   @ApiPropertyOptional({
@@ -210,6 +217,24 @@ export class ReportsResultPropertyDto {
 
   @ApiPropertyOptional()
   agoda_id?: number | null;
+}
+
+export class ReportsJobTagEntryDto {
+  @ApiProperty({
+    enum: JobTagField,
+    description:
+      'Tag kind. Currently the only supported value is `over_160` ' +
+      '(whether (today - check_out_date) > 160 days for the majority of ' +
+      'the job\'s items at completion time).',
+    example: 'over_160',
+  })
+  field: JobTagField;
+
+  @ApiProperty({
+    description: 'Boolean value of the tag for this job.',
+    example: true,
+  })
+  value: boolean;
 }
 
 export class ReportsResultItemDto {
@@ -278,6 +303,16 @@ export class ReportsResultItemDto {
 
   @ApiProperty({ description: 'Failed reason (empty string if none).' })
   failed_reason: string;
+
+  @ApiProperty({
+    type: [ReportsJobTagEntryDto],
+    description:
+      'Embedded `Job.tags` array as stored in MongoDB. Always returned ' +
+      '(empty array if the job has no tags). The only tag kind currently ' +
+      'emitted is `over_160`.',
+    example: [{ field: 'over_160', value: true }],
+  })
+  tags: ReportsJobTagEntryDto[];
 
   @ApiProperty({ type: [Object] })
   screenshot_urls: unknown[];

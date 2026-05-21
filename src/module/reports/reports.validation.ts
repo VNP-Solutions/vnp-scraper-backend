@@ -113,7 +113,12 @@ export const searchReportsSchema = z
 
     // Pagination + sorting
     page: z.number().int().min(1).optional().default(1),
-    limit: z.number().int().min(1).max(200).optional().default(10),
+    // No upper bound — explicitly removed at the user's request. The
+    // caller is trusted to send a sensible page size; very large values
+    // (tens of thousands) will simply fetch that many Job + relation
+    // rows in one shot, which can be slow and memory-heavy. Sanity-check
+    // here only enforces >= 1.
+    limit: z.number().int().min(1).optional().default(10),
     sortBy: ReportsSortByEnum.optional().default('updatedAt'),
     sortOrder: SortOrderEnum.optional().default('desc'),
   })
