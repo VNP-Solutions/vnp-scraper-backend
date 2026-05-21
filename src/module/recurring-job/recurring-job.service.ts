@@ -5,7 +5,8 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Job, JobStatus, OTAProvider, PostingType, RecurringJob, RecurringReportBucket } from '@prisma/client';
+import { Job, JobStatus, OTAProvider, PostingType, RecurringJob, RecurringReportBucket, RoleEnum } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 import * as XLSX from 'xlsx';
 import { DatabaseService } from '../database/database.service';
 import { IJobRepository } from '../job/job.interface';
@@ -14,6 +15,7 @@ import { IServerService } from '../server/server.interface';
 import {
   CreateRecurringJobDto,
   CreateRecurringJobFromJobDto,
+  DbmsIngestDto,
   UpdateRecurringJobDto,
   UpdateRecurringJobStatusDto,
 } from './recurring-job.dto';
@@ -1541,6 +1543,190 @@ export class RecurringJobService implements IRecurringJobService {
       this.logger.error('Error transferring recurring jobs by date:', error);
       throw error;
     }
+  }
+
+  /**
+   * Resolve (or lazily create) the "DBMS Section" system user.
+   * The user is looked up by name on every call; creation only happens once in practice.
+   */
+  private async resolveDbmsSystemUser(): Promise<string> {
+    const existing = await this.db.user.findFirst({
+      where: { name: 'DBMS Section' },
+      select: { id: true },
+    });
+
+    if (existing) {
+      return existing.id;
+    }
+
+    const passwordHash = await bcrypt.hash('1234567890', 10);
+    const created = await this.db.user.create({
+      data: {
+        name: 'DBMS Section',
+        email: 'dbms-section@system.local',
+        password: passwordHash,
+        role: RoleEnum.admin,
+        is_active: true,
+        is_verified: true,
+      },
+      select: { id: true },
+    });
+
+    this.logger.log(`Created DBMS Section system user: ${created.id}`);
+    return created.id;
+  }
+
+  /**
+   * DBMS Ingest — machine-to-machine endpoint.
+   *
+   * Validates the incoming property list with two batch DB queries:
+   *   1. Fetch all properties by expedia_id IN [...].
+   *   2. Fetch all recurring jobs by property_id IN [...found ids].
+   *
+   * If any validation error exists the entire request is rejected (400) and
+   * zero recurring jobs are created. On a clean pass every property gets a
+   * recurring job created via the existing createRecurringJob flow.
+   */
+  async dbmsIngest(
+    dto: DbmsIngestDto,
+  ): Promise<{ message: string } | { message: string; errors: { expedia_ids: number[]; descriptions: Array<{ name: string; error_message: string }> } }> {
+    try {
+      const { properties } = dto;
+
+      // ── Step 1: resolve system user ──────────────────────────────────────
+      const userId = await this.resolveDbmsSystemUser();
+
+      // ── Step 2: batch property lookup (single query) ─────────────────────
+      const requestedExpediaIds = properties.map((p) => p.expedia_id);
+
+      const foundProperties = await this.db.property.findMany({
+        where: { expedia_id: { in: requestedExpediaIds } },
+        select: {
+          id: true,
+          expedia_id: true,
+          name: true,
+          portfolio_id: true,
+          portfolio: { select: { name: true } },
+        },
+      });
+
+      // Build expedia_id → property map for O(1) lookups
+      const expediaToProperty = new Map(
+        foundProperties.map((p) => [p.expedia_id, p]),
+      );
+
+      const errorExpediaIds: number[] = [];
+      const errorDescriptions: Array<{ name: string; error_message: string }> = [];
+
+      // Collect properties not found in DB
+      for (const req of properties) {
+        if (!expediaToProperty.has(req.expedia_id)) {
+          errorExpediaIds.push(req.expedia_id);
+          errorDescriptions.push({
+            name: req.name,
+            error_message: `No property found for expedia_id ${req.expedia_id}`,
+          });
+        }
+      }
+
+      // ── Step 3: batch recurring-job conflict check (single query) ────────
+      const foundPropertyIds = foundProperties.map((p) => p.id);
+
+      if (foundPropertyIds.length > 0) {
+        const existingRecurringJobs = await this.db.recurringJob.findMany({
+          where: { property_id: { in: foundPropertyIds } },
+          select: { property_id: true },
+        });
+
+        const propertyIdsWithJobs = new Set(
+          existingRecurringJobs.map((rj) => rj.property_id),
+        );
+
+        for (const property of foundProperties) {
+          if (propertyIdsWithJobs.has(property.id)) {
+            // Find the original request entry to use req.name consistently
+            const reqEntry = properties.find((p) => p.expedia_id === property.expedia_id);
+            errorExpediaIds.push(property.expedia_id);
+            errorDescriptions.push({
+              name: reqEntry?.name ?? property.name,
+              error_message: `A recurring job already exists for this property (expedia_id ${property.expedia_id})`,
+            });
+          }
+        }
+      }
+
+      // ── Step 4: gate — reject if any errors ──────────────────────────────
+      if (errorExpediaIds.length > 0) {
+        return {
+          message: 'Some properties could not be processed. No recurring jobs were created.',
+          errors: {
+            expedia_ids: errorExpediaIds,
+            descriptions: errorDescriptions,
+          },
+        };
+      }
+
+      // ── Step 5: fire creation in background — respond immediately ────────
+      this.createDbmsRecurringJobsInBackground(properties, expediaToProperty, userId);
+
+      return { message: 'Processing' };
+    } catch (error) {
+      this.logger.error('Error in dbmsIngest:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Background worker — runs after dbmsIngest() has already returned 200.
+   * Errors are caught per-property so one failure does not abort the rest.
+   */
+  private async createDbmsRecurringJobsInBackground(
+    properties: DbmsIngestDto['properties'],
+    expediaToProperty: Map<number, { id: string; name: string; expedia_id: number; portfolio_id: string | null; portfolio: { name: string } | null }>,
+    userId: string,
+  ): Promise<void> {
+    for (const req of properties) {
+      try {
+        const property = expediaToProperty.get(req.expedia_id);
+
+        const recurringJobData: CreateRecurringJobDto = {
+          user_id: userId,
+          property_id: property.id,
+          property_name: property.name,
+          portfolio_id: property.portfolio_id ?? undefined,
+          portfolio_name: property.portfolio?.name ?? undefined,
+          posting_type: req.posting_type as PostingType,
+          ota_provider: OTAProvider.Expedia,
+          billing_type: 'VCC',
+          schedule_date: req.recurring_date,
+          initial_date: req.initial_date,
+          duration: req.duration,
+          execution_type: 'scheduled',
+          remaining_direct_billed: 0,
+          total_collectable: 0,
+          total_amount_confirmed: 0,
+          job_backoff_length_loading: 50000,
+          job_backoff_length_selector: 40000,
+          max_retries: 3,
+          retry_delay_ms: 5000,
+          priority: 0,
+          queue_name: 'default',
+          job_status: JobStatus.Pending,
+        };
+
+        await this.createRecurringJob(recurringJobData);
+
+        this.logger.log(
+          `DBMS ingest: created recurring job for expedia_id=${req.expedia_id} (property_id=${property.id})`,
+        );
+      } catch (error) {
+        this.logger.error(
+          `DBMS ingest: failed to create recurring job for expedia_id=${req.expedia_id} — ${error?.message ?? error}`,
+        );
+      }
+    }
+
+    this.logger.log(`DBMS ingest: background creation complete for ${properties.length} property/ies`);
   }
 
   /**

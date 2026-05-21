@@ -106,3 +106,21 @@ export type UpdateAllJobsUnderRecurringJobType = z.infer<
 export type TransferRecurringJobsByDateType = z.infer<
   typeof transferRecurringJobsByDateSchema
 >;
+
+export const dbmsIngestPropertySchema = z.object({
+  name: z.string().min(1, 'Property name is required'),
+  expedia_id: z.number().int().positive('expedia_id must be a positive integer'),
+  initial_date: dateStringSchema,
+  recurring_date: dateStringSchema,
+  duration: z.number().int().min(1).max(12).default(1),
+  posting_type: z.nativeEnum(PostingType),
+});
+
+export const dbmsIngestSchema = z.object({
+  properties: z
+    .array(dbmsIngestPropertySchema)
+    .min(1, 'At least one property is required'),
+});
+
+export type DbmsIngestType = z.infer<typeof dbmsIngestSchema>;
+export type DbmsIngestPropertyType = z.infer<typeof dbmsIngestPropertySchema>;
