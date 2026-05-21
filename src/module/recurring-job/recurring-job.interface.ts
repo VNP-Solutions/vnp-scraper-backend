@@ -2,6 +2,7 @@ import { Job, RecurringJob, RecurringReportBucket } from '@prisma/client';
 import {
   CreateRecurringJobDto,
   CreateRecurringJobFromJobDto,
+  DbmsIngestDto,
   UpdateRecurringJobDto,
   UpdateRecurringJobStatusDto,
 } from './recurring-job.dto';
@@ -112,4 +113,5 @@ export interface IRecurringJobService {
     schedulerUpdated: boolean;
     recurringJobs: Array<{ id: string; name: string; jobCount: number }>;
   }>;
+  dbmsIngest(dto: DbmsIngestDto): Promise<{ message: string } | { message: string; errors: { expedia_ids: number[]; descriptions: Array<{ name: string; error_message: string }> } }>;
 }

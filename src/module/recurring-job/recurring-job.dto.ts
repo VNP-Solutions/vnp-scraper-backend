@@ -259,3 +259,57 @@ export class TransferRecurringJobsByDateDto {
   })
   to_date: string;
 }
+
+export class DbmsIngestPropertyDto {
+  @ApiProperty({ description: 'Property name' })
+  name: string;
+
+  @ApiProperty({ description: 'Expedia hotel ID used to look up the property' })
+  expedia_id: number;
+
+  @ApiProperty({ description: 'Initial (historical) date in YYYY-MM-DD format' })
+  initial_date: string;
+
+  @ApiProperty({ description: 'Recurring schedule date in YYYY-MM-DD format' })
+  recurring_date: string;
+
+  @ApiProperty({ description: 'Bucket duration in months (1–12)', minimum: 1, maximum: 12 })
+  duration: number;
+
+  @ApiProperty({ enum: ['OTA', 'OTA_PLUS'], description: 'Posting type for the recurring job' })
+  posting_type: string;
+}
+
+export class DbmsIngestDto {
+  @ApiProperty({ type: [DbmsIngestPropertyDto], description: 'Array of properties to create recurring jobs for' })
+  properties: DbmsIngestPropertyDto[];
+}
+
+export class DbmsIngestResponseDto {
+  @ApiProperty({ description: 'Human-readable result message' })
+  message: string;
+}
+
+export class DbmsIngestErrorItemDto {
+  @ApiProperty({ description: 'Property name from the request' })
+  name: string;
+
+  @ApiProperty({ description: 'Reason this property failed validation' })
+  error_message: string;
+}
+
+export class DbmsIngestErrorsDto {
+  @ApiProperty({ type: [Number], description: 'Expedia IDs that failed validation' })
+  expedia_ids: number[];
+
+  @ApiProperty({ type: [DbmsIngestErrorItemDto], description: 'Descriptions of each failure' })
+  descriptions: DbmsIngestErrorItemDto[];
+}
+
+export class DbmsIngestErrorDto {
+  @ApiProperty({ description: 'Human-readable error message' })
+  message: string;
+
+  @ApiProperty({ type: DbmsIngestErrorsDto })
+  errors: DbmsIngestErrorsDto;
+}
