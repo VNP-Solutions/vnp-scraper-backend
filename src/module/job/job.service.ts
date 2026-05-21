@@ -1107,8 +1107,8 @@ export class JobService implements IJobService {
    *   applied ONLY for Expedia / Booking rows where a numeric amount is
    *   present. Anything else (Agoda, missing amount, non-numeric) →
    *   `"N/A"` on both columns.
-   * - `Status` is intentionally blank pending a source-of-truth decision
-   *   (see TODO in `buildDashboardRow`).
+   * - `Status` is hard-coded to the literal string `"TBD"` pending a
+   *   source-of-truth decision (see `buildDashboardRow`).
    *
    * Filename: `dashboard-report-{D Month YYYY-HH.MM AM/PM}.xlsx`.
    *

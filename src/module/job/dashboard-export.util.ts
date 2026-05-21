@@ -123,10 +123,11 @@ export function buildDashboardRow(
     job?.portfolio_name ?? job?.portfolio?.name ?? ''; // Portfolio
   row[DASHBOARD_EXPORT_HEADER[5]] = job?.property_name ?? ''; // Hotel Name
   row[DASHBOARD_EXPORT_HEADER[6]] = item?.reservation_id ?? ''; // Reservation ID
-  // TODO(dashboard-status): wire `Status` once the source field is decided
-  // (likely `job.job_status` or a per-item status flag — left blank for now
-  // to match the user's "TBD" spec).
-  row[DASHBOARD_EXPORT_HEADER[7]] = ''; // Status
+  // `Status*` is hard-coded to the literal string "TBD" per the spec —
+  // the source-of-truth field hasn't been finalized yet, so every row
+  // emits the same placeholder value. Update this once the real source
+  // (e.g. job.job_status or a per-item flag) is decided.
+  row[DASHBOARD_EXPORT_HEADER[7]] = 'TBD'; // Status*
   row[DASHBOARD_EXPORT_HEADER[8]] = item?.guest_name ?? ''; // Name
   row[DASHBOARD_EXPORT_HEADER[9]] = formatDisplayDate(item?.check_in_date); // Check In
   row[DASHBOARD_EXPORT_HEADER[10]] = formatDisplayDate(item?.check_out_date); // Check Out
