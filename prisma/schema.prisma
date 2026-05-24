@@ -245,6 +245,7 @@ model Job {
   is_archived                 Boolean     @default(false)
   is_quick_job                Boolean     @default(false)
   otp_needed                  Boolean     @default(false)
+  otp_fulfilled               Boolean     @default(false)
   createdAt                   DateTime    @default(now())
   updatedAt                   DateTime    @updatedAt
 

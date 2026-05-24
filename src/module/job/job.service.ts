@@ -91,6 +91,7 @@ export class JobService implements IJobService {
         job_status: job.job_status,
         is_quick_job: job.is_quick_job ?? false,
         otp_needed: job.otp_needed ?? false,
+        otp_fulfilled: job.otp_fulfilled ?? false,
       }));
       return { ...result, data };
     } catch (error) {
@@ -110,6 +111,8 @@ export class JobService implements IJobService {
         ...job,
         is_quick_job: (row.is_quick_job as boolean | null | undefined) ?? false,
         otp_needed: (row.otp_needed as boolean | null | undefined) ?? false,
+        otp_fulfilled:
+          (row.otp_fulfilled as boolean | null | undefined) ?? false,
       } as Job;
     } catch (error) {
       this.logger.error(`Error finding job: ${error.message}`, error.stack);

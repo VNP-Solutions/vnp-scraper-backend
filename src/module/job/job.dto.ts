@@ -128,6 +128,9 @@ export class CreateJobDto {
 
   @ApiProperty({ required: false, default: false })
   otp_needed?: boolean;
+
+  @ApiProperty({ required: false, default: false })
+  otp_fulfilled?: boolean;
 }
 
 export class UpdateJobDto implements Partial<CreateJobDto> {
@@ -199,6 +202,9 @@ export class UpdateJobDto implements Partial<CreateJobDto> {
 
   @ApiProperty({ required: false, default: false })
   otp_needed?: boolean;
+
+  @ApiProperty({ required: false, default: false })
+  otp_fulfilled?: boolean;
 
   @ApiProperty({
     required: false,

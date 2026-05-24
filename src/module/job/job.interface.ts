@@ -18,6 +18,7 @@ export interface JobListItemDto {
   job_status: string;
   is_quick_job: boolean;
   otp_needed: boolean;
+  otp_fulfilled: boolean;
 }
 
 /** Property payload on job list (scalars + portfolio / sub-portfolio summary). */

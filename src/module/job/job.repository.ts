@@ -279,6 +279,7 @@ export class JobRepository implements IJobRepository {
         job_status: true,
         is_quick_job: true,
         otp_needed: true,
+        otp_fulfilled: true,
         billing_type: true,
         property: {
           select: {
