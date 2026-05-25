@@ -1,0 +1,254 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import * as nodemailer from 'nodemailer';
+
+/**
+ * Shared SMTP / Nodemailer wrapper.
+ *
+ * Currently used by the Reports async-export pipeline. Existing modules
+ * that build their own `nodemailer.createTransport(...)` inline
+ * (`auth.service.ts`, `user-invitation.service.ts`) are NOT migrated in
+ * this PR — they can switch later without behaviour changes.
+ *
+ * Reads the same env vars the rest of the codebase already uses:
+ *   SMTP_HOST     (default: smtp.gmail.com)
+ *   SMTP_PORT     (default: 465)
+ *   SMTP_SECURE   (default: true; set to "false" for STARTTLS)
+ *   SMTP_EMAIL    (auth.user — required for outbound)
+ *   SMTP_PASSWORD (auth.pass — required for outbound)
+ */
+@Injectable()
+export class MailService {
+  private readonly logger = new Logger(MailService.name);
+  private readonly transporter: nodemailer.Transporter;
+  private readonly fromAddress: string;
+
+  constructor(private readonly configService: ConfigService) {
+    const smtpHost = this.configService.get('SMTP_HOST') || 'smtp.gmail.com';
+    const smtpPort = parseInt(this.configService.get('SMTP_PORT') || '465');
+    const smtpSecure = this.configService.get('SMTP_SECURE') !== 'false';
+    const smtpUser = this.configService.get('SMTP_EMAIL');
+    const smtpPass = this.configService.get('SMTP_PASSWORD');
+
+    this.transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpSecure,
+      ...(smtpHost === 'smtp.gmail.com' && { service: 'gmail' }),
+      ...(smtpUser && smtpPass && {
+        auth: {
+          user: smtpUser,
+          pass: smtpPass,
+        },
+      }),
+      tls: {
+        rejectUnauthorized: smtpSecure,
+      },
+    });
+
+    this.fromAddress = smtpUser || 'noreply@vnpsolutions.com';
+  }
+
+  /**
+   * Send the "Your report is ready" email containing a presigned S3
+   * download link. Called by the async-export consumer once the file
+   * has been built and uploaded.
+   */
+  async sendReportReadyEmail(opts: {
+    to: string;
+    userName?: string | null;
+    exportLabel: string; // e.g. "Master ZIP", "Consolidated Report", "Dashboard Report"
+    jobCount: number;
+    downloadUrl: string;
+    downloadFileName: string;
+    expiresAt: Date;
+  }): Promise<void> {
+    const safeName = (opts.userName || 'there').trim();
+    const expiresFmt = opts.expiresAt.toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+
+    const subject = `Your VNP Reports export is ready (${opts.exportLabel})`;
+    const html = this.buildReadyHtml({
+      safeName,
+      exportLabel: opts.exportLabel,
+      jobCount: opts.jobCount,
+      downloadUrl: opts.downloadUrl,
+      downloadFileName: opts.downloadFileName,
+      expiresFmt,
+    });
+    const text = this.buildReadyText({
+      safeName,
+      exportLabel: opts.exportLabel,
+      jobCount: opts.jobCount,
+      downloadUrl: opts.downloadUrl,
+      downloadFileName: opts.downloadFileName,
+      expiresFmt,
+    });
+
+    await this.transporter.sendMail({
+      from: this.fromAddress,
+      to: opts.to,
+      subject,
+      html,
+      text,
+    });
+    this.logger.log(
+      `Sent "report ready" email to ${opts.to} (${opts.exportLabel}, ${opts.jobCount} jobs)`,
+    );
+  }
+
+  /**
+   * Send the "Your report failed" email so the user isn't left hanging
+   * when the SQS consumer can't build / upload / link the export.
+   */
+  async sendReportFailedEmail(opts: {
+    to: string;
+    userName?: string | null;
+    exportLabel: string;
+    jobCount: number;
+    reason: string;
+  }): Promise<void> {
+    const safeName = (opts.userName || 'there').trim();
+    const subject = `Your VNP Reports export failed (${opts.exportLabel})`;
+    const html = this.buildFailedHtml({
+      safeName,
+      exportLabel: opts.exportLabel,
+      jobCount: opts.jobCount,
+      reason: opts.reason,
+    });
+    const text =
+      `Hi ${safeName},\n\n` +
+      `Unfortunately we couldn't build your ${opts.exportLabel} for ` +
+      `${opts.jobCount} jobs. Please try again, or contact support if the ` +
+      `problem keeps happening.\n\n` +
+      `Reason: ${opts.reason}\n\n` +
+      `— VNP Reports`;
+
+    await this.transporter.sendMail({
+      from: this.fromAddress,
+      to: opts.to,
+      subject,
+      html,
+      text,
+    });
+    this.logger.log(
+      `Sent "report failed" email to ${opts.to} (${opts.exportLabel}, ${opts.jobCount} jobs)`,
+    );
+  }
+
+  // ---------- private templates -------------------------------------------
+
+  private buildReadyHtml(o: {
+    safeName: string;
+    exportLabel: string;
+    jobCount: number;
+    downloadUrl: string;
+    downloadFileName: string;
+    expiresFmt: string;
+  }): string {
+    return `<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background-color:#f4f4f4;color:#333;line-height:1.6;">
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.05);">
+    <tr>
+      <td style="padding:30px 20px;text-align:center;background:#ffffff;border-bottom:1px solid #eee;">
+        <img src="https://argobot-bucket.s3.us-east-2.amazonaws.com/VNP+LOGO_PNG.png" alt="VNP Solutions" style="max-width:200px;height:auto;">
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:30px 24px;">
+        <h2 style="margin:0 0 16px 0;color:#222;">Your report is ready</h2>
+        <p>Hi ${this.escape(o.safeName)},</p>
+        <p>Your <strong>${this.escape(o.exportLabel)}</strong> for ${o.jobCount} job${o.jobCount === 1 ? '' : 's'} has finished generating.</p>
+        <p style="text-align:center;margin:28px 0;">
+          <a href="${o.downloadUrl}"
+             style="display:inline-block;padding:12px 24px;background:#1f6feb;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;">
+            Download report
+          </a>
+        </p>
+        <p style="font-size:13px;color:#666;">
+          File: <code>${this.escape(o.downloadFileName)}</code><br/>
+          This link expires on <strong>${this.escape(o.expiresFmt)}</strong>.
+        </p>
+        <p style="font-size:13px;color:#666;">
+          If the button above doesn't work, copy this URL into your browser:<br/>
+          <span style="word-break:break-all;color:#1f6feb;">${this.escape(o.downloadUrl)}</span>
+        </p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:16px 24px;text-align:center;background:#fafafa;color:#999;font-size:12px;border-top:1px solid #eee;">
+        VNP Reports · automated email, please do not reply
+      </td>
+    </tr>
+  </table>
+</body>`;
+  }
+
+  private buildReadyText(o: {
+    safeName: string;
+    exportLabel: string;
+    jobCount: number;
+    downloadUrl: string;
+    downloadFileName: string;
+    expiresFmt: string;
+  }): string {
+    return (
+      `Hi ${o.safeName},\n\n` +
+      `Your ${o.exportLabel} for ${o.jobCount} job(s) is ready.\n\n` +
+      `Download: ${o.downloadUrl}\n` +
+      `File: ${o.downloadFileName}\n` +
+      `Link expires on ${o.expiresFmt}.\n\n` +
+      `— VNP Reports`
+    );
+  }
+
+  private buildFailedHtml(o: {
+    safeName: string;
+    exportLabel: string;
+    jobCount: number;
+    reason: string;
+  }): string {
+    return `<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background:#f4f4f4;color:#333;line-height:1.6;">
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.05);">
+    <tr>
+      <td style="padding:30px 20px;text-align:center;background:#ffffff;border-bottom:1px solid #eee;">
+        <img src="https://argobot-bucket.s3.us-east-2.amazonaws.com/VNP+LOGO_PNG.png" alt="VNP Solutions" style="max-width:200px;height:auto;">
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:30px 24px;">
+        <h2 style="margin:0 0 16px 0;color:#b91c1c;">Your report could not be generated</h2>
+        <p>Hi ${this.escape(o.safeName)},</p>
+        <p>Unfortunately we couldn't build your <strong>${this.escape(o.exportLabel)}</strong> for ${o.jobCount} job${o.jobCount === 1 ? '' : 's'}. Please try again, or contact support if the problem keeps happening.</p>
+        <p style="font-size:13px;color:#666;background:#fafafa;padding:12px 16px;border-radius:6px;border-left:3px solid #b91c1c;">
+          <strong>Reason:</strong> ${this.escape(o.reason)}
+        </p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:16px 24px;text-align:center;background:#fafafa;color:#999;font-size:12px;border-top:1px solid #eee;">
+        VNP Reports · automated email, please do not reply
+      </td>
+    </tr>
+  </table>
+</body>`;
+  }
+
+  /**
+   * Minimal HTML escaping for user-provided strings (name, reason, URL,
+   * filename). Prevents the email body from breaking on `<` or `&`.
+   */
+  private escape(value: string): string {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+}
