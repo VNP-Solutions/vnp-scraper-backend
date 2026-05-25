@@ -93,6 +93,13 @@ export class PropertyRunJobRequestDto {
     oneOf: [{ type: 'string' }, { type: 'number' }],
   })
   ota_id?: string | number;
+
+  @ApiPropertyOptional({
+    example: true,
+    description:
+      'When true, the job is pushed to PRIORITY_QUEUE_URL instead of the default QUEUE_URL.',
+  })
+  priority?: boolean;
 }
 
 export class RetrievalRunJobRequestDto {
@@ -287,6 +294,13 @@ export class BatchPropertyRunJobRequestDto {
       'Optional ScheduledJob document id (e.g. from /scraper/scheduled). Forwarded to the Booking scraper on credential-grouped bulk runs as scheduled_job_id.',
   })
   scheduled_job_id?: string;
+
+  @ApiPropertyOptional({
+    example: true,
+    description:
+      'When true, all Expedia jobs in the batch are pushed to PRIORITY_QUEUE_URL instead of the default QUEUE_URL.',
+  })
+  priority?: boolean;
 }
 
 export class BatchJobResultDto {

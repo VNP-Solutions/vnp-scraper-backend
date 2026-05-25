@@ -1254,8 +1254,8 @@ export class ScraperController {
       if (otaProvider === 'Expedia' && billingType !== 'DB') {
         console.log(`${tag} branch: Expedia + non-DB → SQS path`);
 
-        console.log(`${tag} step 3a: pushJobsToQueue([job])`);
-        await pushJobsToQueue([job]);
+        console.log(`${tag} step 3a: pushJobsToQueue([job]) priority=${body.priority ?? false}`);
+        await pushJobsToQueue([job], { priority: body.priority });
         console.log(`${tag} step 3a: OK`);
 
         console.log(`${tag} step 3b: updateJob → InQueue`);
@@ -1583,7 +1583,7 @@ export class ScraperController {
     }
 
     // Push only Expedia jobs to AWS SQS queue
-    await pushJobsToQueue(expediaJobsForSqs);
+    await pushJobsToQueue(expediaJobsForSqs, { priority: body.priority });
 
     // Update job statuses from Pending to InQueue for all Expedia jobs
     for (const job of expediaJobsForSqs) {

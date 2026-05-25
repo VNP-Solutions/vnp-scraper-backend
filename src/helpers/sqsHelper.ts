@@ -18,15 +18,23 @@ const sqsClient = new SQSClient({
 /**
  * Push jobs to AWS SQS queue in batches of 10
  * @param jobs - Array of job objects to push to the queue
+ * @param options - Optional flags; set priority: true to route to PRIORITY_QUEUE_URL instead
  */
-export async function pushJobsToQueue(jobs: any[]): Promise<void> {
+export async function pushJobsToQueue(
+  jobs: any[],
+  options?: { priority?: boolean },
+): Promise<void> {
   try {
-    // Get the SQS queue URL from environment variables
-    const queueUrl = process.env.QUEUE_URL;
+    // Select queue URL based on priority flag
+    const queueUrl = options?.priority
+      ? process.env.PRIORITY_QUEUE_URL
+      : process.env.QUEUE_URL;
 
-    // Validate that QUEUE_URL is configured
+    const queueLabel = options?.priority ? 'PRIORITY_QUEUE_URL' : 'QUEUE_URL';
+
+    // Validate that the queue URL is configured
     if (!queueUrl) {
-      logger.warn('QUEUE_URL not configured. Skipping SQS push.');
+      logger.warn(`${queueLabel} not configured. Skipping SQS push.`);
       return;
     }
 
