@@ -27,11 +27,25 @@ import {
 } from './reports.dto';
 import { IReportsService } from './reports.interface';
 import {
+  ReportExportType,
+  enqueueReportExport,
+  getReportsExportQueueUrl,
+} from './reports-sqs.util';
+import {
   exportReportsMasterSchema,
   type ExportReportsMasterType,
   searchReportsSchema,
   type SearchReportsType,
 } from './reports.validation';
+
+/**
+ * Job-count threshold above which a `/reports/export-*` request is
+ * pushed to SQS and the response becomes "we'll email you the link"
+ * instead of streaming the file synchronously. Set to 10 per the
+ * product spec — anything ≤ 10 jobs stays on the synchronous path so
+ * small exports still feel instant.
+ */
+const ASYNC_EXPORT_THRESHOLD = 10;
 
 @ApiTags('Reports')
 @ApiBearerAuth('JWT-auth')
@@ -42,6 +56,93 @@ export class ReportsController {
     private readonly reportsService: IReportsService,
     private readonly logger: Logger,
   ) {}
+
+  /**
+   * Shared "should this export go async?" gate. Returns `true` when the
+   * caller's response has been fully written (caller must return
+   * without doing anything else); `false` when the caller should fall
+   * through to its existing synchronous path.
+   *
+   * The async path is taken when ALL of the following hold:
+   *   1. The request has more than `ASYNC_EXPORT_THRESHOLD` job_ids.
+   *   2. `REPORTS_EXPORT_QUEUE_URL` is configured.
+   *   3. The JWT carries an email we can deliver the link to.
+   *
+   * If (1) but not (2)/(3), we log a warning and fall back to sync so
+   * dev environments (no queue) still work — the user might just hit
+   * nginx's `proxy_read_timeout` on huge exports, but the request
+   * never silently disappears.
+   */
+  private async tryEnqueueAsyncExport(
+    request: any,
+    body: ExportReportsMasterType,
+    exportType: ReportExportType,
+    response: Response,
+  ): Promise<boolean> {
+    const jobIdsCount = body.job_ids?.length ?? 0;
+    if (jobIdsCount <= ASYNC_EXPORT_THRESHOLD) return false;
+
+    const queueUrl = getReportsExportQueueUrl();
+    if (!queueUrl) {
+      this.logger.warn(
+        `Async export requested (${jobIdsCount} jobs, type=${exportType}) ` +
+          `but REPORTS_EXPORT_QUEUE_URL is not configured — falling back to ` +
+          `the synchronous path.`,
+      );
+      return false;
+    }
+
+    const user = request.user;
+    if (!user?.email) {
+      this.logger.warn(
+        `Async export requested but JWT carries no email — falling back to ` +
+          `the synchronous path (user=${user?.userId ?? 'unknown'}).`,
+      );
+      return false;
+    }
+
+    try {
+      await enqueueReportExport(
+        {
+          exportType,
+          jobIds: Array.from(new Set(body.job_ids ?? [])).filter(Boolean),
+          user: {
+            userId: user.userId,
+            email: user.email,
+            name: user.name ?? null,
+          },
+          requestedAt: new Date().toISOString(),
+        },
+        this.logger,
+      );
+    } catch (err) {
+      this.logger.error(
+        `Failed to enqueue ${exportType} export: ${err?.message ?? err}`,
+        err?.stack,
+      );
+      response.status(500).json({
+        statusCode: 500,
+        message:
+          'Failed to queue the export for background processing. Please try again.',
+        data: null,
+      });
+      return true;
+    }
+
+    response.status(202).json({
+      statusCode: 202,
+      message:
+        `Your export is being prepared. We will email a download link to ` +
+        `${user.email} when it's ready (usually within a few minutes).`,
+      data: {
+        queued: true,
+        exportType,
+        email: user.email,
+        jobIdsCount,
+      },
+    });
+    return true;
+  }
 
   @Post('/global')
   @UseGuards(JwtAuthGuard)
@@ -878,6 +979,14 @@ export class ReportsController {
     description:
       'Accepts an array of `job_ids` and returns a single ZIP file ' +
       'containing one XLSX per job.\n\n' +
+      '### Sync vs Async (job count threshold)\n' +
+      '- **≤ 10 jobs** → built synchronously; the response body is the ' +
+      '  ZIP (`Content-Type: application/zip`). Same as before.\n' +
+      '- **> 10 jobs** → pushed to SQS and built in the background. The ' +
+      '  response is `202 Accepted` JSON and a download link is emailed ' +
+      '  to the JWT-bound user when ready (presigned S3 URL, 7-day ' +
+      '  expiry). This avoids nginx `proxy_read_timeout` (60 s default) ' +
+      '  blowing up on large exports.\n\n' +
       'Each XLSX uses the same columns and per-OTA logic as ' +
       '`POST /jobs/export-master`, but is rendered as XLSX with Card ' +
       'Number / Expiry date / CVV columns forced to Excel "Text" format ' +
@@ -924,9 +1033,29 @@ export class ReportsController {
   @ApiResponse({
     status: 200,
     description:
-      'ZIP file. Response Content-Type is `application/zip` and ' +
-      '`Content-Disposition` carries the suggested filename.',
+      'ZIP file (sync path, ≤ 10 jobs). Response Content-Type is ' +
+      '`application/zip` and `Content-Disposition` carries the suggested ' +
+      'filename.',
     content: { 'application/zip': {} },
+  })
+  @ApiResponse({
+    status: 202,
+    description:
+      'Async path (> 10 jobs). Request accepted and queued — a download ' +
+      'link will be emailed to the JWT-bound user when the ZIP is ready.',
+    schema: {
+      example: {
+        statusCode: 202,
+        message:
+          "Your export is being prepared. We will email a download link to user@example.com when it's ready (usually within a few minutes).",
+        data: {
+          queued: true,
+          exportType: 'master',
+          email: 'user@example.com',
+          jobIdsCount: 137,
+        },
+      },
+    },
   })
   @ApiResponse({
     status: 400,
@@ -990,6 +1119,14 @@ export class ReportsController {
         return;
       }
 
+      // Large exports (>10 jobs) are pushed to SQS and the file is
+      // emailed when ready. Small exports stay on the synchronous path
+      // below so the frontend can offer instant downloads for small
+      // selections.
+      const went =
+        await this.tryEnqueueAsyncExport(request, body, 'master', response);
+      if (went) return;
+
       const { buffer, fileName } = await this.reportsService.exportMaster(body);
 
       response.setHeader('Content-Type', 'application/zip');
@@ -1025,6 +1162,12 @@ export class ReportsController {
       'Use this when the user wants a single spreadsheet they can scroll ' +
       'through, instead of a ZIP with one file per job (which is what ' +
       '`POST /reports/export-master` produces).\n\n' +
+      '### Sync vs Async (job count threshold)\n' +
+      '- **≤ 10 jobs** → built synchronously; the response body is the ' +
+      '  XLSX.\n' +
+      '- **> 10 jobs** → queued via SQS and the resulting XLSX is ' +
+      '  emailed as a 7-day presigned S3 link. Response is `202 Accepted` ' +
+      '  JSON.\n\n' +
       '### Columns\n' +
       'Same headers and per-OTA rules as `POST /jobs/export-master`:\n' +
       '- `OTA`, `OTA Posting Type`, `OTA ID`, `Batch`, `Review Collection Date`, ' +
@@ -1095,11 +1238,30 @@ export class ReportsController {
   @ApiResponse({
     status: 200,
     description:
-      'XLSX file. Response Content-Type is ' +
+      'XLSX file (sync path, ≤ 10 jobs). Response Content-Type is ' +
       '`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` ' +
       'and `Content-Disposition` carries the suggested filename.',
     content: {
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {},
+    },
+  })
+  @ApiResponse({
+    status: 202,
+    description:
+      'Async path (> 10 jobs). Request accepted and queued — the ' +
+      'consolidated XLSX will be emailed as a 7-day presigned S3 link.',
+    schema: {
+      example: {
+        statusCode: 202,
+        message:
+          "Your export is being prepared. We will email a download link to user@example.com when it's ready (usually within a few minutes).",
+        data: {
+          queued: true,
+          exportType: 'consolidated',
+          email: 'user@example.com',
+          jobIdsCount: 137,
+        },
+      },
     },
   })
   @ApiResponse({
@@ -1164,6 +1326,14 @@ export class ReportsController {
         return;
       }
 
+      const went = await this.tryEnqueueAsyncExport(
+        request,
+        body,
+        'consolidated',
+        response,
+      );
+      if (went) return;
+
       const { buffer, fileName } =
         await this.reportsService.exportConsolidated(body);
 
@@ -1207,6 +1377,11 @@ export class ReportsController {
       'Use this when the user clicks **"Download for Dashboard"** on the ' +
       'Reports page (vs. **"Download as ZIP"** → `/reports/export-master`, ' +
       'or **"Consolidated Report"** → `/reports/export-consolidated`).\n\n' +
+      '### Sync vs Async (job count threshold)\n' +
+      '- **≤ 10 jobs** → built synchronously; the response body is the ' +
+      '  XLSX.\n' +
+      '- **> 10 jobs** → queued via SQS; the XLSX is emailed as a 7-day ' +
+      '  presigned S3 link. Response is `202 Accepted` JSON.\n\n' +
       '### Columns (in order)\n' +
       '_Headers carry a trailing `*` for required columns, matching the_ ' +
       '_downstream spreadsheet template exactly._\n\n' +
@@ -1285,11 +1460,30 @@ export class ReportsController {
   @ApiResponse({
     status: 200,
     description:
-      'XLSX file. Response Content-Type is ' +
+      'XLSX file (sync path, ≤ 10 jobs). Response Content-Type is ' +
       '`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` ' +
       'and `Content-Disposition` carries the suggested filename.',
     content: {
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {},
+    },
+  })
+  @ApiResponse({
+    status: 202,
+    description:
+      'Async path (> 10 jobs). Request accepted and queued — the ' +
+      'dashboard XLSX will be emailed as a 7-day presigned S3 link.',
+    schema: {
+      example: {
+        statusCode: 202,
+        message:
+          "Your export is being prepared. We will email a download link to user@example.com when it's ready (usually within a few minutes).",
+        data: {
+          queued: true,
+          exportType: 'dashboard',
+          email: 'user@example.com',
+          jobIdsCount: 137,
+        },
+      },
     },
   })
   @ApiResponse({
@@ -1353,6 +1547,14 @@ export class ReportsController {
         });
         return;
       }
+
+      const went = await this.tryEnqueueAsyncExport(
+        request,
+        body,
+        'dashboard',
+        response,
+      );
+      if (went) return;
 
       const { buffer, fileName } =
         await this.reportsService.exportDashboard(body);
