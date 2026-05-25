@@ -369,7 +369,7 @@ export class ScraperController {
       res.status(HttpStatus.OK).json({
         success: true,
         message:
-          'Request was sent to the scraper. Returned after 10 seconds with current job state; scraping may still be in progress.',
+          'Audit Started Successfully',
         data: latestJob,
       });
       return;
