@@ -344,10 +344,36 @@ export function buildMasterRow(
  *     (N = max approved authorizations on any Expedia job item passed in).
  *   - Booking / Agoda → static columns only (no Expedia-specific columns).
  */
-export function buildMasterRows(jobs: any[]): {
+/**
+ * Precomputed cross-job context that every row in a master export shares:
+ * the resolved header order (including dynamic Expedia-only columns), the
+ * Expedia flag, the `maxApprovedCount` (= count of "Approved Amount K"
+ * columns the headers reserve), and the anchor `today` Date used for the
+ * chargeback-days header and per-row derived fields.
+ *
+ * Computed once per export by {@link computeMasterExportContext} and then
+ * threaded through {@link buildMasterRowsForJob} so we never have to walk
+ * the full `jobs` array more than once for aggregation. This is what lets
+ * the streaming XLSX path stay O(one job's rows) in memory.
+ */
+export interface MasterExportContext {
   headers: string[];
-  rows: Record<string, string | number>[];
-} {
+  isExpediaCsv: boolean;
+  maxApprovedCount: number;
+  today: Date;
+}
+
+/**
+ * Walks the jobs ONCE to compute the cross-job aggregates (Expedia flag +
+ * max approved-authorization count) and assembles the final header list
+ * in the exact order the CSV/XLSX export expects.
+ *
+ * Crucially this does NOT materialize any row objects — only the headers
+ * + a handful of scalars. Safe to call on huge `jobs` arrays where
+ * generating all rows upfront would OOM. Callers that need rows should
+ * pair this with {@link buildMasterRowsForJob}.
+ */
+export function computeMasterExportContext(jobs: any[]): MasterExportContext {
   const isExpediaCsv = (jobs || []).some(
     (j: any) => j?.ota_provider === OTAProvider.Expedia,
   );
@@ -391,15 +417,52 @@ export function buildMasterRows(jobs: any[]): {
       : []),
   ];
 
+  return { headers, isExpediaCsv, maxApprovedCount, today };
+}
+
+/**
+ * Builds the row objects for a SINGLE job using a precomputed export
+ * context (see {@link computeMasterExportContext}). Returns an empty
+ * array for jobs with no `jobItem[]` entries.
+ *
+ * Pair this with {@link computeMasterExportContext} when streaming so
+ * peak memory stays bounded by one job's worth of rows.
+ */
+export function buildMasterRowsForJob(
+  job: any,
+  ctx: MasterExportContext,
+): Record<string, string | number>[] {
+  const items = Array.isArray(job?.jobItem) ? job.jobItem : [];
+  if (items.length === 0) return [];
+  const rows: Record<string, string | number>[] = new Array(items.length);
+  for (let i = 0; i < items.length; i++) {
+    rows[i] = buildMasterRow(job, items[i], ctx.maxApprovedCount, ctx.today);
+  }
+  return rows;
+}
+
+/**
+ * Convenience wrapper that materializes EVERY row across `jobs` into a
+ * single array. Kept for backwards compatibility with non-streaming
+ * callers (per-job CSV/XLSX builders, the synchronous Buffer paths).
+ *
+ * WARNING: for large `jobs` arrays this can allocate hundreds of MB of
+ * row objects in one shot. The streaming XLSX builders deliberately
+ * avoid this function in favor of the `computeMasterExportContext` +
+ * `buildMasterRowsForJob` pair.
+ */
+export function buildMasterRows(jobs: any[]): {
+  headers: string[];
+  rows: Record<string, string | number>[];
+} {
+  const ctx = computeMasterExportContext(jobs);
   const rows: Record<string, string | number>[] = [];
   for (const job of jobs || []) {
-    const items = Array.isArray(job?.jobItem) ? job.jobItem : [];
-    if (items.length === 0) continue;
-    for (const item of items) {
-      rows.push(buildMasterRow(job, item, maxApprovedCount, today));
-    }
+    const jobRows = buildMasterRowsForJob(job, ctx);
+    if (jobRows.length === 0) continue;
+    for (const row of jobRows) rows.push(row);
   }
-  return { headers, rows };
+  return { headers: ctx.headers, rows };
 }
 
 /**

@@ -142,23 +142,55 @@ export function buildDashboardRow(
 }
 
 /**
+ * Returns the dashboard export headers in the exact order they should
+ * appear in the CSV/XLSX. Unlike the master export, the dashboard's
+ * headers are completely static — no per-job aggregation needed.
+ *
+ * Returned as a fresh array (callers can safely mutate / append).
+ */
+export function getDashboardHeaders(): string[] {
+  return [...DASHBOARD_EXPORT_HEADER];
+}
+
+/**
+ * Builds the row objects for a SINGLE job. Returns an empty array if the
+ * job has no `jobItem[]` entries (matches the silent-skip behaviour of
+ * the master-export path).
+ *
+ * Used by the streaming dashboard writer to keep peak memory at one
+ * job's worth of rows instead of materializing the whole export.
+ */
+export function buildDashboardRowsForJob(
+  job: any,
+): Record<string, string | number>[] {
+  const items = Array.isArray(job?.jobItem) ? job.jobItem : [];
+  if (items.length === 0) return [];
+  const rows: Record<string, string | number>[] = new Array(items.length);
+  for (let i = 0; i < items.length; i++) {
+    rows[i] = buildDashboardRow(job, items[i]);
+  }
+  return rows;
+}
+
+/**
  * Builds every dashboard row for the supplied jobs (each expected to have
  * its `jobItem[]`, `property`, `batch`, and `portfolio` relations loaded).
  * Jobs with zero items are silently skipped (matches the master-export
  * behaviour).
+ *
+ * WARNING: materializes all rows in memory. Streaming callers should use
+ * {@link getDashboardHeaders} + {@link buildDashboardRowsForJob} instead.
  */
 export function buildDashboardRows(jobs: any[]): {
   headers: string[];
   rows: Record<string, string | number>[];
 } {
-  const headers = [...DASHBOARD_EXPORT_HEADER];
+  const headers = getDashboardHeaders();
   const rows: Record<string, string | number>[] = [];
   for (const job of jobs || []) {
-    const items = Array.isArray(job?.jobItem) ? job.jobItem : [];
-    if (items.length === 0) continue;
-    for (const item of items) {
-      rows.push(buildDashboardRow(job, item));
-    }
+    const jobRows = buildDashboardRowsForJob(job);
+    if (jobRows.length === 0) continue;
+    for (const row of jobRows) rows.push(row);
   }
   return { headers, rows };
 }

@@ -1253,17 +1253,25 @@ export class JobService implements IJobService {
         );
       }
 
-      // Empty-detection: re-use the same row builder as the buffer
-      // path so the "no rows → 404" behaviour stays consistent across
-      // sync and async modes.
-      const { rows } = buildMasterRows(jobs);
-      if (rows.length === 0) {
+      // Empty-detection: walk the already-loaded jobs and count items
+      // WITHOUT materializing row objects. The previous implementation
+      // called `buildMasterRows(jobs)` here, which for large exports
+      // (e.g. 944 jobs × ~900 items each) allocated ~1.7 GB of row
+      // objects just to check `rows.length === 0` and produce a log —
+      // routinely OOM-crashing the consumer. We achieve the same
+      // "no rows → 404" + "rows-built" log with an O(jobs) walk.
+      let totalItemRows = 0;
+      for (const j of jobs as any[]) {
+        const items = Array.isArray(j?.jobItem) ? j.jobItem : [];
+        totalItemRows += items.length;
+      }
+      if (totalItemRows === 0) {
         throw new NotFoundException(
           'No job items found for the provided job IDs to export',
         );
       }
       this.logger.log(
-        `[Consolidated XLSX] Building XLSX with ${rows.length} rows across ${jobs.length} jobs`,
+        `[Consolidated XLSX] Building XLSX with ${totalItemRows} rows across ${jobs.length} jobs`,
       );
 
       const buildStartedAt = Date.now();
@@ -1317,14 +1325,20 @@ export class JobService implements IJobService {
         );
       }
 
-      const { rows } = buildDashboardRows(jobs);
-      if (rows.length === 0) {
+      // Same memory-safe empty-check as the consolidated path: count
+      // items in O(jobs) instead of materializing every row object.
+      let totalItemRows = 0;
+      for (const j of jobs as any[]) {
+        const items = Array.isArray(j?.jobItem) ? j.jobItem : [];
+        totalItemRows += items.length;
+      }
+      if (totalItemRows === 0) {
         throw new NotFoundException(
           'No job items found for the provided job IDs to export',
         );
       }
       this.logger.log(
-        `[Dashboard XLSX] Building XLSX with ${rows.length} rows across ${jobs.length} jobs`,
+        `[Dashboard XLSX] Building XLSX with ${totalItemRows} rows across ${jobs.length} jobs`,
       );
 
       const buildStartedAt = Date.now();
