@@ -4,6 +4,32 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 
+// Safety net: a stray uncaughtException / unhandledRejection (e.g. from
+// an EventTarget listener that throws synchronously inside an AWS SDK
+// internal — see s3-upload.util.ts) should be LOUDLY logged but must
+// NOT take the whole API process down. Without these handlers, every
+// failed report-export run would crash the Node process, PM2 would
+// restart, and the API would be unavailable to all other users for the
+// few seconds it takes to come back up.
+//
+// We log and keep running. The report-export consumer has its own
+// per-message try/catch + DLQ-on-failure, so a single bad export is
+// already self-contained from a business-logic perspective.
+process.on('uncaughtException', (err) => {
+  // eslint-disable-next-line no-console
+  console.error(
+    '[process:uncaughtException] non-fatal — keeping process alive:',
+    err,
+  );
+});
+process.on('unhandledRejection', (reason) => {
+  // eslint-disable-next-line no-console
+  console.error(
+    '[process:unhandledRejection] non-fatal — keeping process alive:',
+    reason,
+  );
+});
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.enableCors({

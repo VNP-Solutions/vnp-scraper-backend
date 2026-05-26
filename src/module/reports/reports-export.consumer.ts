@@ -204,6 +204,10 @@ export class ReportsExportConsumer
       );
 
       // 2. Email the user the download link.
+      this.logger.log(
+        `[Consumer] Sending download-link email to ${payload.user.email} ` +
+          `(file=${fileName}, expires=${expiresAt.toISOString()})`,
+      );
       await this.mail.sendReportReadyEmail({
         to: payload.user.email,
         userName: payload.user.name ?? null,
@@ -213,6 +217,9 @@ export class ReportsExportConsumer
         downloadFileName: fileName,
         expiresAt,
       });
+      this.logger.log(
+        `[Consumer] Email sent to ${payload.user.email}`,
+      );
 
       // 4. Ack the SQS message only after the email is on its way —
       //    if email send throws, the message stays in the queue and

@@ -1228,11 +1228,15 @@ export class JobService implements IJobService {
     jobIds: string[],
     writable: Writable,
   ): Promise<{ fileName: string }> {
+    const startedAt = Date.now();
     try {
       const uniqueJobIds = Array.from(new Set(jobIds ?? [])).filter(Boolean);
       if (uniqueJobIds.length === 0) {
         throw new BadRequestException('At least one job ID is required');
       }
+      this.logger.log(
+        `[Consolidated XLSX] Starting build for ${uniqueJobIds.length} job IDs`,
+      );
 
       const jobs = await this.repository.findManyForMasterExport(uniqueJobIds);
       if (!jobs || jobs.length === 0) {
@@ -1245,7 +1249,7 @@ export class JobService implements IJobService {
       const missingIds = uniqueJobIds.filter((id) => !foundIds.has(id));
       if (missingIds.length > 0) {
         this.logger.warn(
-          `Stream consolidated XLSX: ${missingIds.length} job ID(s) not found and will be skipped: ${missingIds.join(', ')}`,
+          `[Consolidated XLSX] ${missingIds.length} job ID(s) not found and will be skipped: ${missingIds.join(', ')}`,
         );
       }
 
@@ -1258,8 +1262,16 @@ export class JobService implements IJobService {
           'No job items found for the provided job IDs to export',
         );
       }
+      this.logger.log(
+        `[Consolidated XLSX] Building XLSX with ${rows.length} rows across ${jobs.length} jobs`,
+      );
 
+      const buildStartedAt = Date.now();
       await writeMasterXlsxToStream(jobs, writable);
+      this.logger.log(
+        `[Consolidated XLSX] XLSX write+stream complete in ${Date.now() - buildStartedAt}ms ` +
+          `(total ${Date.now() - startedAt}ms incl. DB load)`,
+      );
 
       const fileName = `consolidated-report-${this.buildHumanReadableTimestamp()}.xlsx`;
       return { fileName };
@@ -1280,11 +1292,15 @@ export class JobService implements IJobService {
     jobIds: string[],
     writable: Writable,
   ): Promise<{ fileName: string }> {
+    const startedAt = Date.now();
     try {
       const uniqueJobIds = Array.from(new Set(jobIds ?? [])).filter(Boolean);
       if (uniqueJobIds.length === 0) {
         throw new BadRequestException('At least one job ID is required');
       }
+      this.logger.log(
+        `[Dashboard XLSX] Starting build for ${uniqueJobIds.length} job IDs`,
+      );
 
       const jobs = await this.repository.findManyForMasterExport(uniqueJobIds);
       if (!jobs || jobs.length === 0) {
@@ -1297,7 +1313,7 @@ export class JobService implements IJobService {
       const missingIds = uniqueJobIds.filter((id) => !foundIds.has(id));
       if (missingIds.length > 0) {
         this.logger.warn(
-          `Stream dashboard XLSX: ${missingIds.length} job ID(s) not found and will be skipped: ${missingIds.join(', ')}`,
+          `[Dashboard XLSX] ${missingIds.length} job ID(s) not found and will be skipped: ${missingIds.join(', ')}`,
         );
       }
 
@@ -1307,8 +1323,16 @@ export class JobService implements IJobService {
           'No job items found for the provided job IDs to export',
         );
       }
+      this.logger.log(
+        `[Dashboard XLSX] Building XLSX with ${rows.length} rows across ${jobs.length} jobs`,
+      );
 
+      const buildStartedAt = Date.now();
       await writeDashboardXlsxToStream(jobs, writable);
+      this.logger.log(
+        `[Dashboard XLSX] XLSX write+stream complete in ${Date.now() - buildStartedAt}ms ` +
+          `(total ${Date.now() - startedAt}ms incl. DB load)`,
+      );
 
       const fileName = `dashboard-report-${this.buildHumanReadableTimestamp()}.xlsx`;
       return { fileName };
@@ -1343,11 +1367,15 @@ export class JobService implements IJobService {
     jobIds: string[],
     writable: Writable,
   ): Promise<{ fileName: string }> {
+    const startedAt = Date.now();
     try {
       const uniqueJobIds = Array.from(new Set(jobIds ?? [])).filter(Boolean);
       if (uniqueJobIds.length === 0) {
         throw new BadRequestException('At least one job ID is required');
       }
+      this.logger.log(
+        `[Master ZIP] Starting build for ${uniqueJobIds.length} job IDs`,
+      );
 
       const jobs = await this.repository.findManyForMasterExport(uniqueJobIds);
       if (!jobs || jobs.length === 0) {
@@ -1360,26 +1388,52 @@ export class JobService implements IJobService {
       const missingIds = uniqueJobIds.filter((id) => !foundIds.has(id));
       if (missingIds.length > 0) {
         this.logger.warn(
-          `Stream master ZIP: ${missingIds.length} job ID(s) not found and will be skipped: ${missingIds.join(', ')}`,
+          `[Master ZIP] ${missingIds.length} job ID(s) not found and will be skipped: ${missingIds.join(', ')}`,
         );
       }
 
+      // Periodic-build progress: for big exports a 2k-job ZIP can take a
+      // minute or two. Emit a heartbeat every ~10% so the operator can
+      // see progress without per-job spam.
+      const buildStartedAt = Date.now();
+      const logEveryNJobs = Math.max(1, Math.ceil(jobs.length / 10));
       const usedNames = new Set<string>();
       let entryCount = 0;
+      let jobsProcessed = 0;
+      let totalXlsxBytes = 0;
       await streamZipEntries(writable, async ({ appendBuffer }) => {
         for (const job of jobs) {
           // Skip jobs with no items — matches the buffer-path behaviour
           // (`buildMasterXlsxEntries` does the same check).
           const { rows } = buildMasterRows([job]);
-          if (rows.length === 0) continue;
+          jobsProcessed += 1;
+          if (rows.length === 0) {
+            if (jobsProcessed % logEveryNJobs === 0) {
+              this.logger.log(
+                `[Master ZIP] Built ${jobsProcessed}/${jobs.length} jobs ` +
+                  `(${Math.round((jobsProcessed / jobs.length) * 100)}%, ` +
+                  `${entryCount} entries, ${(totalXlsxBytes / 1024 / 1024).toFixed(1)} MB xlsx so far)`,
+              );
+            }
+            continue;
+          }
 
           const xlsxBuffer = buildMasterXlsxBuffer([job]);
+          totalXlsxBytes += xlsxBuffer.length;
           const xlsxName = this.ensureUniqueFilename(
             `${this.buildJobCsvBaseName(job)}.xlsx`,
             usedNames,
           );
           appendBuffer(xlsxName, xlsxBuffer);
           entryCount++;
+
+          if (jobsProcessed % logEveryNJobs === 0) {
+            this.logger.log(
+              `[Master ZIP] Built ${jobsProcessed}/${jobs.length} jobs ` +
+                `(${Math.round((jobsProcessed / jobs.length) * 100)}%, ` +
+                `${entryCount} entries, ${(totalXlsxBytes / 1024 / 1024).toFixed(1)} MB xlsx so far)`,
+            );
+          }
         }
       });
 
@@ -1388,6 +1442,13 @@ export class JobService implements IJobService {
           'No job items found for the provided job IDs to export',
         );
       }
+
+      this.logger.log(
+        `[Master ZIP] Build complete — ${entryCount} XLSX entries ` +
+          `(${(totalXlsxBytes / 1024 / 1024).toFixed(1)} MB pre-compression) ` +
+          `in ${Date.now() - buildStartedAt}ms ` +
+          `(total ${Date.now() - startedAt}ms incl. DB load)`,
+      );
 
       const fileName = `reports-export-${this.buildHumanReadableTimestamp()}.zip`;
       return { fileName };
