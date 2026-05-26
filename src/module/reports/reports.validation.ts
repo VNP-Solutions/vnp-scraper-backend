@@ -134,11 +134,27 @@ export type SearchReportsType = z.infer<typeof searchReportsSchema>;
  * export — if/when bulk-retrieval export is added, it will live under
  * the retrieval module.)
  */
+/**
+ * Hard cap on `job_ids` per export request.
+ *
+ * Chosen so that the resulting SQS message body (≈ 28 bytes per JSON
+ * ObjectId + ~200 bytes of user/metadata) stays comfortably under the
+ * SQS 256 KB per-message limit, and so that the consumer's in-memory
+ * XLSX build stays under the Node default 1.5 GB heap. See
+ * `tryEnqueueAsyncExport` for the matching byte-level defense-in-depth
+ * check.
+ */
+export const EXPORT_MAX_JOB_IDS = 8000;
+
 export const exportReportsMasterSchema = z
   .object({
     job_ids: z
       .array(objectIdSchema)
-      .min(1, 'At least one job ID is required'),
+      .min(1, 'At least one job ID is required')
+      .max(
+        EXPORT_MAX_JOB_IDS,
+        `Too many jobs in one export. Please narrow your filters; maximum ${EXPORT_MAX_JOB_IDS} jobs per export.`,
+      ),
   })
   .strict();
 

@@ -8,8 +8,9 @@ import {
 import { IPropertyService } from '../property/property.interface';
 import { Batch, Job, OTAProvider, PostingType } from '@prisma/client';
 import * as archiver from 'archiver';
-import { PassThrough } from 'stream';
+import { PassThrough, Writable } from 'stream';
 import * as XLSX from 'xlsx';
+import { streamZipEntries } from '../../common/utils/zip-and-filename.util';
 import { IRecurringJobService } from '../recurring-job/recurring-job.interface';
 import { IScheduledJobService } from '../scraper/scheduled-job.interface';
 import { IServerService } from '../server/server.interface';
@@ -27,10 +28,12 @@ import {
   buildMasterRows,
   buildMasterXlsxBuffer,
 } from './master-export.util';
+import { writeMasterXlsxToStream } from './master-export-stream.util';
 import {
   buildDashboardRows,
   buildDashboardXlsxBuffer,
 } from './dashboard-export.util';
+import { writeDashboardXlsxToStream } from './dashboard-export-stream.util';
 import { triggerLambda } from '../../helpers/lambdaHelper';
 
 @Injectable()
@@ -1204,6 +1207,193 @@ export class JobService implements IJobService {
     } catch (error) {
       this.logger.error(
         `Error building master XLSX entries: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Streaming counterpart to {@link buildConsolidatedMasterXlsx}. Writes
+   * the consolidated XLSX directly into the provided `writable` using
+   * `ExcelJS.stream.xlsx.WorkbookWriter`. Memory stays bounded
+   * regardless of how many jobs are in the export.
+   *
+   * Powers the async export path (> 10 jobs) where the writable is
+   * a `PassThrough` piped into S3's multipart `Upload`. The buffer
+   * variant remains in use for the sync path because its caller wants
+   * to set `Content-Length` on the HTTP response.
+   */
+  async streamConsolidatedMasterXlsx(
+    jobIds: string[],
+    writable: Writable,
+  ): Promise<{ fileName: string }> {
+    try {
+      const uniqueJobIds = Array.from(new Set(jobIds ?? [])).filter(Boolean);
+      if (uniqueJobIds.length === 0) {
+        throw new BadRequestException('At least one job ID is required');
+      }
+
+      const jobs = await this.repository.findManyForMasterExport(uniqueJobIds);
+      if (!jobs || jobs.length === 0) {
+        throw new NotFoundException(
+          `No jobs found for the given IDs: ${uniqueJobIds.join(', ')}`,
+        );
+      }
+
+      const foundIds = new Set(jobs.map((j: any) => j.id));
+      const missingIds = uniqueJobIds.filter((id) => !foundIds.has(id));
+      if (missingIds.length > 0) {
+        this.logger.warn(
+          `Stream consolidated XLSX: ${missingIds.length} job ID(s) not found and will be skipped: ${missingIds.join(', ')}`,
+        );
+      }
+
+      // Empty-detection: re-use the same row builder as the buffer
+      // path so the "no rows → 404" behaviour stays consistent across
+      // sync and async modes.
+      const { rows } = buildMasterRows(jobs);
+      if (rows.length === 0) {
+        throw new NotFoundException(
+          'No job items found for the provided job IDs to export',
+        );
+      }
+
+      await writeMasterXlsxToStream(jobs, writable);
+
+      const fileName = `consolidated-report-${this.buildHumanReadableTimestamp()}.xlsx`;
+      return { fileName };
+    } catch (error) {
+      this.logger.error(
+        `Error streaming consolidated XLSX: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Streaming counterpart to {@link buildDashboardXlsx}. See
+   * {@link streamConsolidatedMasterXlsx} for the rationale.
+   */
+  async streamDashboardXlsx(
+    jobIds: string[],
+    writable: Writable,
+  ): Promise<{ fileName: string }> {
+    try {
+      const uniqueJobIds = Array.from(new Set(jobIds ?? [])).filter(Boolean);
+      if (uniqueJobIds.length === 0) {
+        throw new BadRequestException('At least one job ID is required');
+      }
+
+      const jobs = await this.repository.findManyForMasterExport(uniqueJobIds);
+      if (!jobs || jobs.length === 0) {
+        throw new NotFoundException(
+          `No jobs found for the given IDs: ${uniqueJobIds.join(', ')}`,
+        );
+      }
+
+      const foundIds = new Set(jobs.map((j: any) => j.id));
+      const missingIds = uniqueJobIds.filter((id) => !foundIds.has(id));
+      if (missingIds.length > 0) {
+        this.logger.warn(
+          `Stream dashboard XLSX: ${missingIds.length} job ID(s) not found and will be skipped: ${missingIds.join(', ')}`,
+        );
+      }
+
+      const { rows } = buildDashboardRows(jobs);
+      if (rows.length === 0) {
+        throw new NotFoundException(
+          'No job items found for the provided job IDs to export',
+        );
+      }
+
+      await writeDashboardXlsxToStream(jobs, writable);
+
+      const fileName = `dashboard-report-${this.buildHumanReadableTimestamp()}.xlsx`;
+      return { fileName };
+    } catch (error) {
+      this.logger.error(
+        `Error streaming dashboard XLSX: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Streaming counterpart to {@link buildMasterXlsxEntries} + the
+   * `zipFiles` Buffer helper. Builds one XLSX per job, appends each
+   * into a streaming ZIP, and writes the ZIP bytes directly into the
+   * provided `writable`.
+   *
+   * Memory profile: at any moment we hold only ONE per-job XLSX
+   * buffer in memory (typically a few hundred KB) plus archiver's
+   * compression window. This is dramatically lighter than the buffer
+   * variant, which materialized every per-job XLSX before zipping.
+   *
+   * Why we still buffer each per-job XLSX instead of piping a
+   * `WorkbookWriter` straight into archiver: the per-job payload is
+   * small (one job worth of rows), and buffering it lets us append
+   * with a known size — significantly simpler than juggling N parallel
+   * PassThrough streams. The bounded memory is per-job, not per-export,
+   * so this still scales linearly with workload.
+   */
+  async streamMasterXlsxZip(
+    jobIds: string[],
+    writable: Writable,
+  ): Promise<{ fileName: string }> {
+    try {
+      const uniqueJobIds = Array.from(new Set(jobIds ?? [])).filter(Boolean);
+      if (uniqueJobIds.length === 0) {
+        throw new BadRequestException('At least one job ID is required');
+      }
+
+      const jobs = await this.repository.findManyForMasterExport(uniqueJobIds);
+      if (!jobs || jobs.length === 0) {
+        throw new NotFoundException(
+          `No jobs found for the given IDs: ${uniqueJobIds.join(', ')}`,
+        );
+      }
+
+      const foundIds = new Set(jobs.map((j: any) => j.id));
+      const missingIds = uniqueJobIds.filter((id) => !foundIds.has(id));
+      if (missingIds.length > 0) {
+        this.logger.warn(
+          `Stream master ZIP: ${missingIds.length} job ID(s) not found and will be skipped: ${missingIds.join(', ')}`,
+        );
+      }
+
+      const usedNames = new Set<string>();
+      let entryCount = 0;
+      await streamZipEntries(writable, async ({ appendBuffer }) => {
+        for (const job of jobs) {
+          // Skip jobs with no items — matches the buffer-path behaviour
+          // (`buildMasterXlsxEntries` does the same check).
+          const { rows } = buildMasterRows([job]);
+          if (rows.length === 0) continue;
+
+          const xlsxBuffer = buildMasterXlsxBuffer([job]);
+          const xlsxName = this.ensureUniqueFilename(
+            `${this.buildJobCsvBaseName(job)}.xlsx`,
+            usedNames,
+          );
+          appendBuffer(xlsxName, xlsxBuffer);
+          entryCount++;
+        }
+      });
+
+      if (entryCount === 0) {
+        throw new NotFoundException(
+          'No job items found for the provided job IDs to export',
+        );
+      }
+
+      const fileName = `reports-export-${this.buildHumanReadableTimestamp()}.zip`;
+      return { fileName };
+    } catch (error) {
+      this.logger.error(
+        `Error streaming master ZIP: ${error.message}`,
         error.stack,
       );
       throw error;

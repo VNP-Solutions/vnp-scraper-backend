@@ -101,20 +101,48 @@ export class ReportsController {
       return false;
     }
 
-    try {
-      await enqueueReportExport(
-        {
-          exportType,
-          jobIds: Array.from(new Set(body.job_ids ?? [])).filter(Boolean),
-          user: {
-            userId: user.userId,
-            email: user.email,
-            name: user.name ?? null,
-          },
-          requestedAt: new Date().toISOString(),
-        },
-        this.logger,
+    // Build the payload once so we can both measure it (Fix B) and send
+    // it (line below). De-dupe + drop falsy IDs to mirror what the
+    // consumer would have processed anyway, and shrink the body a bit.
+    const payload = {
+      exportType,
+      jobIds: Array.from(new Set(body.job_ids ?? [])).filter(Boolean),
+      user: {
+        userId: user.userId,
+        email: user.email,
+        name: user.name ?? null,
+      },
+      requestedAt: new Date().toISOString(),
+    };
+
+    // Defense-in-depth against the SQS 256 KB per-message hard limit.
+    // Zod's `.max(8000)` on job_ids (see reports.validation.ts) already
+    // keeps us well under this in normal operation. This check is here
+    // so that if someone ever raises the Zod cap, adds new fields to
+    // the payload, or bypasses validation, we still fail fast with a
+    // clean 400 instead of letting SQS reject the SendMessage with an
+    // opaque AWS SDK error.
+    const SQS_MAX_BODY_BYTES = 240 * 1024; // 240 KB — 16 KB headroom under 256 KB
+    const payloadBytes = Buffer.byteLength(JSON.stringify(payload), 'utf8');
+    if (payloadBytes > SQS_MAX_BODY_BYTES) {
+      this.logger.warn(
+        `Refusing to enqueue ${exportType} export — payload ` +
+          `${payloadBytes} B exceeds ${SQS_MAX_BODY_BYTES} B SQS body cap ` +
+          `(user=${user.email}, jobs=${payload.jobIds.length}).`,
       );
+      response.status(400).json({
+        statusCode: 400,
+        message:
+          `Export request is too large to queue. Please narrow your ` +
+          `filters (current payload: ${Math.round(payloadBytes / 1024)} KB, ` +
+          `max: ${Math.round(SQS_MAX_BODY_BYTES / 1024)} KB).`,
+        data: null,
+      });
+      return true;
+    }
+
+    try {
+      await enqueueReportExport(payload, this.logger);
     } catch (err) {
       this.logger.error(
         `Failed to enqueue ${exportType} export: ${err?.message ?? err}`,
