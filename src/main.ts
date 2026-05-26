@@ -57,4 +57,14 @@ async function bootstrap() {
   server.keepAliveTimeout = 900000;
   server.headersTimeout = 900000;
 }
-bootstrap();
+
+// Surface any bootstrap-time error. Without this, an unhandled rejection
+// during `NestFactory.create` / `app.listen` (e.g. Prisma init, DB connect,
+// invalid env) can cause Node to exit silently with code 0 — which makes
+// it look like the process "just stopped" right after route mapping with
+// no error in the logs. See: a `connection_limit` typo in DATABASE_URL.
+bootstrap().catch((err) => {
+  // eslint-disable-next-line no-console
+  console.error('[bootstrap] FATAL — uncaught error during bootstrap:', err);
+  process.exit(1);
+});

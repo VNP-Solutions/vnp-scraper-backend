@@ -1,4 +1,5 @@
 import { Batch, DbEntry, Job } from '@prisma/client';
+import { Writable } from 'stream';
 import {
   CreateBatchDto,
   CreateJobDto,
@@ -172,6 +173,35 @@ export interface IJobService {
   buildDashboardXlsx(
     jobIds: string[],
   ): Promise<{ buffer: Buffer; fileName: string }>;
+
+  /**
+   * Streaming variants of the three export builders. They write the
+   * file bytes directly to the provided `writable` (typically a
+   * `PassThrough` wired into an S3 multipart upload), using ExcelJS
+   * `WorkbookWriter` so memory stays bounded regardless of how many
+   * jobs are in the export.
+   *
+   * These power the async export path (`> 10 jobs` in the Reports
+   * module). The Buffer-returning variants above keep serving the
+   * synchronous path (`≤ 10 jobs`) because for small exports the
+   * memory savings don't matter and the buffer API is simpler.
+   *
+   * Returns the suggested file name. The writable is closed by the
+   * implementation when writing is complete (or errored).
+   */
+  streamConsolidatedMasterXlsx(
+    jobIds: string[],
+    writable: Writable,
+  ): Promise<{ fileName: string }>;
+  streamDashboardXlsx(
+    jobIds: string[],
+    writable: Writable,
+  ): Promise<{ fileName: string }>;
+  streamMasterXlsxZip(
+    jobIds: string[],
+    writable: Writable,
+  ): Promise<{ fileName: string }>;
+
   exportSingleJobMasterCsv(
     jobId: string,
   ): Promise<{ buffer: Buffer; fileName: string }>;

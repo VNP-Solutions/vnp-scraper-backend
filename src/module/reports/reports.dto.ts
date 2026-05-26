@@ -395,8 +395,14 @@ export class ExportReportsMasterRequestDto {
     description:
       'Job IDs to include in the export. Each becomes one XLSX file ' +
       'inside the ZIP, named ' +
-      '`{OTA}-{property}-{startDate}-{endDate}.xlsx`. Must contain at ' +
-      'least one ID.',
+      '`{OTA}-{property}-{startDate}-{endDate}.xlsx`.\n\n' +
+      '**Constraints:**\n' +
+      '- Must contain at least one ID (empty arrays return 400).\n' +
+      '- Maximum **8000 IDs per request**. Larger selections return ' +
+      '  400 with a "narrow your filters" message — the cap exists ' +
+      '  because each request is queued as a single SQS message ' +
+      '  (256 KB hard limit) and consumed in a single Node process ' +
+      '  (heap-bound). Frontends should chunk if they ever need more.',
     example: ['65f0a3c4e2b7a1d2c3e4f5a6', '65f0a3c4e2b7a1d2c3e4f5a7'],
   })
   job_ids: string[];

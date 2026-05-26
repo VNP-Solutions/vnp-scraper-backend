@@ -172,21 +172,38 @@ export class ReportsExportConsumer
     );
 
     try {
-      // 1. Build the file (XLSX or ZIP) via the JobService methods that
-      //    already power the synchronous endpoints. These methods do
-      //    the chunked Mongo loading internally.
-      const { buffer, fileName } = await this.buildFile(payload);
-
-      // 2. Upload to S3 under a per-user prefix and presign a 7-day URL.
-      const key = this.buildS3Key(payload, fileName);
-      const contentType = this.contentTypeFor(payload.exportType, fileName);
-      const { url, expiresAt } = await this.s3Upload.uploadBufferAndPresign(
-        key,
-        buffer,
-        contentType,
+      // 1. Build + upload in ONE streaming pipeline.
+      //    The JobService streamXxx methods write XLSX/ZIP bytes into
+      //    the PassThrough that lib-storage's `Upload` is consuming on
+      //    the other side — memory stays bounded regardless of how many
+      //    jobs are in the export.
+      //
+      //    Filename has to be decided after we crack open the export
+      //    because it embeds a timestamp generated inside the stream
+      //    method. We compute the S3 key with a placeholder, then pull
+      //    the final fileName off the streamXxx return value to email
+      //    the user. The S3 key separately uses a stable ISO timestamp
+      //    prefix so listing the bucket is chronological.
+      const placeholderFileName = this.placeholderFilenameFor(
+        payload.exportType,
+      );
+      const key = this.buildS3Key(payload, placeholderFileName);
+      const contentType = this.contentTypeFor(
+        payload.exportType,
+        placeholderFileName,
       );
 
-      // 3. Email the user the download link.
+      let fileName = placeholderFileName;
+      const { url, expiresAt } = await this.s3Upload.uploadStreamAndPresign(
+        key,
+        contentType,
+        async (writable) => {
+          const result = await this.streamExport(payload, writable);
+          fileName = result.fileName;
+        },
+      );
+
+      // 2. Email the user the download link.
       await this.mail.sendReportReadyEmail({
         to: payload.user.email,
         userName: payload.user.name ?? null,
@@ -237,49 +254,48 @@ export class ReportsExportConsumer
     }
   }
 
-  private async buildFile(
+  /**
+   * Streaming dispatch: route to the right JobService stream method
+   * based on the export type. The method writes bytes into `writable`
+   * (a PassThrough hooked up to S3's multipart `Upload`) and returns
+   * the suggested file name.
+   */
+  private async streamExport(
     payload: ReportExportMessage,
-  ): Promise<{ buffer: Buffer; fileName: string }> {
+    writable: import('stream').Writable,
+  ): Promise<{ fileName: string }> {
     switch (payload.exportType) {
       case 'master':
-        // The sync "export-master" path is a ZIP of per-job XLSX files,
-        // built by ReportsService → not JobService. To avoid a circular
-        // dep with ReportsService we re-implement the same call: build
-        // the per-job XLSX entries, zip them, and reuse the same
-        // filename convention.
-        return this.buildMasterZip(payload.jobIds);
+        return this.jobService.streamMasterXlsxZip(payload.jobIds, writable);
       case 'consolidated':
-        return this.jobService.buildConsolidatedMasterXlsx(payload.jobIds);
+        return this.jobService.streamConsolidatedMasterXlsx(
+          payload.jobIds,
+          writable,
+        );
       case 'dashboard':
-        return this.jobService.buildDashboardXlsx(payload.jobIds);
+        return this.jobService.streamDashboardXlsx(payload.jobIds, writable);
       default:
         throw new Error(`Unknown exportType: ${payload.exportType}`);
     }
   }
 
   /**
-   * Mirrors `ReportsService.exportMaster` (zip of per-job XLSX). Inlined
-   * here to avoid the consumer ↔ reports.service circular dep — the
-   * underlying `JobService.buildMasterXlsxEntries` does all the real
-   * work, this just zips the resulting entries with the same name.
+   * S3 key needs to be generated BEFORE we open the export stream
+   * (lib-storage's `Upload` needs the key up-front). We use a stable
+   * placeholder filename for the key (extension is the only part S3
+   * actually cares about — the real human-readable filename gets
+   * embedded in the email instead).
    */
-  private async buildMasterZip(
-    jobIds: string[],
-  ): Promise<{ buffer: Buffer; fileName: string }> {
-    const entries = await this.jobService.buildMasterXlsxEntries(jobIds);
-    if (entries.length === 0) {
-      throw new Error(
-        'No exportable content found for the provided job IDs (jobs had no items, or all IDs were invalid).',
-      );
+  private placeholderFilenameFor(t: ReportExportType): string {
+    const ts = Date.now();
+    switch (t) {
+      case 'master':
+        return `reports-export-${ts}.zip`;
+      case 'consolidated':
+        return `consolidated-report-${ts}.xlsx`;
+      case 'dashboard':
+        return `dashboard-report-${ts}.xlsx`;
     }
-    // Lazy-imported so we don't pull these into the controller path.
-    const {
-      zipFiles,
-      buildHumanReadableTimestamp,
-    } = require('../../common/utils/zip-and-filename.util');
-    const buffer: Buffer = await zipFiles(entries);
-    const fileName = `reports-export-${buildHumanReadableTimestamp()}.zip`;
-    return { buffer, fileName };
   }
 
   private labelFor(t: ReportExportType): string {
