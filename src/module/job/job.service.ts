@@ -25,6 +25,7 @@ import { IJobRepository, IJobService } from './job.interface';
 import type { JobListItem } from './job-list.types';
 import {
   MASTER_EXPORT_HEADER,
+  buildMasterExportContextFromPrescan,
   buildMasterRows,
   buildMasterXlsxBuffer,
 } from './master-export.util';
@@ -1216,13 +1217,25 @@ export class JobService implements IJobService {
   /**
    * Streaming counterpart to {@link buildConsolidatedMasterXlsx}. Writes
    * the consolidated XLSX directly into the provided `writable` using
-   * `ExcelJS.stream.xlsx.WorkbookWriter`. Memory stays bounded
-   * regardless of how many jobs are in the export.
+   * `ExcelJS.stream.xlsx.WorkbookWriter` — fed by a Mongo cursor
+   * generator instead of an in-memory `jobs[]` array.
    *
-   * Powers the async export path (> 10 jobs) where the writable is
-   * a `PassThrough` piped into S3's multipart `Upload`. The buffer
-   * variant remains in use for the sync path because its caller wants
-   * to set `Content-Length` on the HTTP response.
+   * Pipeline (the "true streaming" pattern, end to end):
+   *
+   *   Mongo cursor (batch=20)
+   *      ─▶  AsyncGenerator yields one Job at a time
+   *           ─▶  writeMasterXlsxToStream consumes via `for await`
+   *                ─▶  ExcelJS.WorkbookWriter commits rows to a PassThrough
+   *                     ─▶  S3 multipart Upload flushes parts as bytes arrive
+   *
+   * Peak heap during the entire pipeline is roughly:
+   *   ~one Mongo batch + ~one in-flight job's rows + ~ExcelJS HWM + ~S3 part queue
+   *   ≈ 100 MB, INDEPENDENT of total job count.
+   *
+   * Powers the async export path (> 10 jobs) where the writable is a
+   * `PassThrough` piped into S3's multipart `Upload`. The buffer variant
+   * (`buildConsolidatedMasterXlsx`) is kept for the sync path because
+   * its HTTP caller wants a known `Content-Length`.
    */
   async streamConsolidatedMasterXlsx(
     jobIds: string[],
@@ -1238,47 +1251,56 @@ export class JobService implements IJobService {
         `[Consolidated XLSX] Starting build for ${uniqueJobIds.length} job IDs`,
       );
 
-      const jobs = await this.repository.findManyForMasterExport(uniqueJobIds);
-      if (!jobs || jobs.length === 0) {
+      // Step 1: lightweight pre-scan. Tells us whether to emit Expedia-only
+      // columns, how many Approved Amount K columns the workbook needs,
+      // and which IDs actually exist in Mongo. NO row data loaded yet.
+      const prescan =
+        await this.repository.precomputeMasterExportContext(uniqueJobIds);
+
+      if (prescan.foundIds.size === 0) {
         throw new NotFoundException(
           `No jobs found for the given IDs: ${uniqueJobIds.join(', ')}`,
         );
       }
-
-      const foundIds = new Set(jobs.map((j: any) => j.id));
-      const missingIds = uniqueJobIds.filter((id) => !foundIds.has(id));
+      const missingIds = uniqueJobIds.filter(
+        (id) => !prescan.foundIds.has(id),
+      );
       if (missingIds.length > 0) {
         this.logger.warn(
           `[Consolidated XLSX] ${missingIds.length} job ID(s) not found and will be skipped: ${missingIds.join(', ')}`,
         );
       }
 
-      // Empty-detection: walk the already-loaded jobs and count items
-      // WITHOUT materializing row objects. The previous implementation
-      // called `buildMasterRows(jobs)` here, which for large exports
-      // (e.g. 944 jobs × ~900 items each) allocated ~1.7 GB of row
-      // objects just to check `rows.length === 0` and produce a log —
-      // routinely OOM-crashing the consumer. We achieve the same
-      // "no rows → 404" + "rows-built" log with an O(jobs) walk.
-      let totalItemRows = 0;
-      for (const j of jobs as any[]) {
-        const items = Array.isArray(j?.jobItem) ? j.jobItem : [];
-        totalItemRows += items.length;
-      }
+      // Step 2: cheap empty-check via a Mongo `count`. We do this BEFORE
+      // opening the S3 multipart upload so a "nothing to export" call
+      // returns 404 without leaving an orphaned upload behind.
+      const totalItemRows =
+        await this.repository.countJobItemsByJobIds(uniqueJobIds);
       if (totalItemRows === 0) {
         throw new NotFoundException(
           'No job items found for the provided job IDs to export',
         );
       }
       this.logger.log(
-        `[Consolidated XLSX] Building XLSX with ${totalItemRows} rows across ${jobs.length} jobs`,
+        `[Consolidated XLSX] Building XLSX with ${totalItemRows} rows across ` +
+          `${prescan.foundIds.size} jobs (hasExpedia=${prescan.hasExpedia}, ` +
+          `maxApproved=${prescan.maxApprovedCount})`,
+      );
+
+      // Step 3: hand the writer a precomputed context (headers + Expedia
+      // flag + max-approved) and a cursor — the writer never sees an
+      // array of jobs, so it can't accidentally pin them all in memory.
+      const ctx = buildMasterExportContextFromPrescan(prescan);
+      const jobCursor = this.repository.streamJobsForMasterExport(
+        uniqueJobIds,
+        20,
       );
 
       const buildStartedAt = Date.now();
-      await writeMasterXlsxToStream(jobs, writable);
+      await writeMasterXlsxToStream(jobCursor, ctx, writable);
       this.logger.log(
         `[Consolidated XLSX] XLSX write+stream complete in ${Date.now() - buildStartedAt}ms ` +
-          `(total ${Date.now() - startedAt}ms incl. DB load)`,
+          `(total ${Date.now() - startedAt}ms incl. pre-scan)`,
       );
 
       const fileName = `consolidated-report-${this.buildHumanReadableTimestamp()}.xlsx`;
@@ -1293,8 +1315,14 @@ export class JobService implements IJobService {
   }
 
   /**
-   * Streaming counterpart to {@link buildDashboardXlsx}. See
-   * {@link streamConsolidatedMasterXlsx} for the rationale.
+   * Streaming counterpart to {@link buildDashboardXlsx}. Same cursor-
+   * driven pipeline as {@link streamConsolidatedMasterXlsx} — see that
+   * method's docs for the end-to-end memory profile.
+   *
+   * The dashboard has a completely static column shape (no Expedia-only
+   * columns, no per-batch aggregates), so we don't need the full master
+   * pre-scan — just enough to validate which IDs exist and to throw 404
+   * on an empty export.
    */
   async streamDashboardXlsx(
     jobIds: string[],
@@ -1310,42 +1338,48 @@ export class JobService implements IJobService {
         `[Dashboard XLSX] Starting build for ${uniqueJobIds.length} job IDs`,
       );
 
-      const jobs = await this.repository.findManyForMasterExport(uniqueJobIds);
-      if (!jobs || jobs.length === 0) {
+      // Reuse the master pre-scan — it returns `foundIds` and is cheap
+      // (one `{ id, ota_provider }` projection; max-approved scan is
+      // skipped when no Expedia jobs are present). The dashboard
+      // ignores the Expedia / approved-count fields it returns.
+      const prescan =
+        await this.repository.precomputeMasterExportContext(uniqueJobIds);
+
+      if (prescan.foundIds.size === 0) {
         throw new NotFoundException(
           `No jobs found for the given IDs: ${uniqueJobIds.join(', ')}`,
         );
       }
-
-      const foundIds = new Set(jobs.map((j: any) => j.id));
-      const missingIds = uniqueJobIds.filter((id) => !foundIds.has(id));
+      const missingIds = uniqueJobIds.filter(
+        (id) => !prescan.foundIds.has(id),
+      );
       if (missingIds.length > 0) {
         this.logger.warn(
           `[Dashboard XLSX] ${missingIds.length} job ID(s) not found and will be skipped: ${missingIds.join(', ')}`,
         );
       }
 
-      // Same memory-safe empty-check as the consolidated path: count
-      // items in O(jobs) instead of materializing every row object.
-      let totalItemRows = 0;
-      for (const j of jobs as any[]) {
-        const items = Array.isArray(j?.jobItem) ? j.jobItem : [];
-        totalItemRows += items.length;
-      }
+      const totalItemRows =
+        await this.repository.countJobItemsByJobIds(uniqueJobIds);
       if (totalItemRows === 0) {
         throw new NotFoundException(
           'No job items found for the provided job IDs to export',
         );
       }
       this.logger.log(
-        `[Dashboard XLSX] Building XLSX with ${totalItemRows} rows across ${jobs.length} jobs`,
+        `[Dashboard XLSX] Building XLSX with ${totalItemRows} rows across ${prescan.foundIds.size} jobs`,
+      );
+
+      const jobCursor = this.repository.streamJobsForMasterExport(
+        uniqueJobIds,
+        20,
       );
 
       const buildStartedAt = Date.now();
-      await writeDashboardXlsxToStream(jobs, writable);
+      await writeDashboardXlsxToStream(jobCursor, writable);
       this.logger.log(
         `[Dashboard XLSX] XLSX write+stream complete in ${Date.now() - buildStartedAt}ms ` +
-          `(total ${Date.now() - startedAt}ms incl. DB load)`,
+          `(total ${Date.now() - startedAt}ms incl. pre-scan)`,
       );
 
       const fileName = `dashboard-report-${this.buildHumanReadableTimestamp()}.xlsx`;
@@ -1365,17 +1399,18 @@ export class JobService implements IJobService {
    * into a streaming ZIP, and writes the ZIP bytes directly into the
    * provided `writable`.
    *
-   * Memory profile: at any moment we hold only ONE per-job XLSX
-   * buffer in memory (typically a few hundred KB) plus archiver's
-   * compression window. This is dramatically lighter than the buffer
-   * variant, which materialized every per-job XLSX before zipping.
+   * Cursor-driven memory profile: jobs flow in one at a time from a
+   * Mongo async generator, each is turned into its own small XLSX
+   * buffer (~tens of KB to a few hundred KB), the buffer is appended
+   * to archiver, then GC reclaims the row array. We never hold the
+   * `jobs[]` array in memory — that was the bottleneck for large
+   * exports under the old implementation.
    *
    * Why we still buffer each per-job XLSX instead of piping a
    * `WorkbookWriter` straight into archiver: the per-job payload is
-   * small (one job worth of rows), and buffering it lets us append
-   * with a known size — significantly simpler than juggling N parallel
-   * PassThrough streams. The bounded memory is per-job, not per-export,
-   * so this still scales linearly with workload.
+   * small, and buffering it lets us append with a known size —
+   * significantly simpler than juggling N parallel `PassThrough`
+   * streams. The bounded memory is per-job, not per-export.
    */
   async streamMasterXlsxZip(
     jobIds: string[],
@@ -1391,41 +1426,62 @@ export class JobService implements IJobService {
         `[Master ZIP] Starting build for ${uniqueJobIds.length} job IDs`,
       );
 
-      const jobs = await this.repository.findManyForMasterExport(uniqueJobIds);
-      if (!jobs || jobs.length === 0) {
+      // Pre-flight: validate IDs exist + count items, all cheap. We do
+      // this BEFORE opening the ZIP stream so a "nothing to export"
+      // request 404s cleanly instead of producing a zero-entry ZIP.
+      const prescan =
+        await this.repository.precomputeMasterExportContext(uniqueJobIds);
+      if (prescan.foundIds.size === 0) {
         throw new NotFoundException(
           `No jobs found for the given IDs: ${uniqueJobIds.join(', ')}`,
         );
       }
-
-      const foundIds = new Set(jobs.map((j: any) => j.id));
-      const missingIds = uniqueJobIds.filter((id) => !foundIds.has(id));
+      const missingIds = uniqueJobIds.filter(
+        (id) => !prescan.foundIds.has(id),
+      );
       if (missingIds.length > 0) {
         this.logger.warn(
           `[Master ZIP] ${missingIds.length} job ID(s) not found and will be skipped: ${missingIds.join(', ')}`,
         );
       }
 
-      // Periodic-build progress: for big exports a 2k-job ZIP can take a
-      // minute or two. Emit a heartbeat every ~10% so the operator can
-      // see progress without per-job spam.
+      const totalItemRows =
+        await this.repository.countJobItemsByJobIds(uniqueJobIds);
+      if (totalItemRows === 0) {
+        throw new NotFoundException(
+          'No job items found for the provided job IDs to export',
+        );
+      }
+      this.logger.log(
+        `[Master ZIP] Building ZIP for ${prescan.foundIds.size} jobs ` +
+          `(${totalItemRows} item rows total)`,
+      );
+
+      // Cursor-driven per-job iteration. Each iteration builds a small
+      // XLSX, hands it to archiver, then drops the buffer/row array.
+      // Memory stays bounded by ONE job's worth of data regardless of
+      // how big the overall export is.
       const buildStartedAt = Date.now();
-      const logEveryNJobs = Math.max(1, Math.ceil(jobs.length / 10));
+      const totalJobs = prescan.foundIds.size;
+      const logEveryNJobs = Math.max(1, Math.ceil(totalJobs / 10));
       const usedNames = new Set<string>();
       let entryCount = 0;
       let jobsProcessed = 0;
       let totalXlsxBytes = 0;
       await streamZipEntries(writable, async ({ appendBuffer }) => {
-        for (const job of jobs) {
+        for await (const job of this.repository.streamJobsForMasterExport(
+          uniqueJobIds,
+          20,
+        )) {
+          jobsProcessed += 1;
           // Skip jobs with no items — matches the buffer-path behaviour
           // (`buildMasterXlsxEntries` does the same check).
           const { rows } = buildMasterRows([job]);
-          jobsProcessed += 1;
           if (rows.length === 0) {
             if (jobsProcessed % logEveryNJobs === 0) {
               this.logger.log(
-                `[Master ZIP] Built ${jobsProcessed}/${jobs.length} jobs ` +
-                  `(${Math.round((jobsProcessed / jobs.length) * 100)}%, ` +
+                `[Master ZIP] Built ${jobsProcessed}/${totalJobs} jobs ` +
+                  `(${Math.round((jobsProcessed / totalJobs) * 100)}%, ` +
                   `${entryCount} entries, ${(totalXlsxBytes / 1024 / 1024).toFixed(1)} MB xlsx so far)`,
               );
             }
@@ -1443,14 +1499,18 @@ export class JobService implements IJobService {
 
           if (jobsProcessed % logEveryNJobs === 0) {
             this.logger.log(
-              `[Master ZIP] Built ${jobsProcessed}/${jobs.length} jobs ` +
-                `(${Math.round((jobsProcessed / jobs.length) * 100)}%, ` +
+              `[Master ZIP] Built ${jobsProcessed}/${totalJobs} jobs ` +
+                `(${Math.round((jobsProcessed / totalJobs) * 100)}%, ` +
                 `${entryCount} entries, ${(totalXlsxBytes / 1024 / 1024).toFixed(1)} MB xlsx so far)`,
             );
           }
         }
       });
 
+      // Guard against the impossible-but-defensible case where the
+      // pre-flight count said >0 but every job ended up with zero rows
+      // (e.g. all rows somehow filtered post-load). Keeps the API
+      // contract: never produce an empty ZIP.
       if (entryCount === 0) {
         throw new NotFoundException(
           'No job items found for the provided job IDs to export',
@@ -1461,7 +1521,7 @@ export class JobService implements IJobService {
         `[Master ZIP] Build complete — ${entryCount} XLSX entries ` +
           `(${(totalXlsxBytes / 1024 / 1024).toFixed(1)} MB pre-compression) ` +
           `in ${Date.now() - buildStartedAt}ms ` +
-          `(total ${Date.now() - startedAt}ms incl. DB load)`,
+          `(total ${Date.now() - startedAt}ms incl. pre-scan)`,
       );
 
       const fileName = `reports-export-${this.buildHumanReadableTimestamp()}.zip`;
