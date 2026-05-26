@@ -1284,7 +1284,14 @@ export class JobRepository implements IJobRepository {
         start_date: true,
         portfolio_name: true,
         property_name: true,
-        batch_name: true,
+        // NOTE: `batch_name` is NOT a scalar on the `Job` model — the
+        // batch name lives on the related `Batch` row. The export
+        // builders already read it via `job.batch?.name` (see e.g.
+        // dashboard-export.util.ts:120), so selecting the relation
+        // below is sufficient. An earlier version of this select
+        // listed `batch_name: true` and crashed Prisma with
+        // "Unknown field `batch_name` for select statement on model
+        // `Job`" — do NOT add it back.
         batch: { select: { id: true, name: true } },
         portfolio: { select: { id: true, name: true } },
         property: {
