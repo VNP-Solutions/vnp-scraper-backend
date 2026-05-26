@@ -6,13 +6,14 @@ import {
 } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { readFileSync } from 'fs';
 import { PassThrough, Readable } from 'stream';
 
 @Injectable()
 export class S3UploadService {
+  private readonly logger = new Logger(S3UploadService.name);
   private s3Client: S3Client;
   private bucket: string;
 
@@ -151,6 +152,10 @@ export class S3UploadService {
     opts: { expiresInSeconds?: number; partSizeBytes?: number } = {},
   ): Promise<{ key: string; url: string; expiresAt: Date }> {
     const passThrough = new PassThrough();
+    const uploadStartedAt = Date.now();
+    this.logger.log(
+      `[S3 Upload] Starting multipart upload → s3://${this.bucket}/${key} (contentType=${contentType})`,
+    );
 
     // Start the multipart upload up-front so it begins consuming bytes
     // the instant the producer writes them. `Upload.done()` resolves
@@ -173,6 +178,23 @@ export class S3UploadService {
       leavePartsOnError: false,
     });
 
+    // Progress visibility: lib-storage fires `httpUploadProgress` for
+    // every part as it's flushed. Logging on every event gives the
+    // operator real-time confirmation that bytes are moving (otherwise
+    // a long export looks suspiciously silent for minutes). One log
+    // per part is fine — typical exports finish in 1–20 parts.
+    let lastLoggedPart = -1;
+    upload.on('httpUploadProgress', (p) => {
+      const part = p.part ?? -1;
+      if (part > lastLoggedPart) {
+        lastLoggedPart = part;
+        const mb = ((p.loaded ?? 0) / 1024 / 1024).toFixed(2);
+        this.logger.log(
+          `[S3 Upload] Part ${part} uploaded — ${mb} MB total so far (key=${key})`,
+        );
+      }
+    });
+
     const uploadPromise = upload.done();
 
     try {
@@ -183,17 +205,36 @@ export class S3UploadService {
     } catch (err) {
       // Tear the stream down so S3's multipart upload knows to abort
       // (rather than waiting indefinitely for more data).
+      //
+      // IMPORTANT: do NOT call `upload.abort()` here. It internally
+      // calls `AbortController.abort()`, which dispatches the abort
+      // event to lib-storage's own AbortSignal listener — and that
+      // listener throws `new Error("Upload aborted.")` synchronously.
+      // Node 18+ does NOT propagate listener throws back to the caller
+      // of `dispatchEvent`; instead it surfaces them as
+      // `uncaughtException`, which kills the whole Node process
+      // (causing PM2 restart loops). A try/catch around
+      // `await upload.abort()` cannot catch it. See:
+      //   https://github.com/aws/aws-sdk-js-v3/issues/...
+      //
+      // Destroying the body PassThrough is sufficient: lib-storage's
+      // internal pumping loop detects the source-stream error and
+      // aborts the multipart upload itself; `uploadPromise` (i.e.
+      // `upload.done()`) then rejects, which we await + swallow so
+      // the original `err` is the one we rethrow.
       passThrough.destroy(err as Error);
       try {
-        // Best-effort: ensure the multipart upload is aborted server-side.
-        await upload.abort();
+        await uploadPromise;
       } catch {
-        // ignore — primary error below is what matters
+        // expected — lib-storage rejects because we destroyed its body
       }
       throw err;
     }
 
     await uploadPromise;
+    this.logger.log(
+      `[S3 Upload] Upload complete in ${Date.now() - uploadStartedAt}ms (key=${key})`,
+    );
 
     const MAX_EXPIRY_SECONDS = 7 * 24 * 60 * 60;
     const requested = opts.expiresInSeconds ?? MAX_EXPIRY_SECONDS;
@@ -204,6 +245,9 @@ export class S3UploadService {
       { expiresIn: clampedExpiry },
     );
     const expiresAt = new Date(Date.now() + clampedExpiry * 1000);
+    this.logger.log(
+      `[S3 Upload] Presigned URL ready (expires ${expiresAt.toISOString()}, key=${key})`,
+    );
     return { key, url, expiresAt };
   }
 

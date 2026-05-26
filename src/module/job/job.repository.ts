@@ -1239,9 +1239,16 @@ export class JobRepository implements IJobRepository {
       // Each Prisma findMany must return < 16 MB BSON (Mongo's hard limit).
       // With the `select` projection below, the per-jobItem payload is
       // ~10× smaller than a full `include`, so 50 jobs/batch is safe with
-      // generous headroom even for fat Expedia jobs. (Previous value: 25
-      // with full include — still safe but twice as many round-trips.)
-      const MASTER_EXPORT_JOB_CHUNK_SIZE = 50;
+      // Chunk size = 10. Smaller chunks are safer against MongoDB's 16 MB
+      // BSON limit when the join payload (jobItem + nested cardActivity)
+      // is fat — large Expedia bookings with many items / authorizations
+      // can push a 50-job chunk well into the multi-MB range. Trade-off:
+      // more network round-trips, but with `CONCURRENCY = 6` (below)
+      // they run in parallel waves, so wall-clock cost is modest.
+      // (History: original = 25, briefly bumped to 50 after switching
+      // `include` → field-projecting `select`, then lowered to 10 to
+      // give comfortable headroom for the largest production tenants.)
+      const MASTER_EXPORT_JOB_CHUNK_SIZE = 10;
 
       // ── Parallelism ───────────────────────────────────────────────────
       // The previous implementation ran chunks sequentially via
@@ -1331,8 +1338,20 @@ export class JobRepository implements IJobRepository {
       for (let i = 0; i < uniqueIds.length; i += MASTER_EXPORT_JOB_CHUNK_SIZE) {
         chunks.push(uniqueIds.slice(i, i + MASTER_EXPORT_JOB_CHUNK_SIZE));
       }
+      const totalWaves = Math.ceil(chunks.length / CONCURRENCY);
+      // For long exports we want progress visibility. For short ones we
+      // don't want spam. Log every ~8th of the run, with a minimum of
+      // every wave for small jobs.
+      const logEveryNWaves = Math.max(1, Math.ceil(totalWaves / 8));
+
+      const startedAt = Date.now();
+      this.logger.log(
+        `[MasterExport] Loading ${uniqueIds.length} jobs in ${chunks.length} ` +
+          `chunks of ${MASTER_EXPORT_JOB_CHUNK_SIZE} (concurrency=${CONCURRENCY}, ${totalWaves} wave${totalWaves === 1 ? '' : 's'})`,
+      );
 
       const all: any[] = [];
+      let waveIndex = 0;
       for (let i = 0; i < chunks.length; i += CONCURRENCY) {
         const wave = chunks.slice(i, i + CONCURRENCY);
         const waveResults = await Promise.all(
@@ -1344,7 +1363,24 @@ export class JobRepository implements IJobRepository {
           ),
         );
         for (const r of waveResults) all.push(...r);
+        waveIndex += 1;
+
+        // Progress log: always print first + last wave, plus every Nth.
+        const isLast = waveIndex === totalWaves;
+        const isMilestone = waveIndex % logEveryNWaves === 0;
+        if (isLast || isMilestone) {
+          const chunksDone = Math.min(i + CONCURRENCY, chunks.length);
+          const pct = Math.round((chunksDone / chunks.length) * 100);
+          this.logger.log(
+            `[MasterExport] Wave ${waveIndex}/${totalWaves} done — ` +
+              `${chunksDone}/${chunks.length} chunks (${pct}%, ` +
+              `${all.length} jobs loaded so far)`,
+          );
+        }
       }
+      this.logger.log(
+        `[MasterExport] DB load complete — ${all.length} jobs in ${Date.now() - startedAt}ms`,
+      );
       return all;
     } catch (error) {
       this.logger.error(
