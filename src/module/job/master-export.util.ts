@@ -364,6 +364,47 @@ export interface MasterExportContext {
 }
 
 /**
+ * Builds a {@link MasterExportContext} from a tiny set of precomputed
+ * scalars instead of walking the full `jobs[]` array. Used by the cursor-
+ * streaming export path, where we never materialize all jobs in memory
+ * — the repository scans the DB cheaply for these two values up front
+ * (see `JobRepository.precomputeMasterExportContext`), and then streams
+ * jobs through the workbook one at a time.
+ *
+ * Header shape is identical to the array-based path so XLSX output is
+ * byte-for-byte the same regardless of which builder produced it.
+ */
+export function buildMasterExportContextFromPrescan(
+  prescan: { hasExpedia: boolean; maxApprovedCount: number },
+  today: Date = new Date(),
+): MasterExportContext {
+  const chargebackHeader = buildChargebackDaysHeader(today);
+  const headers: string[] = [
+    ...MASTER_EXPORT_HEADER.slice(0, 12),
+    OVER_160_HEADER,
+    chargebackHeader,
+    ...MASTER_EXPORT_HEADER.slice(12),
+    ...(prescan.hasExpedia
+      ? [
+          CARD_ACTIVITY_HEADER,
+          CALCULATED_AMOUNT_HEADER,
+          AMOUNT_MATCH_HEADER,
+          ...Array.from(
+            { length: prescan.maxApprovedCount },
+            (_, i) => `${APPROVED_AMOUNT_HEADER_PREFIX} ${i + 1}`,
+          ),
+        ]
+      : []),
+  ];
+  return {
+    headers,
+    isExpediaCsv: prescan.hasExpedia,
+    maxApprovedCount: prescan.maxApprovedCount,
+    today,
+  };
+}
+
+/**
  * Walks the jobs ONCE to compute the cross-job aggregates (Expedia flag +
  * max approved-authorization count) and assembles the final header list
  * in the exact order the CSV/XLSX export expects.

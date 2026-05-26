@@ -3,31 +3,35 @@ import * as ExcelJS from 'exceljs';
 import { Writable } from 'stream';
 import {
   buildMasterRowsForJob,
-  computeMasterExportContext,
+  MasterExportContext,
 } from './master-export.util';
 
 const logger = new Logger('MasterExportStream');
 
 /**
- * Streaming counterpart to `buildMasterXlsxBuffer` (master-export.util.ts).
+ * True-streaming counterpart to `buildMasterXlsxBuffer` (master-export.util.ts).
  *
- * Reuses the EXACT same row-builder logic as the synchronous Buffer path
- * (via `buildMasterRowsForJob`), so the column shape, OTA-specific rules,
- * and text-format columns stay byte-identical with `/jobs/export-master`.
- * The differences are at the edges:
+ * Memory profile (the whole point of this file):
+ *   - Headers + ExcelJS internal high-water mark   .... ≲ 50 MB
+ *   - ONE in-flight job's rows + cell coercion buffer ≲ 5 MB
+ *   - One Mongo batch in flight inside the cursor   .... ≲ 20 MB
+ *   - S3 multipart upload's queued parts            .... ≲ 20 MB
+ *                                                 ─────────────
+ *   peak heap                                       ~100 MB
  *
- *   1. Row materialization is PER-JOB. We never hold more than one job's
- *      worth of rows in memory at once — typically a few hundred KB. This
- *      is what lets a 1000-job consolidated export run inside the default
- *      Node.js heap. The previous implementation called
- *      `buildMasterRows(jobs)` upfront, which materialized hundreds of
- *      thousands of row objects (≈1.7 GB for 944 jobs × ~900 items each)
- *      and OOM-crashed the process before a single byte was streamed.
+ * — and this is INDEPENDENT of how many jobs we export. The earlier
+ * implementation took an `any[]` of pre-loaded jobs and materialized
+ * every row up front; with 944 Expedia jobs × ~563 items each that was
+ * a 1.7 GB allocation, which OOM-crashed the worker process.
  *
- *   2. Serialization is streamed via `ExcelJS.stream.xlsx.WorkbookWriter`,
- *      which flushes XLSX bytes into `writable` as we commit rows.
- *      Memory: O(headers + one in-flight row + ExcelJS's internal high-
- *      water mark + one job's row buffer). Independent of total row count.
+ * Why the writer accepts both an `AsyncIterable<job>` and a precomputed
+ * `MasterExportContext`: ExcelJS's `WorkbookWriter` requires column
+ * definitions BEFORE the first row is committed (no late column
+ * additions). The Expedia "Approved Amount K" column count depends on
+ * the maximum number of approved authorizations across the whole batch,
+ * so the caller pre-scans cheaply (no row materialization — see
+ * `JobRepository.precomputeMasterExportContext`) and hands us the
+ * resulting context up front.
  *
  * Forced text format (Card Number / Expiry date / CVV): in ExcelJS the
  * idiomatic way is `column.numFmt = '@'` AND writing the value as a
@@ -40,12 +44,10 @@ const logger = new Logger('MasterExportStream');
  * format already handles the same problem.
  */
 export async function writeMasterXlsxToStream(
-  jobs: any[],
+  jobs: AsyncIterable<any>,
+  ctx: MasterExportContext,
   writable: Writable,
-): Promise<void> {
-  // Compute headers + Expedia / approved-count aggregates ONCE up front.
-  // This walks `jobs` but does NOT materialize any row objects.
-  const ctx = computeMasterExportContext(jobs);
+): Promise<{ rowsWritten: number; jobsProcessed: number }> {
   const headers = ctx.headers;
 
   // The three columns we force to Text format. Header strings MUST
@@ -73,17 +75,20 @@ export async function writeMasterXlsxToStream(
   // using WorkbookWriter — but we still need to .commit() it.
   worksheet.getRow(1).commit();
 
-  // Per-job iteration keeps peak memory bounded by ONE job's row count.
-  // We also log periodic progress so long exports (hundreds of jobs) are
-  // observable from the server logs instead of looking hung.
-  const totalJobs = jobs.length;
-  const logEvery = Math.max(1, Math.floor(totalJobs / 20)); // ~5% increments
   let rowsWritten = 0;
+  let jobsProcessed = 0;
   let jobsWithRows = 0;
   const writeStartedAt = Date.now();
+  // Log progress periodically so long-running exports are observable
+  // from the server logs. We don't know the total job count up front
+  // (it's a cursor), so we log every N jobs based on elapsed jobs.
+  const LOG_EVERY_JOBS = 50;
 
-  for (let i = 0; i < totalJobs; i++) {
-    const job = jobs[i];
+  // `for await` applies natural back-pressure: ExcelJS row commits are
+  // synchronous, but Mongo batches are awaited inside the generator,
+  // so we never get ahead of either pipeline.
+  for await (const job of jobs) {
+    jobsProcessed += 1;
     const jobRows = buildMasterRowsForJob(job, ctx);
     if (jobRows.length > 0) {
       jobsWithRows += 1;
@@ -118,11 +123,10 @@ export async function writeMasterXlsxToStream(
     // The per-job row array (`jobRows`) is now eligible for GC. The next
     // iteration will allocate a fresh one — peak heap stays bounded.
 
-    if ((i + 1) % logEvery === 0 || i === totalJobs - 1) {
-      const pct = Math.round(((i + 1) / totalJobs) * 100);
+    if (jobsProcessed % LOG_EVERY_JOBS === 0) {
       logger.log(
-        `[Master XLSX] ${i + 1}/${totalJobs} jobs streamed ` +
-          `(${pct}%, ${rowsWritten} rows so far, ` +
+        `[Master XLSX] ${jobsProcessed} jobs streamed ` +
+          `(${rowsWritten} rows written, ` +
           `${Date.now() - writeStartedAt}ms elapsed)`,
       );
     }
@@ -134,6 +138,8 @@ export async function writeMasterXlsxToStream(
   await workbook.commit();
   logger.log(
     `[Master XLSX] Stream finalized — ${rowsWritten} rows across ` +
-      `${jobsWithRows}/${totalJobs} jobs in ${Date.now() - writeStartedAt}ms`,
+      `${jobsWithRows}/${jobsProcessed} jobs in ${Date.now() - writeStartedAt}ms`,
   );
+
+  return { rowsWritten, jobsProcessed };
 }

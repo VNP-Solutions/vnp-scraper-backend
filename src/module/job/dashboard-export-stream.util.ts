@@ -9,23 +9,24 @@ import {
 const logger = new Logger('DashboardExportStream');
 
 /**
- * Streaming counterpart to `buildDashboardXlsxBuffer`.
+ * True-streaming counterpart to `buildDashboardXlsxBuffer`.
  *
- * Same trade-off and approach as `writeMasterXlsxToStream`: per-job row
- * materialization (`buildDashboardRowsForJob`) feeds an ExcelJS
- * WorkbookWriter, so peak memory stays bounded by ONE job's row count
- * regardless of how many jobs we're exporting. The previous version
- * called `buildDashboardRows(jobs)` upfront and materialized every row
- * before streaming, which OOM-crashed for large consolidated exports.
+ * Same trade-off and approach as `writeMasterXlsxToStream`: consumes an
+ * async iterable of jobs (the cursor pattern) so peak heap stays bounded
+ * by ONE in-flight job's rows regardless of how many jobs we're
+ * exporting. The dashboard's column shape is fully static — no
+ * Expedia-only columns, no cross-job aggregates — so no precomputed
+ * context is needed (the master writer takes one for the Expedia
+ * "Approved Amount K" columns; the dashboard does not).
  *
  * Forced text format: only `Hotel ID*` here (the equivalent in the
  * synchronous path applies the same column-text format). The trailing
  * asterisk is part of the actual header — see `DASHBOARD_EXPORT_HEADER`.
  */
 export async function writeDashboardXlsxToStream(
-  jobs: any[],
+  jobs: AsyncIterable<any>,
   writable: Writable,
-): Promise<void> {
+): Promise<{ rowsWritten: number; jobsProcessed: number }> {
   const headers = getDashboardHeaders();
 
   const TEXT_COLUMNS = new Set(['Hotel ID*']);
@@ -46,14 +47,14 @@ export async function writeDashboardXlsxToStream(
   }
   worksheet.getRow(1).commit();
 
-  const totalJobs = jobs.length;
-  const logEvery = Math.max(1, Math.floor(totalJobs / 20)); // ~5% increments
   let rowsWritten = 0;
+  let jobsProcessed = 0;
   let jobsWithRows = 0;
   const writeStartedAt = Date.now();
+  const LOG_EVERY_JOBS = 50;
 
-  for (let i = 0; i < totalJobs; i++) {
-    const job = jobs[i];
+  for await (const job of jobs) {
+    jobsProcessed += 1;
     const jobRows = buildDashboardRowsForJob(job);
     if (jobRows.length > 0) {
       jobsWithRows += 1;
@@ -76,11 +77,10 @@ export async function writeDashboardXlsxToStream(
     }
     // jobRows is now garbage-collectable. Peak heap stays bounded.
 
-    if ((i + 1) % logEvery === 0 || i === totalJobs - 1) {
-      const pct = Math.round(((i + 1) / totalJobs) * 100);
+    if (jobsProcessed % LOG_EVERY_JOBS === 0) {
       logger.log(
-        `[Dashboard XLSX] ${i + 1}/${totalJobs} jobs streamed ` +
-          `(${pct}%, ${rowsWritten} rows so far, ` +
+        `[Dashboard XLSX] ${jobsProcessed} jobs streamed ` +
+          `(${rowsWritten} rows written, ` +
           `${Date.now() - writeStartedAt}ms elapsed)`,
       );
     }
@@ -90,6 +90,8 @@ export async function writeDashboardXlsxToStream(
   await workbook.commit();
   logger.log(
     `[Dashboard XLSX] Stream finalized — ${rowsWritten} rows across ` +
-      `${jobsWithRows}/${totalJobs} jobs in ${Date.now() - writeStartedAt}ms`,
+      `${jobsWithRows}/${jobsProcessed} jobs in ${Date.now() - writeStartedAt}ms`,
   );
+
+  return { rowsWritten, jobsProcessed };
 }

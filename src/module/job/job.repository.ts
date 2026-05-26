@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Batch, DbEntry, Job, Prisma } from '@prisma/client';
+import { Batch, DbEntry, Job, OTAProvider, Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import {
   CreateBatchDto,
@@ -9,6 +9,66 @@ import {
   UpdateJobDto,
 } from './job.dto';
 import { IJobRepository } from './job.interface';
+
+/**
+ * Field projection shared by every read in the master / dashboard /
+ * consolidated XLSX export pipeline. Defined as a module-level constant
+ * so the array-based loader (`findManyForMasterExport`) and the cursor-
+ * based loader (`streamJobsForMasterExport`) stay byte-identical — if
+ * either one drifts, every downstream builder silently breaks.
+ *
+ * Audited against `master-export.util.ts` and `dashboard-export.util.ts`
+ * — only the fields the exporters actually read are projected. The
+ * biggest cuts vs a full `include`: dropping `JobItem.raw_response`,
+ * scraper booleans, derived caches; dropping `CardActivity.totalSettlement
+ * Amount` and join keys (we only need `authorizations`).
+ *
+ * If you add a column to a builder, add the field here too — otherwise
+ * it'll silently come back as `undefined`. NEVER add `Job.batch_name` —
+ * the batch name lives on the related `Batch` row (see Prisma model);
+ * adding it crashes with "Unknown field `batch_name` for select".
+ */
+const MASTER_EXPORT_SELECT = {
+  id: true,
+  ota_provider: true,
+  posting_type: true,
+  end_date: true,
+  start_date: true,
+  portfolio_name: true,
+  property_name: true,
+  batch: { select: { id: true, name: true } },
+  portfolio: { select: { id: true, name: true } },
+  property: {
+    select: {
+      id: true,
+      name: true,
+      expedia_id: true,
+      booking_id: true,
+      agoda_id: true,
+    },
+  },
+  jobItem: {
+    orderBy: { createdAt: 'asc' as const },
+    select: {
+      id: true,
+      createdAt: true,
+      reservation_id: true,
+      confirmation_number: true,
+      guest_name: true,
+      check_in_date: true,
+      check_out_date: true,
+      booking_amount: true,
+      payment_info: true,
+      card_info: true,
+      cardActivity: {
+        select: {
+          id: true,
+          authorizations: true,
+        },
+      },
+    },
+  },
+} satisfies Prisma.JobSelect;
 
 @Injectable()
 export class JobRepository implements IJobRepository {
@@ -1267,71 +1327,10 @@ export class JobRepository implements IJobRepository {
       // higher values usable if you ever want to tune it up.
       const CONCURRENCY = 6;
 
-      // ── Field projection (the `select` instead of `include`) ──────────
-      // We only project the columns the three export builders actually
-      // read (audited against master-export.util.ts and
-      // dashboard-export.util.ts). The biggest wins:
-      //   - `JobItem`: dropping fields like `raw_response`, `additional_text`,
-      //     scraper booleans, derived/cached columns. We keep `payment_info`
-      //     and `card_info` as embedded JSON because builders need several
-      //     subfields each and Prisma can't project JSON subfields.
-      //   - `CardActivity`: dropping `totalSettlementAmount` (often large),
-      //     `createdAt`/`updatedAt`, and the join-key columns. `authorizations`
-      //     is the only field any builder reads.
-      // If you add a column to a builder, you MUST add it here too —
-      // otherwise it'll silently come back as `undefined`.
-      const select = {
-        // Top-level Job: pull the whole scalar row. Listing every Job
-        // scalar would be more invasive and we'd have to keep it in
-        // sync with schema changes. The Job row itself is small.
-        id: true,
-        ota_provider: true,
-        posting_type: true,
-        end_date: true,
-        start_date: true,
-        portfolio_name: true,
-        property_name: true,
-        // NOTE: `batch_name` is NOT a scalar on the `Job` model — the
-        // batch name lives on the related `Batch` row. The export
-        // builders already read it via `job.batch?.name` (see e.g.
-        // dashboard-export.util.ts:120), so selecting the relation
-        // below is sufficient. An earlier version of this select
-        // listed `batch_name: true` and crashed Prisma with
-        // "Unknown field `batch_name` for select statement on model
-        // `Job`" — do NOT add it back.
-        batch: { select: { id: true, name: true } },
-        portfolio: { select: { id: true, name: true } },
-        property: {
-          select: {
-            id: true,
-            name: true,
-            expedia_id: true,
-            booking_id: true,
-            agoda_id: true,
-          },
-        },
-        jobItem: {
-          orderBy: { createdAt: 'asc' as const },
-          select: {
-            id: true,
-            createdAt: true,
-            reservation_id: true,
-            confirmation_number: true,
-            guest_name: true,
-            check_in_date: true,
-            check_out_date: true,
-            booking_amount: true,
-            payment_info: true,
-            card_info: true,
-            cardActivity: {
-              select: {
-                id: true,
-                authorizations: true,
-              },
-            },
-          },
-        },
-      };
+      // Field projection shared with the cursor-based streaming loader.
+      // See `MASTER_EXPORT_SELECT` at the top of this file for the audited
+      // list of fields and the rationale for what we drop.
+      const select = MASTER_EXPORT_SELECT;
 
       // Split into chunks first so we can run waves of `CONCURRENCY`.
       const chunks: string[][] = [];
@@ -1389,6 +1388,213 @@ export class JobRepository implements IJobRepository {
       );
       throw error;
     }
+  }
+
+  /**
+   * Lightweight pre-scan that gathers everything the master / consolidated
+   * export needs to define column headers UP FRONT — without materializing
+   * any job rows.
+   *
+   * Pairs with {@link streamJobsForMasterExport} to implement the senior-
+   * suggested "cursor + S3 stream" pattern: this method tells the writer
+   * exactly how many columns the workbook needs (and whether to include
+   * Expedia-only columns at all), and the cursor then streams full job
+   * payloads one batch at a time.
+   *
+   * Returns:
+   *   - `hasExpedia`         — true iff at least one job in `jobIds` is
+   *                            ota_provider === Expedia. Drives whether
+   *                            we emit the Card Activity / Approved
+   *                            Amount K columns.
+   *   - `maxApprovedCount`   — max number of `"Approved"` authorizations
+   *                            across all card_activities for Expedia
+   *                            jobs in this batch. Determines N for
+   *                            `Card Activity Approved Amount {1..N}`.
+   *                            Always 0 when `hasExpedia` is false.
+   *   - `foundIds`           — set of job IDs that actually exist. The
+   *                            caller diffs against `jobIds` to emit
+   *                            the "missing IDs" warning.
+   *
+   * Cost: two queries — one tiny `{ id, ota_provider }` projection over
+   * the full id list, then (only when Expedia is present) chunked scans
+   * of `JobItem.cardActivity.authorizations` (just the array field) for
+   * the Expedia subset. Peak memory: one chunk's authorizations, ~10 MB.
+   */
+  async precomputeMasterExportContext(jobIds: string[]): Promise<{
+    hasExpedia: boolean;
+    maxApprovedCount: number;
+    foundIds: Set<string>;
+  }> {
+    try {
+      const uniqueIds = Array.from(new Set(jobIds ?? [])).filter(Boolean);
+      if (uniqueIds.length === 0) {
+        return {
+          hasExpedia: false,
+          maxApprovedCount: 0,
+          foundIds: new Set<string>(),
+        };
+      }
+
+      const startedAt = Date.now();
+
+      // Step 1: cheap projection — { id, ota_provider } only.
+      const otaRows = await this.db.job.findMany({
+        where: { id: { in: uniqueIds } },
+        select: { id: true, ota_provider: true },
+      });
+      const foundIds = new Set(otaRows.map((r) => r.id));
+      const expediaIds = otaRows
+        .filter((r) => r.ota_provider === OTAProvider.Expedia)
+        .map((r) => r.id);
+      const hasExpedia = expediaIds.length > 0;
+
+      // Step 2: max-approved-authorization scan — only matters for Expedia
+      // exports (the non-Expedia path doesn't emit Approved Amount K
+      // columns at all, so the value is irrelevant).
+      let maxApprovedCount = 0;
+      if (hasExpedia) {
+        // Chunk size kept conservative: each chunk pulls jobItem.card
+        // Activity.authorizations for `CHUNK` jobs, which on Expedia
+        // payloads is ~50 items/job × ~3 auths/item × ~200 B = ~30 KB/job.
+        // 50 jobs/chunk ≈ 1.5 MB on the wire. Safely under Mongo's 16 MB.
+        const CHUNK = 50;
+        for (let i = 0; i < expediaIds.length; i += CHUNK) {
+          const chunk = expediaIds.slice(i, i + CHUNK);
+          const items = await this.db.jobItem.findMany({
+            where: { job_id: { in: chunk } },
+            select: {
+              cardActivity: {
+                select: { authorizations: true },
+              },
+            },
+          });
+          for (const item of items) {
+            const auths =
+              ((item as any).cardActivity?.authorizations as
+                | any[]
+                | undefined) ?? [];
+            let approvedLen = 0;
+            for (const a of auths) {
+              if (a?.status === 'Approved') approvedLen += 1;
+            }
+            if (approvedLen > maxApprovedCount) maxApprovedCount = approvedLen;
+          }
+          // `items` falls out of scope at the next iteration → GC-eligible.
+        }
+      }
+
+      this.logger.log(
+        `[MasterExport.prescan] ${uniqueIds.length} jobs (${expediaIds.length} Expedia), ` +
+          `maxApproved=${maxApprovedCount}, missing=${uniqueIds.length - foundIds.size}, ` +
+          `${Date.now() - startedAt}ms`,
+      );
+
+      return { hasExpedia, maxApprovedCount, foundIds };
+    } catch (error) {
+      this.logger.error(
+        `Error in master-export pre-scan: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Counts the total number of `JobItem` rows owned by the given jobs.
+   * Used by the streaming export endpoints as a cheap pre-flight check
+   * so we can throw a 404 BEFORE opening the S3 multipart upload (no
+   * partial uploads to clean up if there's nothing to export).
+   *
+   * Issued as a single `count` aggregation — bounded RTT, ~tens of ms.
+   */
+  async countJobItemsByJobIds(jobIds: string[]): Promise<number> {
+    try {
+      const uniqueIds = Array.from(new Set(jobIds ?? [])).filter(Boolean);
+      if (uniqueIds.length === 0) return 0;
+      return await this.db.jobItem.count({
+        where: { job_id: { in: uniqueIds } },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Error counting job items for export: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Async generator that yields one fully-hydrated `Job` (with its
+   * `jobItem[]` + nested `cardActivity` projection — see
+   * {@link MASTER_EXPORT_SELECT}) at a time, without ever accumulating
+   * the full result set in memory.
+   *
+   * This is the cursor side of the "true streaming" pipeline: while the
+   * writer is busy serializing job N's rows into the workbook (and the
+   * S3 multipart uploader is busy flushing previous parts), we can be
+   * fetching the next batch from Mongo in the background. Peak heap:
+   *   - one Prisma batch (`batchSize` jobs) in flight,
+   *   - one yielded job being processed by the caller,
+   *   - everything else GC-eligible.
+   *
+   * Sorts `jobIds` ascending so batches are deterministic — important
+   * for tests and for users who diff the output of repeated exports.
+   *
+   * Why generator instead of returning an array: an array (even a
+   * promise-of-array) forces the entire result set to exist
+   * simultaneously, which is exactly what caused the 1.7 GB OOM in
+   * `findManyForMasterExport` on 944-job exports. With a generator the
+   * downstream `for await` consumer applies natural back-pressure.
+   */
+  async *streamJobsForMasterExport(
+    jobIds: string[],
+    batchSize = 20,
+  ): AsyncGenerator<any, void, void> {
+    const uniqueIds = Array.from(new Set(jobIds ?? [])).filter(Boolean);
+    if (uniqueIds.length === 0) return;
+
+    // Deterministic batching: sort once, then slice.
+    const sortedIds = [...uniqueIds].sort();
+    const totalBatches = Math.ceil(sortedIds.length / batchSize);
+    const logEvery = Math.max(1, Math.floor(totalBatches / 8));
+    const startedAt = Date.now();
+
+    this.logger.log(
+      `[MasterExport.cursor] Streaming ${sortedIds.length} jobs in ` +
+        `${totalBatches} batches of ${batchSize}`,
+    );
+
+    let yielded = 0;
+    for (let i = 0; i < sortedIds.length; i += batchSize) {
+      const chunk = sortedIds.slice(i, i + batchSize);
+      const batch = await this.db.job.findMany({
+        where: { id: { in: chunk } },
+        select: MASTER_EXPORT_SELECT,
+      });
+
+      for (const job of batch) {
+        yield job;
+        yielded += 1;
+      }
+      // `batch` falls out of scope on the next loop iteration; once the
+      // consumer has finished processing the yielded jobs, V8 can reclaim
+      // every row object. Peak heap stays at ~one batch.
+
+      const batchIdx = Math.floor(i / batchSize) + 1;
+      if (batchIdx % logEvery === 0 || batchIdx === totalBatches) {
+        const pct = Math.round((yielded / sortedIds.length) * 100);
+        this.logger.log(
+          `[MasterExport.cursor] Batch ${batchIdx}/${totalBatches} ` +
+            `delivered — ${yielded}/${sortedIds.length} jobs (${pct}%, ` +
+            `${Date.now() - startedAt}ms)`,
+        );
+      }
+    }
+
+    this.logger.log(
+      `[MasterExport.cursor] All ${yielded} jobs streamed in ` +
+        `${Date.now() - startedAt}ms`,
+    );
   }
 
   async findDbEntriesByJobId(jobId: string): Promise<DbEntry[]> {

@@ -83,6 +83,34 @@ export interface IJobRepository {
   }>;
   findDbEntriesByJobId(jobId: string): Promise<DbEntry[]>;
   findManyForMasterExport(jobIds: string[]): Promise<any[]>;
+  /**
+   * Pre-scan that returns just enough info to define the XLSX column
+   * shape (Expedia presence + max approved-authorization count) and
+   * which job IDs actually exist. Used by the streaming export path so
+   * we can decide headers BEFORE pulling row data.
+   */
+  precomputeMasterExportContext(jobIds: string[]): Promise<{
+    hasExpedia: boolean;
+    maxApprovedCount: number;
+    foundIds: Set<string>;
+  }>;
+  /**
+   * Lightweight `count` of how many `JobItem` rows belong to the given
+   * `jobIds`. Used as a cheap pre-flight check by streaming exports so
+   * we can `404` before opening any S3 upload.
+   */
+  countJobItemsByJobIds(jobIds: string[]): Promise<number>;
+  /**
+   * Async generator counterpart to {@link findManyForMasterExport}.
+   * Yields one job at a time (with the same `MASTER_EXPORT_SELECT`
+   * projection); peak heap is bounded by `batchSize`, not by the
+   * total number of jobs being exported. The streaming master /
+   * consolidated / dashboard / ZIP exporters all use this.
+   */
+  streamJobsForMasterExport(
+    jobIds: string[],
+    batchSize?: number,
+  ): AsyncGenerator<any, void, void>;
   findJobIdsByRecurring(
     recurringId: string,
     bucketId: string,
