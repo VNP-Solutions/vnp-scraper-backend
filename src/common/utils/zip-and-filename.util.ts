@@ -1,5 +1,5 @@
 import * as archiver from 'archiver';
-import { PassThrough, Writable } from 'stream';
+import { PassThrough, Readable, Writable } from 'stream';
 
 /**
  * Builds a ZIP buffer from an array of in-memory file entries. The order
@@ -43,27 +43,32 @@ export function zipFiles(
  * archiver's internal compression buffer), so this is safe to use for
  * exports that would OOM if held entirely in RAM.
  *
- * The `entries` callback is invoked once the archive is wired up. It
- * should append entries via `appendBuffer(name, data)` (small payloads
- * — bounded in memory) and resolve when there are no more entries.
- * Async work inside the callback (e.g. building each XLSX) is OK —
- * archiver pauses naturally as it streams.
+ * The `entries` callback receives two helpers:
+ *   - `appendBuffer(name, data)` — append a pre-built in-memory buffer.
+ *   - `appendStream(name, readable)` — true-stream an entry: archiver
+ *     reads from `readable` as bytes are produced, with no intermediate
+ *     buffer held in Node heap. MUST be awaited before the next call so
+ *     archiver's internal queue processes entries one-at-a-time.
+ *
+ * Compression level is set to 1 (fastest / least CPU) instead of the
+ * default 9. For per-job XLSX entries the size difference is negligible
+ * and the speed difference is enormous (level 9 can be 10-20× slower).
  */
 export function streamZipEntries(
   writable: Writable,
   entries: (api: {
     appendBuffer: (name: string, data: Buffer) => void;
+    appendStream: (name: string, readable: Readable) => Promise<void>;
   }) => Promise<void>,
 ): Promise<void> {
   return new Promise(async (resolve, reject) => {
-    const archive = archiver('zip', { zlib: { level: 9 } });
+    const archive = archiver('zip', { zlib: { level: 1 } });
 
     archive.on('error', reject);
     archive.on('warning', (err: any) => {
       if (err?.code === 'ENOENT') return; // soft warning, ignore
       reject(err);
     });
-    // Archive finished flushing into the writable.
     archive.on('end', () => resolve());
 
     archive.pipe(writable);
@@ -71,6 +76,28 @@ export function streamZipEntries(
     const api = {
       appendBuffer: (name: string, data: Buffer) => {
         archive.append(data, { name });
+      },
+      /**
+       * Append a readable stream as a ZIP entry and wait until archiver
+       * has fully consumed and compressed it. Archiver processes entries
+       * sequentially, so awaiting this before the next call ensures
+       * back-pressure flows correctly: we never queue up a second entry
+       * while the first is still being compressed.
+       */
+      appendStream: (name: string, readable: Readable): Promise<void> => {
+        return new Promise<void>((res, rej) => {
+          const onEntry = () => {
+            archive.off('error', onError);
+            res();
+          };
+          const onError = (err: Error) => {
+            archive.off('entry', onEntry);
+            rej(err);
+          };
+          archive.once('entry', onEntry);
+          archive.once('error', onError);
+          archive.append(readable, { name });
+        });
       },
     };
 
