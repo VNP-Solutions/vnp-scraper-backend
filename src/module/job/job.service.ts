@@ -92,6 +92,9 @@ export class JobService implements IJobService {
         is_quick_job: job.is_quick_job ?? false,
         otp_needed: job.otp_needed ?? false,
         otp_fulfilled: job.otp_fulfilled ?? false,
+        screenshot_urls: Array.isArray(job.screenshot_urls)
+          ? job.screenshot_urls
+          : [],
       }));
       return { ...result, data };
     } catch (error) {

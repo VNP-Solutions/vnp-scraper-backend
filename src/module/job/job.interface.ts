@@ -8,6 +8,13 @@ import {
 } from './job.dto';
 
 /** Row returned by GET /jobs (list): OTA, linked property document, job status. */
+export interface JobScreenshotUrlDto {
+  step: string;
+  url: string;
+  timestamp: string;
+  type: string;
+}
+
 export interface JobListItemDto {
   /** Job document id (Mongo ObjectId). */
   job_id: string;
@@ -19,6 +26,7 @@ export interface JobListItemDto {
   is_quick_job: boolean;
   otp_needed: boolean;
   otp_fulfilled: boolean;
+  screenshot_urls: JobScreenshotUrlDto[];
 }
 
 /** Property payload on job list (scalars + portfolio / sub-portfolio summary). */

@@ -281,6 +281,7 @@ export class JobRepository implements IJobRepository {
         otp_needed: true,
         otp_fulfilled: true,
         billing_type: true,
+        screenshot_urls: true,
         property: {
           select: {
             id: true,
