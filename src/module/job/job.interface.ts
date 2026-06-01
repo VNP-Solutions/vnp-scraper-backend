@@ -94,6 +94,8 @@ export interface IJobRepository {
     maxApprovedCount: number;
     foundIds: Set<string>;
   }>;
+  /** Cheap `{ id }` lookup — used by per-job ZIP export pre-flight only. */
+  findExistingJobIdsForExport(jobIds: string[]): Promise<Set<string>>;
   /**
    * Lightweight `count` of how many `JobItem` rows belong to the given
    * `jobIds`. Used as a cheap pre-flight check by streaming exports so

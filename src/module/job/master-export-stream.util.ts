@@ -3,6 +3,7 @@ import * as ExcelJS from 'exceljs';
 import { Writable } from 'stream';
 import {
   buildMasterRowsForJob,
+  computeMasterExportContext,
   MasterExportContext,
 } from './master-export.util';
 
@@ -142,4 +143,75 @@ export async function writeMasterXlsxToStream(
   );
 
   return { rowsWritten, jobsProcessed };
+}
+
+/**
+ * Builds a single-job XLSX file using ExcelJS streaming and pipes the
+ * bytes directly into `writable` as they are produced — no intermediate
+ * buffer is ever held in heap.
+ *
+ * Used by `streamMasterXlsxZip` to feed each per-job XLSX entry directly
+ * into archiver via a PassThrough pipe, so archiver can compress and flush
+ * to S3 concurrently while ExcelJS is still writing rows. Peak heap cost
+ * for a single entry: ExcelJS worksheet rows in flight (~2–5 MB) plus
+ * archiver's compression window (~256 KB).
+ *
+ * Column headers, field order, text-column formatting (Card Number /
+ * Expiry date / CVV → Excel Text format) and `="..."` unwrapping are
+ * identical to the consolidated-sheet path so the output is byte-compatible.
+ *
+ * Returns the number of data rows written (0 if the job has no items —
+ * the caller should skip empty jobs BEFORE calling this to avoid producing
+ * a header-only entry in the ZIP).
+ */
+export async function writePerJobXlsxToWritable(
+  job: any,
+  writable: Writable,
+): Promise<number> {
+  const TEXT_COLUMNS = new Set(['Card Number', 'Expiry date', 'CVV']);
+
+  // computeMasterExportContext for a single job is instant: one pass
+  // over one job's items, no DB round-trips.
+  const ctx = computeMasterExportContext([job]);
+  const { headers } = ctx;
+
+  const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
+    stream: writable,
+    useStyles: true,
+    useSharedStrings: false,
+  });
+
+  const worksheet = workbook.addWorksheet('Master');
+  worksheet.columns = headers.map((h) => ({ header: h, key: h, width: 20 }));
+  for (const col of worksheet.columns) {
+    if (col.key && TEXT_COLUMNS.has(col.key)) {
+      col.numFmt = '@'; // Excel "Text" format — preserves leading zeros
+    }
+  }
+  worksheet.getRow(1).commit();
+
+  const rows = buildMasterRowsForJob(job, ctx);
+  for (const row of rows) {
+    const out: Record<string, string | number> = {};
+    for (const header of headers) {
+      let value: any = (row as any)[header];
+      // Strip the CSV `="..."` text-marker — XLSX columns use numFmt instead.
+      if (typeof value === 'string') {
+        const m = value.match(/^="(.*)"$/s);
+        if (m) value = m[1].replace(/""/g, '"');
+      }
+      if (TEXT_COLUMNS.has(header) && value !== null && value !== undefined) {
+        value = String(value);
+      }
+      out[header] = value;
+    }
+    worksheet.addRow(out).commit();
+  }
+
+  worksheet.commit();
+  // workbook.commit() finalises the OOXML zip inside ExcelJS and calls
+  // writable.end() — at that point archiver can drain the last bytes.
+  await workbook.commit();
+
+  return rows.length;
 }

@@ -1420,6 +1420,32 @@ export class JobRepository implements IJobRepository {
    * of `JobItem.cardActivity.authorizations` (just the array field) for
    * the Expedia subset. Peak memory: one chunk's authorizations, ~10 MB.
    */
+  /**
+   * Returns which of the requested job IDs actually exist. Per-job ZIP
+   * exports call this instead of {@link precomputeMasterExportContext}
+   * because each XLSX inside the archive computes its own column shape
+   * from a single job — the cross-job Expedia auth scan is unnecessary
+   * and can take 15–30+ minutes on large batches.
+   */
+  async findExistingJobIdsForExport(jobIds: string[]): Promise<Set<string>> {
+    try {
+      const uniqueIds = Array.from(new Set(jobIds ?? [])).filter(Boolean);
+      if (uniqueIds.length === 0) return new Set<string>();
+
+      const rows = await this.db.job.findMany({
+        where: { id: { in: uniqueIds } },
+        select: { id: true },
+      });
+      return new Set(rows.map((r) => r.id));
+    } catch (error) {
+      this.logger.error(
+        `Error resolving job IDs for export: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
   async precomputeMasterExportContext(jobIds: string[]): Promise<{
     hasExpedia: boolean;
     maxApprovedCount: number;
@@ -1436,6 +1462,9 @@ export class JobRepository implements IJobRepository {
       }
 
       const startedAt = Date.now();
+      this.logger.log(
+        `[MasterExport.prescan] Starting for ${uniqueIds.length} job IDs…`,
+      );
 
       // Step 1: cheap projection — { id, ota_provider } only.
       const otaRows = await this.db.job.findMany({
@@ -1458,7 +1487,10 @@ export class JobRepository implements IJobRepository {
         // payloads is ~50 items/job × ~3 auths/item × ~200 B = ~30 KB/job.
         // 50 jobs/chunk ≈ 1.5 MB on the wire. Safely under Mongo's 16 MB.
         const CHUNK = 50;
+        const totalChunks = Math.ceil(expediaIds.length / CHUNK);
+        const logEvery = Math.max(1, Math.floor(totalChunks / 5));
         for (let i = 0; i < expediaIds.length; i += CHUNK) {
+          const chunkIdx = Math.floor(i / CHUNK) + 1;
           const chunk = expediaIds.slice(i, i + CHUNK);
           const items = await this.db.jobItem.findMany({
             where: { job_id: { in: chunk } },
@@ -1478,6 +1510,16 @@ export class JobRepository implements IJobRepository {
               if (a?.status === 'Approved') approvedLen += 1;
             }
             if (approvedLen > maxApprovedCount) maxApprovedCount = approvedLen;
+          }
+          if (
+            chunkIdx % logEvery === 0 ||
+            chunkIdx === totalChunks
+          ) {
+            this.logger.log(
+              `[MasterExport.prescan] Expedia auth scan ` +
+                `${chunkIdx}/${totalChunks} chunks ` +
+                `(maxApproved=${maxApprovedCount}, ${Date.now() - startedAt}ms)`,
+            );
           }
           // `items` falls out of scope at the next iteration → GC-eligible.
         }

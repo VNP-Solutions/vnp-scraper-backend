@@ -29,7 +29,10 @@ import {
   buildMasterRows,
   buildMasterXlsxBuffer,
 } from './master-export.util';
-import { writeMasterXlsxToStream } from './master-export-stream.util';
+import {
+  writeMasterXlsxToStream,
+  writePerJobXlsxToWritable,
+} from './master-export-stream.util';
 import {
   buildDashboardRows,
   buildDashboardXlsxBuffer,
@@ -1426,19 +1429,19 @@ export class JobService implements IJobService {
         `[Master ZIP] Starting build for ${uniqueJobIds.length} job IDs`,
       );
 
-      // Pre-flight: validate IDs exist + count items, all cheap. We do
-      // this BEFORE opening the ZIP stream so a "nothing to export"
-      // request 404s cleanly instead of producing a zero-entry ZIP.
-      const prescan =
-        await this.repository.precomputeMasterExportContext(uniqueJobIds);
-      if (prescan.foundIds.size === 0) {
+      // Pre-flight: validate IDs exist + count items. Per-job ZIP files
+      // compute their own column headers from a single job, so we must
+      // NOT call precomputeMasterExportContext here — that method scans
+      // all Expedia authorizations across the full batch (15–30+ min on
+      // 900+ jobs) even though this export never uses the result.
+      const foundIds =
+        await this.repository.findExistingJobIdsForExport(uniqueJobIds);
+      if (foundIds.size === 0) {
         throw new NotFoundException(
           `No jobs found for the given IDs: ${uniqueJobIds.join(', ')}`,
         );
       }
-      const missingIds = uniqueJobIds.filter(
-        (id) => !prescan.foundIds.has(id),
-      );
+      const missingIds = uniqueJobIds.filter((id) => !foundIds.has(id));
       if (missingIds.length > 0) {
         this.logger.warn(
           `[Master ZIP] ${missingIds.length} job ID(s) not found and will be skipped: ${missingIds.join(', ')}`,
@@ -1453,55 +1456,71 @@ export class JobService implements IJobService {
         );
       }
       this.logger.log(
-        `[Master ZIP] Building ZIP for ${prescan.foundIds.size} jobs ` +
+        `[Master ZIP] Building ZIP for ${foundIds.size} jobs ` +
           `(${totalItemRows} item rows total)`,
       );
 
-      // Cursor-driven per-job iteration. Each iteration builds a small
-      // XLSX, hands it to archiver, then drops the buffer/row array.
-      // Memory stays bounded by ONE job's worth of data regardless of
-      // how big the overall export is.
+      // Cursor-driven per-job iteration. For each job we:
+      //   1. Do a fast CPU check (buildMasterRows) to skip empty jobs.
+      //   2. Create a PassThrough and hand it to archiver as a stream entry.
+      //   3. Concurrently write the XLSX via ExcelJS into that PassThrough.
+      //
+      // archiver reads bytes from the PassThrough and compresses them
+      // in real time — no full XLSX buffer is ever held in heap. Peak
+      // memory per entry: ExcelJS worksheet state (~2–5 MB) + archiver
+      // compression window (~256 KB). Compression level = 1 (fastest).
       const buildStartedAt = Date.now();
-      const totalJobs = prescan.foundIds.size;
-      const logEveryNJobs = Math.max(1, Math.ceil(totalJobs / 10));
+      const totalJobs = foundIds.size;
+      const logEveryNJobs = Math.max(1, Math.ceil(totalJobs / 20));
       const usedNames = new Set<string>();
       let entryCount = 0;
       let jobsProcessed = 0;
-      let totalXlsxBytes = 0;
-      await streamZipEntries(writable, async ({ appendBuffer }) => {
+      await streamZipEntries(writable, async ({ appendStream }) => {
         for await (const job of this.repository.streamJobsForMasterExport(
           uniqueJobIds,
           20,
         )) {
           jobsProcessed += 1;
-          // Skip jobs with no items — matches the buffer-path behaviour
-          // (`buildMasterXlsxEntries` does the same check).
-          const { rows } = buildMasterRows([job]);
-          if (rows.length === 0) {
+
+          // Fast CPU check — no I/O. Skip jobs with no items so we never
+          // produce a header-only XLSX entry inside the ZIP.
+          const { rows: checkRows } = buildMasterRows([job]);
+          if (checkRows.length === 0) {
             if (jobsProcessed % logEveryNJobs === 0) {
               this.logger.log(
-                `[Master ZIP] Built ${jobsProcessed}/${totalJobs} jobs ` +
+                `[Master ZIP] ${jobsProcessed}/${totalJobs} jobs processed ` +
                   `(${Math.round((jobsProcessed / totalJobs) * 100)}%, ` +
-                  `${entryCount} entries, ${(totalXlsxBytes / 1024 / 1024).toFixed(1)} MB xlsx so far)`,
+                  `${entryCount} entries written)`,
               );
             }
             continue;
           }
 
-          const xlsxBuffer = buildMasterXlsxBuffer([job]);
-          totalXlsxBytes += xlsxBuffer.length;
           const xlsxName = this.ensureUniqueFilename(
             `${this.buildJobCsvBaseName(job)}.xlsx`,
             usedNames,
           );
-          appendBuffer(xlsxName, xlsxBuffer);
+
+          // True streaming: ExcelJS writes XLSX bytes into `pt` while
+          // archiver reads from `pt` and compresses concurrently.
+          // `appendStream` resolves only after archiver emits 'entry'
+          // (entry fully flushed to the output), so the next job doesn't
+          // start until the current one is completely done.
+          const pt = new PassThrough();
+          await Promise.all([
+            appendStream(xlsxName, pt),
+            writePerJobXlsxToWritable(job, pt).catch((err: Error) => {
+              pt.destroy(err);
+              throw err;
+            }),
+          ]);
           entryCount++;
 
           if (jobsProcessed % logEveryNJobs === 0) {
             this.logger.log(
-              `[Master ZIP] Built ${jobsProcessed}/${totalJobs} jobs ` +
+              `[Master ZIP] ${jobsProcessed}/${totalJobs} jobs processed ` +
                 `(${Math.round((jobsProcessed / totalJobs) * 100)}%, ` +
-                `${entryCount} entries, ${(totalXlsxBytes / 1024 / 1024).toFixed(1)} MB xlsx so far)`,
+                `${entryCount} entries written)`,
             );
           }
         }
@@ -1519,7 +1538,6 @@ export class JobService implements IJobService {
 
       this.logger.log(
         `[Master ZIP] Build complete — ${entryCount} XLSX entries ` +
-          `(${(totalXlsxBytes / 1024 / 1024).toFixed(1)} MB pre-compression) ` +
           `in ${Date.now() - buildStartedAt}ms ` +
           `(total ${Date.now() - startedAt}ms incl. pre-scan)`,
       );
