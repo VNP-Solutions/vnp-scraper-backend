@@ -214,7 +214,10 @@ export class ReportsService implements IReportsService {
     user: { userId: string; role: string },
   ): Promise<ReportsCurrentCounts> {
     try {
-      const plan = await this.buildSearchPlan(body, user);
+      // Strip job_statuses so the status breakdown is never pre-filtered,
+      // and strip pagination/sort fields which are irrelevant for counts.
+      const { job_statuses: _s, page: _p, limit: _l, sortBy: _sb, sortOrder: _so, ...statsBody } = body;
+      const plan = await this.buildSearchPlan(statsBody as SearchReportsType, user);
       if (plan === null) {
         return {
           pending: { count: 0, percentage: 0 },
