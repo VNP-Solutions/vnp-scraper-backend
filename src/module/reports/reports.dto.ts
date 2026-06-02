@@ -389,6 +389,48 @@ export class SearchReportIdsResponseDto {
   metadata: SearchReportIdsMetadataDto;
 }
 
+export class ReportsStatusItemDto {
+  @ApiProperty({ description: 'Number of jobs with this status', example: 12 })
+  count: number;
+
+  @ApiProperty({
+    description: 'Percentage of total jobs',
+    example: 25.5,
+  })
+  percentage: number;
+}
+
+export class ReportsCurrentCountsDto {
+  @ApiProperty({ type: ReportsStatusItemDto })
+  pending: ReportsStatusItemDto;
+
+  @ApiProperty({ type: ReportsStatusItemDto })
+  failed: ReportsStatusItemDto;
+
+  @ApiProperty({ type: ReportsStatusItemDto })
+  running: ReportsStatusItemDto;
+
+  @ApiProperty({ type: ReportsStatusItemDto })
+  completed: ReportsStatusItemDto;
+
+  @ApiProperty({ type: ReportsStatusItemDto })
+  stopped: ReportsStatusItemDto;
+
+  @ApiProperty({ description: 'Total number of matching jobs', example: 47 })
+  total: number;
+}
+
+export class ReportsStatisticsResponseDto {
+  @ApiProperty({ example: 200 })
+  statusCode: number;
+
+  @ApiProperty({ example: 'Report statistics retrieved successfully' })
+  message: string;
+
+  @ApiProperty({ type: ReportsCurrentCountsDto })
+  data: ReportsCurrentCountsDto;
+}
+
 export class ExportReportsMasterRequestDto {
   @ApiProperty({
     type: [String],

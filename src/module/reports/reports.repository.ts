@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import {
   IReportsRepository,
+  ReportsCurrentCounts,
   ReportsIdRow,
   ReportsRepositoryFilter,
 } from './reports.interface';
@@ -330,6 +331,48 @@ export class ReportsRepository implements IReportsRepository {
     } catch (error) {
       this.logger.error(
         `Error fetching job IDs for reports search: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async getStatistics(
+    filter: ReportsRepositoryFilter,
+  ): Promise<ReportsCurrentCounts> {
+    try {
+      const where = this.buildJobWhereClause(filter);
+
+      const [
+        pendingCount,
+        failedCount,
+        runningCount,
+        completedCount,
+        stoppedCount,
+        totalCount,
+      ] = await Promise.all([
+        this.db.job.count({ where: { ...(where as any), job_status: 'Pending' } }),
+        this.db.job.count({ where: { ...(where as any), job_status: 'Failed' } }),
+        this.db.job.count({ where: { ...(where as any), job_status: 'Running' } }),
+        this.db.job.count({ where: { ...(where as any), job_status: 'Completed' } }),
+        this.db.job.count({ where: { ...(where as any), job_status: 'Stopped' } }),
+        this.db.job.count({ where: where as any }),
+      ]);
+
+      const pct = (count: number): number =>
+        totalCount > 0 ? Math.round((count / totalCount) * 10000) / 100 : 0;
+
+      return {
+        pending: { count: pendingCount, percentage: pct(pendingCount) },
+        failed: { count: failedCount, percentage: pct(failedCount) },
+        running: { count: runningCount, percentage: pct(runningCount) },
+        completed: { count: completedCount, percentage: pct(completedCount) },
+        stopped: { count: stoppedCount, percentage: pct(stoppedCount) },
+        total: totalCount,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error computing report statistics: ${error.message}`,
         error.stack,
       );
       throw error;

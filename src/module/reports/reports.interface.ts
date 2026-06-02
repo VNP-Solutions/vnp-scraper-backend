@@ -149,6 +149,20 @@ export interface ReportsIdsSearchResult {
   metadata: ReportsIdsSearchMetadata;
 }
 
+export interface ReportsStatusItem {
+  count: number;
+  percentage: number;
+}
+
+export interface ReportsCurrentCounts {
+  pending: ReportsStatusItem;
+  failed: ReportsStatusItem;
+  running: ReportsStatusItem;
+  completed: ReportsStatusItem;
+  stopped: ReportsStatusItem;
+  total: number;
+}
+
 export interface IReportsRepository {
   /** Compute the property / portfolio / sub-portfolio IDs a non-admin user can see. */
   getAccessScopeForUser(userId: string): Promise<{
@@ -195,6 +209,12 @@ export interface IReportsRepository {
     sortBy: string,
     sortOrder: 'asc' | 'desc',
   ): Promise<ReportsIdRow[]>;
+
+  /**
+   * Count matching jobs by status for the given filter and return
+   * `currentCounts` (same shape as `GET /jobs/statistics`).
+   */
+  getStatistics(filter: ReportsRepositoryFilter): Promise<ReportsCurrentCounts>;
 }
 
 export interface IReportsService {
@@ -242,4 +262,14 @@ export interface IReportsService {
   exportDashboard(
     body: ExportReportsMasterType,
   ): Promise<{ buffer: Buffer; fileName: string }>;
+
+  /**
+   * Same filters as `searchReports` but returns only `currentCounts`
+   * (job counts by status + percentages). Designed for the
+   * `POST /reports/global/statistics` endpoint.
+   */
+  getStatistics(
+    body: SearchReportsType,
+    user: { userId: string; role: string },
+  ): Promise<ReportsCurrentCounts>;
 }

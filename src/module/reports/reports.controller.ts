@@ -21,6 +21,7 @@ import { ResponseHandler } from 'src/common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
   ExportReportsMasterRequestDto,
+  ReportsStatisticsResponseDto,
   SearchReportIdsResponseDto,
   SearchReportsRequestDto,
   SearchReportsResponseDto,
@@ -814,6 +815,54 @@ export class ReportsController {
           message: 'Reports retrieved successfully',
           data: result.data,
           metadata: result.metadata,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Post('/global/statistics')
+  @UseGuards(JwtAuthGuard)
+  @ValidateBody(searchReportsSchema)
+  @ApiOperation({
+    summary: 'Get report statistics',
+    description:
+      'Returns job counts by status (`currentCounts`) for the same filter set ' +
+      'as `POST /reports/global`. Accepts the identical request body — all ' +
+      'fields are optional and independent. Non-admin users are automatically ' +
+      'scoped to their `UserFeatureAccessPermission` entries.',
+  })
+  @ApiBody({ type: SearchReportsRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Report statistics retrieved successfully',
+    type: ReportsStatisticsResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getStatistics(@Req() request: any, @Body() body: any, @Res() response: Response) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const userId = request.user?.userId;
+        const userRole = request.user?.role;
+
+        if (!userId) {
+          return {
+            statusCode: 401,
+            message: 'User not authenticated',
+            data: null,
+          };
+        }
+
+        const data = await this.reportsService.getStatistics(body, {
+          userId,
+          role: userRole,
+        });
+
+        return {
+          statusCode: 200,
+          message: 'Report statistics retrieved successfully',
+          data,
         };
       },
       this.logger,
