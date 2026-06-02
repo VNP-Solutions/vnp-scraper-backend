@@ -263,8 +263,9 @@ export function buildMasterRow(
   row[MASTER_EXPORT_HEADER[13]] =
     item?.payment_info?.amount_to_charge_or_refund_currency || 'USD'; // Currency
   row[MASTER_EXPORT_HEADER[14]] = isExpedia
-    ? item?.booking_amount !== null && item?.booking_amount !== undefined
-      ? item.booking_amount
+    ? item?.payment_info?.total_payout !== null &&
+      item?.payment_info?.total_payout !== undefined
+      ? item.payment_info.total_payout
       : NA
     : NA; // Booking Amount (Expedia only)
   row[MASTER_EXPORT_HEADER[15]] = amountToCharge !== null ? amountToCharge : ''; // Amount to Charge
@@ -300,7 +301,9 @@ export function buildMasterRow(
       0,
     );
     const bookingAmount =
-      typeof item?.booking_amount === 'number' ? item.booking_amount : null;
+      typeof item?.payment_info?.total_payout === 'number'
+        ? item.payment_info.total_payout
+        : null;
     const calculated =
       bookingAmount !== null ? round2(bookingAmount - sumApproved) : null;
     row[CALCULATED_AMOUNT_HEADER] = calculated !== null ? calculated : '';
