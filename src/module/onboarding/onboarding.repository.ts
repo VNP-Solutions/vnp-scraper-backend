@@ -30,7 +30,7 @@ export class OnboardingRepository implements IOnboardingRepository {
 
   async findAllByQuery(
     query: Record<string, any>,
-  ): Promise<{ data: Onboarding[]; metadata: any }> {
+  ): Promise<{ data: any[]; metadata: any }> {
     const { page, limit, sortBy, sortOrder, search, start_date, end_date } =
       query || {};
 
@@ -81,15 +81,23 @@ export class OnboardingRepository implements IOnboardingRepository {
     }
 
     try {
-      const [data, totalDocuments] = await Promise.all([
+      const [rawData, totalDocuments] = await Promise.all([
         this.db.onboarding.findMany({
           where,
           skip,
           take,
           orderBy,
+          include: {
+            _count: { select: { notes: true } },
+          },
         }),
         this.db.onboarding.count({ where }),
       ]);
+
+      const data = rawData.map(({ _count, ...rest }) => ({
+        ...rest,
+        total_notes: _count.notes,
+      }));
 
       const metadata = {
         totalDocuments,
