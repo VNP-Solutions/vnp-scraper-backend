@@ -13,6 +13,7 @@ import { IJobService } from '../job/job.interface';
 import {
   IReportsRepository,
   IReportsService,
+  ReportsCurrentCounts,
   ReportsIdRow,
   ReportsIdsSearchResult,
   ReportsRepositoryFilter,
@@ -202,6 +203,33 @@ export class ReportsService implements IReportsService {
     } catch (error) {
       this.logger.error(
         `Error fetching report IDs: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async getStatistics(
+    body: SearchReportsType,
+    user: { userId: string; role: string },
+  ): Promise<ReportsCurrentCounts> {
+    try {
+      const plan = await this.buildSearchPlan(body, user);
+      if (plan === null) {
+        return {
+          pending: { count: 0, percentage: 0 },
+          failed: { count: 0, percentage: 0 },
+          running: { count: 0, percentage: 0 },
+          completed: { count: 0, percentage: 0 },
+          stopped: { count: 0, percentage: 0 },
+          total: 0,
+        };
+      }
+
+      return await this.repository.getStatistics(plan.filter);
+    } catch (error) {
+      this.logger.error(
+        `Error computing report statistics: ${error.message}`,
         error.stack,
       );
       throw error;
