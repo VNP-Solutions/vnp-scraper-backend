@@ -15,7 +15,6 @@ const noteInclude = {
       phone_number: true,
     },
   },
-  onboarding: true,
 } satisfies Prisma.NoteInclude;
 
 @Injectable()
