@@ -72,6 +72,15 @@ import {
   exportMasterJobsSchema,
   type ExportMasterJobsType,
 } from './job.validation';
+import {
+  enqueueReportExport,
+  getReportsExportQueueUrl,
+} from '../reports/reports-sqs.util';
+
+/** IDs at or below this count are processed synchronously (fast, in-request).
+ *  Above it the work is enqueued on the existing reports-export SQS queue
+ *  and the caller gets 202 immediately. */
+const BULK_ARCHIVE_ASYNC_THRESHOLD = 20;
 
 @ApiTags('Jobs')
 @ApiBearerAuth('JWT-auth')
@@ -862,27 +871,73 @@ export class JobController {
   @Post('/bulk_archive_update')
   @UseGuards(JwtAuthGuard)
   @ValidateBody(bulkArchiveJobsSchema)
-  @ApiOperation({ summary: 'Bulk archive or unarchive jobs' })
+  @ApiOperation({
+    summary: 'Bulk archive or unarchive jobs',
+    description:
+      `If \`job_ids\` contains **≤ ${BULK_ARCHIVE_ASYNC_THRESHOLD}** entries the update is applied ` +
+      `synchronously and returns **200** with the updated count.\n\n` +
+      `If \`job_ids\` contains **> ${BULK_ARCHIVE_ASYNC_THRESHOLD}** entries the update runs in the ` +
+      `background and returns **202 Accepted** immediately.`,
+  })
   @ApiResponse({
     status: 200,
-    description: 'Jobs archive status updated successfully',
+    description: 'Jobs archive status updated synchronously (≤20 IDs)',
     type: BulkArchiveJobsResponseDto,
+  })
+  @ApiResponse({
+    status: 202,
+    description: 'Archive update queued (>20 IDs) — jobs updated in background',
   })
   @ApiResponse({ status: 400, description: 'Bad request - Invalid input' })
   async bulkArchiveUpdate(
+    @Req() request: any,
     @Body() bulkArchiveJobsDto: BulkArchiveJobsDto,
     @Res() response: Response,
   ) {
     return ResponseHandler.handler(
       response,
       async () => {
-        const result = await this.jobService.bulkArchiveUpdate(
-          bulkArchiveJobsDto.job_ids,
-          bulkArchiveJobsDto.status,
+        const jobIds = Array.from(new Set(bulkArchiveJobsDto.job_ids)).filter(
+          Boolean,
         );
+        const status = bulkArchiveJobsDto.status;
+        const action = status ? 'archived' : 'unarchived';
+
+        // ── ASYNC PATH (>20 IDs) ─────────────────────────────────────────
+        // Enqueue on the existing reports-export SQS queue so SQS handles
+        // retries automatically if the DB update fails.
+        if (
+          jobIds.length > BULK_ARCHIVE_ASYNC_THRESHOLD &&
+          getReportsExportQueueUrl()
+        ) {
+          await enqueueReportExport(
+            {
+              exportType: 'bulk_archive',
+              jobIds,
+              archiveStatus: status,
+              user: {
+                userId: request.user?.userId ?? 'unknown',
+                email: request.user?.email ?? '',
+                name: request.user?.name ?? null,
+              },
+              requestedAt: new Date().toISOString(),
+            },
+            this.logger,
+          );
+          return {
+            statusCode: 202,
+            message:
+              `${jobIds.length} jobs are being ${action} in the background. ` +
+              `A confirmation email will be sent to you once the process is complete.`,
+            data: { async: true, jobCount: jobIds.length, status },
+          };
+        }
+
+        // ── SYNC PATH (≤20 IDs, or queue not configured) ─────────────────
+        const result = await this.jobService.bulkArchiveUpdate(jobIds, status);
         return {
           statusCode: 200,
-          message: `Jobs ${bulkArchiveJobsDto.status ? 'archived' : 'unarchived'} successfully`,
+          message: `Jobs ${action} successfully`,
           data: result,
         };
       },

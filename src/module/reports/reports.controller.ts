@@ -162,7 +162,7 @@ export class ReportsController {
       statusCode: 202,
       message:
         `Your export is being prepared. We will email a download link to ` +
-        `${user.email} when it's ready (usually within a few minutes).`,
+        `${user.email} when it's ready.`,
       data: {
         queued: true,
         exportType,
@@ -1124,7 +1124,7 @@ export class ReportsController {
       example: {
         statusCode: 202,
         message:
-          "Your export is being prepared. We will email a download link to user@example.com when it's ready (usually within a few minutes).",
+          "Your export is being prepared. We will email a download link to user@example.com when it's ready.",
         data: {
           queued: true,
           exportType: 'master',
@@ -1331,7 +1331,7 @@ export class ReportsController {
       example: {
         statusCode: 202,
         message:
-          "Your export is being prepared. We will email a download link to user@example.com when it's ready (usually within a few minutes).",
+          "Your export is being prepared. We will email a download link to user@example.com when it's ready.",
         data: {
           queued: true,
           exportType: 'consolidated',
@@ -1553,7 +1553,7 @@ export class ReportsController {
       example: {
         statusCode: 202,
         message:
-          "Your export is being prepared. We will email a download link to user@example.com when it's ready (usually within a few minutes).",
+          "Your export is being prepared. We will email a download link to user@example.com when it's ready.",
         data: {
           queued: true,
           exportType: 'dashboard',

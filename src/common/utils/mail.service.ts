@@ -142,6 +142,65 @@ export class MailService {
     );
   }
 
+  /**
+   * Send a "Your bulk archive is complete" confirmation email.
+   * Called by the async bulk-archive consumer once the DB update finishes.
+   */
+  async sendBulkArchiveDoneEmail(opts: {
+    to: string;
+    userName?: string | null;
+    action: 'archived' | 'unarchived';
+    jobCount: number;
+    updatedCount: number;
+  }): Promise<void> {
+    const safeName = (opts.userName || 'there').trim();
+    const subject = `VNP — ${opts.jobCount} job${opts.jobCount === 1 ? '' : 's'} ${opts.action} successfully`;
+    const html = `<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background-color:#f4f4f4;color:#333;line-height:1.6;">
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.05);">
+    <tr>
+      <td style="padding:30px 20px;text-align:center;background:#ffffff;border-bottom:1px solid #eee;">
+        <img src="https://argobot-bucket.s3.us-east-2.amazonaws.com/VNP+LOGO_PNG.png" alt="VNP Solutions" style="max-width:200px;height:auto;">
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:30px 24px;">
+        <h2 style="margin:0 0 16px 0;color:#16a34a;">Bulk ${this.escape(opts.action)} complete</h2>
+        <p>Hi ${this.escape(safeName)},</p>
+        <p>Your bulk archive request has been processed successfully.</p>
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:20px 0;background:#f9fafb;border-radius:6px;padding:16px;width:100%;">
+          <tr><td style="padding:4px 0;color:#666;font-size:14px;">Requested</td><td style="padding:4px 0;font-weight:600;">${opts.jobCount} job${opts.jobCount === 1 ? '' : 's'}</td></tr>
+          <tr><td style="padding:4px 0;color:#666;font-size:14px;">Updated</td><td style="padding:4px 0;font-weight:600;">${opts.updatedCount} job${opts.updatedCount === 1 ? '' : 's'}</td></tr>
+          <tr><td style="padding:4px 0;color:#666;font-size:14px;">Action</td><td style="padding:4px 0;font-weight:600;text-transform:capitalize;">${this.escape(opts.action)}</td></tr>
+        </table>
+        <p style="font-size:13px;color:#666;">You can now view the updated jobs in the VNP dashboard.</p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:16px 24px;text-align:center;background:#fafafa;color:#999;font-size:12px;border-top:1px solid #eee;">
+        VNP Reports · automated email, please do not reply
+      </td>
+    </tr>
+  </table>
+</body>`;
+    const text =
+      `Hi ${safeName},\n\n` +
+      `Your bulk ${opts.action} request has been processed.\n\n` +
+      `Requested: ${opts.jobCount} job(s)\n` +
+      `Updated:   ${opts.updatedCount} job(s)\n\n` +
+      `— VNP Reports`;
+
+    await this.transporter.sendMail({
+      from: this.fromAddress,
+      to: opts.to,
+      subject,
+      html,
+      text,
+    });
+    this.logger.log(
+      `Sent "bulk archive done" email to ${opts.to} (${opts.updatedCount}/${opts.jobCount} jobs ${opts.action})`,
+    );
+  }
+
   // ---------- private templates -------------------------------------------
 
   private buildReadyHtml(o: {

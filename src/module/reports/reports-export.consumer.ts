@@ -154,11 +154,24 @@ export class ReportsExportConsumer
     if (
       !payload ||
       !payload.exportType ||
-      !Array.isArray(payload.jobIds) ||
-      !payload.user?.email
+      !Array.isArray(payload.jobIds)
     ) {
       this.logger.error(
         `Message ${messageId} payload is missing required fields — deleting.`,
+      );
+      await deleteReportExportMessage(receiptHandle, this.logger);
+      return;
+    }
+
+    // ── BULK ARCHIVE: lightweight DB-only path, no S3, no email ──────────
+    if (payload.exportType === 'bulk_archive') {
+      return this.handleBulkArchive(payload, receiptHandle, messageId);
+    }
+
+    // ── EXPORT TYPES: require user.email for delivery ─────────────────────
+    if (!payload.user?.email) {
+      this.logger.error(
+        `Message ${messageId} payload is missing user.email — deleting.`,
       );
       await deleteReportExportMessage(receiptHandle, this.logger);
       return;
@@ -262,6 +275,75 @@ export class ReportsExportConsumer
   }
 
   /**
+   * Handle a bulk_archive message: run updateMany in the DB and ack.
+   * No S3 upload, no email. If the DB call throws, the message is NOT
+   * deleted so SQS redelivers it automatically.
+   */
+  private async handleBulkArchive(
+    payload: ReportExportMessage,
+    receiptHandle: string,
+    messageId: string,
+  ): Promise<void> {
+    if (typeof payload.archiveStatus !== 'boolean') {
+      this.logger.error(
+        `[BulkArchive] Message ${messageId} is missing archiveStatus — deleting (cannot retry).`,
+      );
+      await deleteReportExportMessage(receiptHandle, this.logger);
+      return;
+    }
+
+    const action = payload.archiveStatus ? 'archive' : 'unarchive';
+    const startedAt = Date.now();
+    this.logger.log(
+      `[BulkArchive] Processing ${action} for ${payload.jobIds.length} job(s) ` +
+        `(MessageId=${messageId})`,
+    );
+
+    try {
+      const result = await this.jobService.bulkArchiveUpdate(
+        payload.jobIds,
+        payload.archiveStatus,
+      );
+      this.logger.log(
+        `[BulkArchive] Done — ${result.updatedCount} job(s) ${action}d ` +
+          `in ${Date.now() - startedAt}ms (MessageId=${messageId})`,
+      );
+
+      // Send confirmation email if we have a valid address.
+      const userEmail = payload.user?.email;
+      if (userEmail) {
+        try {
+          await this.mail.sendBulkArchiveDoneEmail({
+            to: userEmail,
+            userName: payload.user?.name ?? null,
+            action: payload.archiveStatus ? 'archived' : 'unarchived',
+            jobCount: payload.jobIds.length,
+            updatedCount: result.updatedCount,
+          });
+          this.logger.log(
+            `[BulkArchive] Confirmation email sent to ${userEmail}`,
+          );
+        } catch (mailErr) {
+          // Email failure is non-fatal — the archive already succeeded.
+          this.logger.error(
+            `[BulkArchive] Failed to send confirmation email to ${userEmail}: ` +
+              `${mailErr?.message ?? mailErr}`,
+          );
+        }
+      }
+
+      await deleteReportExportMessage(receiptHandle, this.logger);
+    } catch (err) {
+      this.logger.error(
+        `[BulkArchive] Failed to ${action} jobs: ${err?.message ?? err} ` +
+          `(MessageId=${messageId}) — SQS will redeliver`,
+        err?.stack,
+      );
+      // Do NOT delete — SQS redelivers automatically.
+    }
+  }
+
+  /**
    * Streaming dispatch: route to the right JobService stream method
    * based on the export type. The method writes bytes into `writable`
    * (a PassThrough hooked up to S3's multipart `Upload`) and returns
@@ -302,6 +384,8 @@ export class ReportsExportConsumer
         return `consolidated-report-${ts}.xlsx`;
       case 'dashboard':
         return `dashboard-report-${ts}.xlsx`;
+      case 'bulk_archive':
+        return `bulk-archive-${ts}.noop`;
     }
   }
 
@@ -313,10 +397,13 @@ export class ReportsExportConsumer
         return 'Consolidated Report';
       case 'dashboard':
         return 'Dashboard Report';
+      case 'bulk_archive':
+        return 'Bulk Archive';
     }
   }
 
   private contentTypeFor(t: ReportExportType, fileName: string): string {
+    if (t === 'bulk_archive') return 'application/octet-stream';
     if (t === 'master' || fileName.endsWith('.zip')) return 'application/zip';
     return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   }

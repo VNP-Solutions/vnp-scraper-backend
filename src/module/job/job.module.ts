@@ -12,9 +12,7 @@ import { JobService } from './job.service';
 
 @Module({
   imports: [
-    
     forwardRef(() => ScraperModule),
-   
     forwardRef(() => RecurringJobModule),
     PropertyModule,
     ServerModule,

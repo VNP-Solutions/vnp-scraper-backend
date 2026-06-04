@@ -27,8 +27,16 @@ import { Logger } from '@nestjs/common';
  *   S3_REGION / S3_ACCESS_KEY / S3_SECRET_KEY.
  */
 
-/** Discriminator for which Reports export type a queued job should build. */
-export type ReportExportType = 'master' | 'consolidated' | 'dashboard';
+/**
+ * Discriminator for queued job types.
+ *   - 'master' | 'consolidated' | 'dashboard' — file export to S3 + email
+ *   - 'bulk_archive' — background DB archive/unarchive, no S3, no email
+ */
+export type ReportExportType =
+  | 'master'
+  | 'consolidated'
+  | 'dashboard'
+  | 'bulk_archive';
 
 /**
  * Payload shape stored in the SQS message body. Keep this small — SQS
@@ -37,11 +45,15 @@ export type ReportExportType = 'master' | 'consolidated' | 'dashboard';
  * (For now the controller validates job_ids.min(1), no upper cap.)
  */
 export interface ReportExportMessage {
-  /** Which export builder to run. */
+  /** Which builder / operation to run. */
   exportType: ReportExportType;
-  /** Job IDs to feed into the builder. Already deduped on producer side. */
+  /** Job IDs to process. Already deduped on producer side. */
   jobIds: string[];
-  /** User who requested the export (for email delivery + audit). */
+  /**
+   * User who triggered the operation.
+   * `email` is required for export types (needed to send the download link).
+   * For `bulk_archive` only `userId` is used (no email is sent).
+   */
   user: {
     userId: string;
     email: string;
@@ -49,6 +61,12 @@ export interface ReportExportMessage {
   };
   /** ISO timestamp recorded when the controller enqueued the message. */
   requestedAt: string;
+  /**
+   * Only present for `exportType === 'bulk_archive'`.
+   * true  → archive the jobs
+   * false → unarchive the jobs
+   */
+  archiveStatus?: boolean;
 }
 
 /**
