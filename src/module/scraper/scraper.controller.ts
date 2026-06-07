@@ -1111,6 +1111,67 @@ export class ScraperController {
     }
   }
 
+  @Post('/api/stop-job')
+  @ApiOperation({
+    summary: 'Stop a running scraping job (unified)',
+    description:
+      'Stop a running scraping job for any OTA provider (Expedia, Booking, Agoda). The system automatically determines the OTA provider from the job record and routes to the appropriate scraper server — Booking → BOOKING_SERVER_URL/api/booking/stop-job, Expedia → EXPEDIA_SERVER_URL/api/expedia/stop-job, Agoda → AGODA_SERVER_URL/api/agoda/stop-job.',
+  })
+  @ApiBody({ type: StopScrapingRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Job stopped successfully',
+    type: PauseResumeStopResponseDto,
+  })
+  @ApiResponse({
+    status: 503,
+    description: 'Scraper URL not configured for OTA provider',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Error stopping job',
+    type: ErrorResponseDto,
+  })
+  async stopJob(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Body() body: StopScrapingRequestDto,
+  ) {
+    try {
+      const job = await this.jobService.getJobById(body.jobId);
+      const otaProvider = job.ota_provider || 'Expedia';
+
+      const selectedUrl = this.getUrlByOtaProvider(otaProvider);
+      if (!selectedUrl) {
+        return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message: `No scraper URL configured for OTA provider: ${otaProvider}`,
+          error: 'Scraper URL not configured',
+        });
+      }
+
+      const apiPath = this.getApiPathByOtaProvider(otaProvider, 'stop-job');
+
+      const response = await firstValueFrom(
+        this.httpService.post(`${selectedUrl}${apiPath}`, body, {
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          timeout: 300000,
+        }),
+      );
+      return res.status(response.status).json(response.data);
+    } catch (error: any) {
+      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
+      const data = error.response?.data || {
+        message: 'Job server is down',
+      };
+      return res.status(status).json(data);
+    }
+  }
+
   @Post('/api/property-run-job')
   @ApiOperation({
     summary: 'Start unified property scraping job',
