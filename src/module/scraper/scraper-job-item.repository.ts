@@ -4,6 +4,8 @@ import { DatabaseService } from '../database/database.service';
 import {
   IScraperJobItemRepository,
   JobItemListMetadataDto,
+  JobItemUpsertInput,
+  JobItemUpsertResult,
 } from './scraper-job-item.interface';
 import { readPaymentCurrencyCode } from './scraper-job-item-payment.util';
 
@@ -226,5 +228,61 @@ export class ScraperJobItemRepository implements IScraperJobItemRepository {
       this.logger.error(`Error updating current_url for job ${jobId}:`, error);
       throw error;
     }
+  }
+
+  async upsertJobItems(items: JobItemUpsertInput[]): Promise<JobItemUpsertResult> {
+    let created = 0;
+    let updated = 0;
+
+    for (const item of items) {
+      const paymentInfo: Prisma.PaymentInfoCreateInput = {
+        total_guest_payment: item.payment_amount,
+        total_payout: item.payment_amount,
+        amount_to_charge_or_refund: item.payment_amount,
+        amount_to_charge_or_refund_currency: item.payment_currency,
+      };
+
+      const existing = await this.db.jobItem.findUnique({
+        where: {
+          job_id_reservation_id: {
+            job_id: item.job_id,
+            reservation_id: item.reservation_id,
+          },
+        },
+        select: { id: true },
+      });
+
+      if (existing) {
+        await this.db.jobItem.update({
+          where: { id: existing.id },
+          data: {
+            has_payment_info: true,
+            payment_info: paymentInfo,
+          },
+        });
+        updated++;
+      } else {
+        const now = new Date();
+        await this.db.jobItem.create({
+          data: {
+            job_id: item.job_id,
+            property_id: item.property_id,
+            reservation_id: item.reservation_id,
+            guest_name: '',
+            check_in_date: now,
+            check_out_date: now,
+            room_type: '',
+            booked_date: now,
+            reservation_status: 'Active',
+            has_payment_info: true,
+            payment_info: paymentInfo,
+          },
+        });
+        created++;
+      }
+    }
+
+    this.logger.log(`upsertJobItems: created=${created}, updated=${updated}`);
+    return { created, updated };
   }
 }

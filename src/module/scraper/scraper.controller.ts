@@ -12,12 +12,15 @@ import {
     Query,
     Req,
     Res,
+    UploadedFile,
     UseGuards,
+    UseInterceptors,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
     ApiBearerAuth,
     ApiBody,
+    ApiConsumes,
     ApiOperation,
     ApiParam,
     ApiQuery,
@@ -30,6 +33,7 @@ import { ParseQuery } from '../../common/decorators/parse-query.decorator';
 
 import { ValidateBody } from '../../common/decorators/validate.decorator';
 import { ResponseHandler } from '../../common/utils/response-handler';
+import { ExcelFileInterceptor } from '../../common/interceptors/excel-file.interceptor';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { IJobService } from '../job/job.interface';
 import { IRetrievalService } from '../retrieval/retrieval.interface';
@@ -67,6 +71,7 @@ import {
     ScheduledJobResponseDto,
     ScrapingStatusResponseDto,
     StopScrapingRequestDto,
+    UploadJobItemsResponseDto,
 } from './scraper.dto';
 
 @ApiTags('Unified Scraper')
@@ -1108,6 +1113,77 @@ export class ScraperController {
         message: 'Expedia DB server is down',
       };
       return res.status(status).json(data);
+    }
+  }
+
+  @Post('/api/upload-job-items')
+  @UseInterceptors(ExcelFileInterceptor)
+  @ApiOperation({
+    summary: 'Upload job items from an Excel/CSV sheet',
+    description:
+      'Upload an Excel (.xlsx / .xls) or CSV file to create or update job items for a specific job. The file must contain at least two columns: one whose name contains "Reservation" (e.g. "Reservation info") and one whose name contains "Amount" (e.g. "Amount"). Amount values may include a currency prefix such as "US$464.74", "AU$100.00", "€50.00". Each row creates or updates a job item with `reservation_id`, `total_guest_payment`, `total_payout`, `amount_to_charge_or_refund`, and `amount_to_charge_or_refund_currency` set from the parsed amount.',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['file', 'jobId', 'propertyId', 'portfolioId'],
+      properties: {
+        file: { type: 'string', format: 'binary', description: 'Excel or CSV file' },
+        jobId: { type: 'string', example: '507f1f77bcf86cd799439011', description: 'Job MongoDB ObjectId' },
+        propertyId: { type: 'string', example: '507f1f77bcf86cd799439012', description: 'Property MongoDB ObjectId' },
+        portfolioId: { type: 'string', example: '507f1f77bcf86cd799439013', description: 'Portfolio MongoDB ObjectId' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Job items created/updated successfully',
+    type: UploadJobItemsResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid file or missing required columns/fields', type: ErrorResponseDto })
+  @ApiResponse({ status: 500, description: 'Server error', type: ErrorResponseDto })
+  async uploadJobItems(
+    @Res() res: Response,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('jobId') jobId: string,
+    @Body('propertyId') propertyId: string,
+    @Body('portfolioId') portfolioId: string,
+  ) {
+    try {
+      if (!file) {
+        return res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          message: 'No file uploaded',
+          error: 'file is required',
+        });
+      }
+      if (!jobId || !propertyId || !portfolioId) {
+        return res.status(HttpStatus.BAD_REQUEST).json({
+          success: false,
+          message: 'jobId, propertyId, and portfolioId are required',
+          error: 'Missing required fields',
+        });
+      }
+
+      const result = await this.jobItemService.uploadJobItemsFromExcel(
+        file,
+        jobId,
+        propertyId,
+        portfolioId,
+      );
+
+      return res.status(HttpStatus.OK).json({
+        success: true,
+        message: `Job items processed: ${result.created} created, ${result.updated} updated, ${result.skipped} skipped`,
+        data: result,
+      });
+    } catch (error: any) {
+      return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: error.message || 'Error processing file',
+        error: 'Upload job items failed',
+      });
     }
   }
 

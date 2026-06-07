@@ -1,5 +1,18 @@
 import { JobItem } from '@prisma/client';
 
+export interface JobItemUpsertInput {
+  job_id: string;
+  property_id: string;
+  reservation_id: string;
+  payment_amount: number;
+  payment_currency: string;
+}
+
+export interface JobItemUpsertResult {
+  created: number;
+  updated: number;
+}
+
 /** One row from GET /api/jobs/:jobId/items (max 3, payment rows only). */
 export interface JobItemListRowDto {
   reservation_id: string | null;
@@ -33,6 +46,7 @@ export interface IScraperJobItemRepository {
     query?: Record<string, any>,
   ): Promise<{ data: any[]; metadata: JobItemListMetadataDto }>;
   updateJobCurrentUrl(jobId: string, currentUrl: string): Promise<void>;
+  upsertJobItems(items: JobItemUpsertInput[]): Promise<JobItemUpsertResult>;
 }
 
 export interface IScraperJobItemService {
@@ -42,4 +56,10 @@ export interface IScraperJobItemService {
     query?: Record<string, any>,
   ): Promise<{ data: JobItemListRowDto[]; metadata: JobItemListMetadataDto }>;
   updateJobCurrentUrl(jobId: string, currentUrl: string): Promise<void>;
+  uploadJobItemsFromExcel(
+    file: Express.Multer.File,
+    jobId: string,
+    propertyId: string,
+    portfolioId: string,
+  ): Promise<{ created: number; updated: number; skipped: number; errors: string[] }>;
 }

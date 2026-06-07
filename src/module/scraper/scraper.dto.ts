@@ -548,6 +548,24 @@ export class CreateScheduledJobResponseDto {
   scheduledJob: ScheduledJobResponseDto;
 }
 
+export class UploadJobItemsResponseDto {
+  @ApiProperty({ example: 12, description: 'Number of new job items created' })
+  created: number;
+
+  @ApiProperty({ example: 3, description: 'Number of existing job items updated' })
+  updated: number;
+
+  @ApiProperty({ example: 1, description: 'Number of rows skipped (empty reservation ID or unparseable amount)' })
+  skipped: number;
+
+  @ApiProperty({
+    type: [String],
+    example: ['Row 5: could not parse amount "N/A" for reservation "RES123"'],
+    description: 'Per-row parse errors (rows that were skipped due to bad data)',
+  })
+  errors: string[];
+}
+
 export class RemoveJobIdsFromAllScheduledJobsResponseDto {
   @ApiProperty({
     description: 'Total number of jobs successfully removed across all scheduled jobs',
