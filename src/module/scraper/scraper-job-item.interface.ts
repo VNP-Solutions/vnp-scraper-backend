@@ -26,6 +26,8 @@ export interface JobItemListRowDto {
     total_guest_payment_currency: string | null;
     /** From DB `payment_info.amount_to_charge_or_refund_currency`. */
     amount_to_charge_or_refund_currency: string | null;
+    /** From DB `payment_info.charge_before` (e.g. "Jun 11, 2027"). */
+    charge_before: string | null;
   };
 }
 

@@ -118,6 +118,7 @@ export class ScraperJobItemService implements IScraperJobItemService {
             amount_to_charge_or_refund: pi.amount_to_charge_or_refund as number,
             total_guest_payment_currency: currency,
             amount_to_charge_or_refund_currency: currency,
+            charge_before: (pi.charge_before as string) ?? null,
           },
         };
       });
