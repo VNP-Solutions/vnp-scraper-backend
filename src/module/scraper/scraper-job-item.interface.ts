@@ -6,6 +6,7 @@ export interface JobItemUpsertInput {
   reservation_id: string;
   payment_amount: number;
   payment_currency: string;
+  charge_before?: string | null;
 }
 
 export interface JobItemUpsertResult {

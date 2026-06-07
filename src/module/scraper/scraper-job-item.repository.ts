@@ -240,6 +240,7 @@ export class ScraperJobItemRepository implements IScraperJobItemRepository {
         total_payout: item.payment_amount,
         amount_to_charge_or_refund: item.payment_amount,
         amount_to_charge_or_refund_currency: item.payment_currency,
+        charge_before: item.charge_before ?? null,
       };
 
       const existing = await this.db.jobItem.findUnique({

@@ -174,6 +174,7 @@ export class ScraperJobItemService implements IScraperJobItemService {
     const firstRow = rows[0];
     const reservationCol = findColumn(firstRow, 'reservation');
     const amountCol = findColumn(firstRow, 'amount');
+    const chargeBeforeCol = findColumn(firstRow, 'charge before') ?? findColumn(firstRow, 'chargebefore');
 
     if (!reservationCol) {
       throw new Error(
@@ -187,7 +188,7 @@ export class ScraperJobItemService implements IScraperJobItemService {
     }
 
     this.logger.log(
-      `uploadJobItemsFromExcel: using columns reservation="${reservationCol}", amount="${amountCol}" | rows=${rows.length} | jobId=${jobId}`,
+      `uploadJobItemsFromExcel: using columns reservation="${reservationCol}", amount="${amountCol}", chargeBefore="${chargeBeforeCol ?? 'not found'}" | rows=${rows.length} | jobId=${jobId}`,
     );
 
     for (let i = 0; i < rows.length; i++) {
@@ -208,12 +209,17 @@ export class ScraperJobItemService implements IScraperJobItemService {
         continue;
       }
 
+      const chargeBeforeRaw = chargeBeforeCol
+        ? String(row[chargeBeforeCol] ?? '').trim()
+        : '';
+
       validItems.push({
         job_id: jobId,
         property_id: propertyId,
         reservation_id: reservationId,
         payment_amount: parsed.amount,
         payment_currency: parsed.currency,
+        charge_before: chargeBeforeRaw || null,
       });
     }
 
