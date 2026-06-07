@@ -66,6 +66,21 @@ function parseAmount(raw: string): { amount: number; currency: string } | null {
 }
 
 /**
+ * Parses a human-readable date string (e.g. "Jun 11, 2027", "June 11 2027", "2027-06-11")
+ * and returns an ISO date string "YYYY-MM-DD", or null if unparseable.
+ */
+function parseToIsoDate(raw: string): string | null {
+  const cleaned = raw.trim();
+  if (!cleaned) return null;
+  const d = new Date(cleaned);
+  if (isNaN(d.getTime())) return null;
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/**
  * Finds the first key in a row whose lowercased name contains the given substring.
  * Returns null if nothing matches.
  */
@@ -213,6 +228,9 @@ export class ScraperJobItemService implements IScraperJobItemService {
       const chargeBeforeRaw = chargeBeforeCol
         ? String(row[chargeBeforeCol] ?? '').trim()
         : '';
+      const chargeBeforeIso = chargeBeforeRaw
+        ? parseToIsoDate(chargeBeforeRaw)
+        : null;
 
       validItems.push({
         job_id: jobId,
@@ -220,7 +238,7 @@ export class ScraperJobItemService implements IScraperJobItemService {
         reservation_id: reservationId,
         payment_amount: parsed.amount,
         payment_currency: parsed.currency,
-        charge_before: chargeBeforeRaw || null,
+        charge_before: chargeBeforeIso,
       });
     }
 
