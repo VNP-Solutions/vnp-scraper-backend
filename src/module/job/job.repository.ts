@@ -1076,20 +1076,26 @@ export class JobRepository implements IJobRepository {
     jobIds: string[],
     isArchived: boolean,
   ): Promise<{ count: number }> {
-    try {
-      // Update all jobs with the is_archived status
-      const result = await this.db.job.updateMany({
-        where: {
-          id: {
-            in: jobIds,
-          },
-        },
-        data: {
-          is_archived: isArchived,
-        },
-      });
+    const BATCH_SIZE = 500;
+    let totalCount = 0;
 
-      return result;
+    try {
+      for (let i = 0; i < jobIds.length; i += BATCH_SIZE) {
+        const batch = jobIds.slice(i, i + BATCH_SIZE);
+        const result = await this.db.job.updateMany({
+          where: {
+            id: {
+              in: batch,
+            },
+          },
+          data: {
+            is_archived: isArchived,
+          },
+        });
+        totalCount += result.count;
+      }
+
+      return { count: totalCount };
     } catch (error) {
       this.logger.error('Error bulk updating jobs archive status:', error);
       throw error;
