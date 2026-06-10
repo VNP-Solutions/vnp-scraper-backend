@@ -18,7 +18,7 @@ export const updateParentRetrievalSchema = z.object({
 export const createRetrievalSchema = z.object({
   name: z.string().optional(),
   job_status: z
-    .enum(['Pending', 'Running', 'Completed', 'Partial', 'Failed', 'Stopped'])
+    .enum(['Pending', 'Running', 'Completed', 'Partial', 'Failed', 'Stopped', 'InQueue', 'NothingToReport', 'Manual'])
     .optional(),
   portfolio_id: z.string().optional(),
   sub_portfolio_id: z.string().optional(),
@@ -60,7 +60,7 @@ export const createRetrievalSchema = z.object({
 export const updateRetrievalSchema = z.object({
   name: z.string().optional(),
   job_status: z
-    .enum(['Pending', 'Running', 'Completed', 'Partial', 'Failed', 'Stopped'])
+    .enum(['Pending', 'Running', 'Completed', 'Partial', 'Failed', 'Stopped', 'InQueue', 'NothingToReport', 'Manual'])
     .optional(),
   portfolio_name: z.string().optional(),
   sub_portfolio_name: z.string().optional(),

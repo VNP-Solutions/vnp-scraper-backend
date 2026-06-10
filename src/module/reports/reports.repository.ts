@@ -349,6 +349,8 @@ export class ReportsRepository implements IReportsRepository {
         runningCount,
         completedCount,
         stoppedCount,
+        nothingToReportCount,
+        manualCount,
         totalCount,
       ] = await Promise.all([
         this.db.job.count({ where: { ...(where as any), job_status: 'Pending' } }),
@@ -356,6 +358,8 @@ export class ReportsRepository implements IReportsRepository {
         this.db.job.count({ where: { ...(where as any), job_status: 'Running' } }),
         this.db.job.count({ where: { ...(where as any), job_status: 'Completed' } }),
         this.db.job.count({ where: { ...(where as any), job_status: 'Stopped' } }),
+        this.db.job.count({ where: { ...(where as any), job_status: 'NothingToReport' } }),
+        this.db.job.count({ where: { ...(where as any), job_status: 'Manual' } }),
         this.db.job.count({ where: where as any }),
       ]);
 
@@ -368,6 +372,8 @@ export class ReportsRepository implements IReportsRepository {
         running: { count: runningCount, percentage: pct(runningCount) },
         completed: { count: completedCount, percentage: pct(completedCount) },
         stopped: { count: stoppedCount, percentage: pct(stoppedCount) },
+        nothingToReport: { count: nothingToReportCount, percentage: pct(nothingToReportCount) },
+        manual: { count: manualCount, percentage: pct(manualCount) },
         total: totalCount,
       };
     } catch (error) {
