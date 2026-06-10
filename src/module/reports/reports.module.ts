@@ -1,5 +1,6 @@
 import { Logger, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { EncryptionUtil } from '../../common/utils/encryption.util';
 import { MailService } from '../../common/utils/mail.service';
 import { S3UploadService } from '../../common/utils/s3-upload.util';
 import { DatabaseService } from '../database/database.service';
@@ -32,6 +33,7 @@ import { ReportsService } from './reports.service';
     ReportsExportConsumer,
     DatabaseService,
     Logger,
+    EncryptionUtil,
     ReportsSchedulerService,
   ],
   exports: ['IReportsService', 'IReportsRepository'],

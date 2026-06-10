@@ -79,7 +79,7 @@ export class UserInvitationService implements IUserInvitationService {
       <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
         <tr>
           <td style="padding: 30px 20px; text-align: center; background-color: #ffffff; border-bottom: 1px solid #eeeeee;">
-            <img src="https://argobot-bucket.s3.us-east-2.amazonaws.com/VNP+LOGO_PNG.png" alt="VNP Solutions Logo" style="max-width: 200px; height: auto;">
+            <img src="https://qp-console.dashboardvnps.com/assets/logo.svg" alt="VNP Solutions Logo" style="max-width: 200px; height: auto;">
           </td>
         </tr>
         <tr>
@@ -106,7 +106,7 @@ export class UserInvitationService implements IUserInvitationService {
         <tr>
           <td style="padding: 20px 30px; background-color: #f8f9fa; border-top: 1px solid #eeeeee;">
             <p style="margin: 0; font-size: 12px; color: #666666; text-align: center;">
-              © 2024 VNP Solutions. All rights reserved.<br>
+              © 2026 VNP Solutions. All rights reserved.<br>
               This invitation was sent by ${invitedByName} on behalf of VNP Solutions.
             </p>
           </td>

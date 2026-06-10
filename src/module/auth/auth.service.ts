@@ -56,7 +56,7 @@ export class AuthService {
         <tr>
             <td style="padding: 30px 20px; text-align: center; background-color: #ffffff; border-bottom: 1px solid #eeeeee;">
                 <!-- Logo Placeholder -->
-                <img src="https://argobot-bucket.s3.us-east-2.amazonaws.com/VNP+LOGO_PNG.png" alt="VNP Solutions Logo" style="max-width: 200px; height: auto;">
+                <img src="https://qp-console.dashboardvnps.com/assets/logo.svg" alt="VNP Solutions Logo" style="max-width: 200px; height: auto;">
             </td>
         </tr>
         <tr>
@@ -92,7 +92,7 @@ export class AuthService {
         <tr>
             <td style="padding: 0;">
                 <!-- Promotional Image -->
-                <img src="https://argobot-bucket.s3.us-east-2.amazonaws.com/vnp-stock.jpeg" alt="Secure with VNP Solutions" style="width: 100%; height: auto; display: block;">
+                <img src="https://qp-console.dashboardvnps.com/assets/vnp-stock.jpeg" alt="Secure with VNP Solutions" style="width: 100%; height: auto; display: block;">
             </td>
         </tr>
         <tr>
@@ -158,7 +158,7 @@ export class AuthService {
         <tr>
             <td style="padding: 0;">
                 <!-- Promotional Image -->
-                <img src="https://argobot-bucket.s3.us-east-2.amazonaws.com/vnp-stock.jpeg" alt="Secure with VNP Solutions" style="width: 100%; height: auto; display: block;">
+                <img src="https://qp-console.dashboardvnps.com/assets/vnp-stock.jpeg" alt="Secure with VNP Solutions" style="width: 100%; height: auto; display: block;">
             </td>
         </tr>
         <tr>
