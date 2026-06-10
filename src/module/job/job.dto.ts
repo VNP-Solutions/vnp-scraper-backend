@@ -311,6 +311,18 @@ export class JobStatusCountDto {
   })
   stopped: JobStatusItemDto;
 
+  @ApiProperty({
+    description: 'Nothing to report jobs count and percentage',
+    type: JobStatusItemDto,
+  })
+  nothingToReport: JobStatusItemDto;
+
+  @ApiProperty({
+    description: 'Manual jobs count and percentage',
+    type: JobStatusItemDto,
+  })
+  manual: JobStatusItemDto;
+
   @ApiProperty({ description: 'Total number of jobs', example: 73 })
   total: number;
 }
@@ -348,6 +360,18 @@ export class MonthlyJobStatsDto {
     type: JobStatusItemDto,
   })
   stopped: JobStatusItemDto;
+
+  @ApiProperty({
+    description: 'Nothing to report jobs count and percentage in this month',
+    type: JobStatusItemDto,
+  })
+  nothingToReport: JobStatusItemDto;
+
+  @ApiProperty({
+    description: 'Manual jobs count and percentage in this month',
+    type: JobStatusItemDto,
+  })
+  manual: JobStatusItemDto;
 
   @ApiProperty({
     description: 'Total number of jobs in this month',

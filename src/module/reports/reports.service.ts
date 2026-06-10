@@ -225,6 +225,8 @@ export class ReportsService implements IReportsService {
           running: { count: 0, percentage: 0 },
           completed: { count: 0, percentage: 0 },
           stopped: { count: 0, percentage: 0 },
+          nothingToReport: { count: 0, percentage: 0 },
+          manual: { count: 0, percentage: 0 },
           total: 0,
         };
       }

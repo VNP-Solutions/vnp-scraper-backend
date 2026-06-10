@@ -676,6 +676,8 @@ export class JobRepository implements IJobRepository {
     running: { count: number; percentage: number };
     completed: { count: number; percentage: number };
     stopped: { count: number; percentage: number };
+    nothingToReport: { count: number; percentage: number };
+    manual: { count: number; percentage: number };
     total: number;
   }> {
     try {
@@ -687,6 +689,8 @@ export class JobRepository implements IJobRepository {
         runningCount,
         completedCount,
         stoppedCount,
+        nothingToReportCount,
+        manualCount,
         totalCount,
       ] = await Promise.all([
         this.db.job.count({
@@ -703,6 +707,12 @@ export class JobRepository implements IJobRepository {
         }),
         this.db.job.count({
           where: { ...whereClause, job_status: 'Stopped' },
+        }),
+        this.db.job.count({
+          where: { ...whereClause, job_status: 'NothingToReport' },
+        }),
+        this.db.job.count({
+          where: { ...whereClause, job_status: 'Manual' },
         }),
         this.db.job.count({ where: whereClause }),
       ]);
@@ -732,6 +742,14 @@ export class JobRepository implements IJobRepository {
           count: stoppedCount,
           percentage: calculatePercentage(stoppedCount, totalCount),
         },
+        nothingToReport: {
+          count: nothingToReportCount,
+          percentage: calculatePercentage(nothingToReportCount, totalCount),
+        },
+        manual: {
+          count: manualCount,
+          percentage: calculatePercentage(manualCount, totalCount),
+        },
         total: totalCount,
       };
     } catch (error) {
@@ -748,6 +766,8 @@ export class JobRepository implements IJobRepository {
       running: { count: number; percentage: number };
       completed: { count: number; percentage: number };
       stopped: { count: number; percentage: number };
+      nothingToReport: { count: number; percentage: number };
+      manual: { count: number; percentage: number };
       total: number;
     }>
   > {
@@ -788,6 +808,8 @@ export class JobRepository implements IJobRepository {
           running: number;
           completed: number;
           stopped: number;
+          nothingToReport: number;
+          manual: number;
           total: number;
         }
       >();
@@ -803,6 +825,8 @@ export class JobRepository implements IJobRepository {
           running: 0,
           completed: 0,
           stopped: 0,
+          nothingToReport: 0,
+          manual: 0,
           total: 0,
         });
       }
@@ -830,6 +854,12 @@ export class JobRepository implements IJobRepository {
               break;
             case 'Stopped':
               monthData.stopped++;
+              break;
+            case 'NothingToReport':
+              monthData.nothingToReport++;
+              break;
+            case 'Manual':
+              monthData.manual++;
               break;
           }
         }
@@ -860,6 +890,14 @@ export class JobRepository implements IJobRepository {
         stopped: {
           count: monthData.stopped,
           percentage: calculatePercentage(monthData.stopped, monthData.total),
+        },
+        nothingToReport: {
+          count: monthData.nothingToReport,
+          percentage: calculatePercentage(monthData.nothingToReport, monthData.total),
+        },
+        manual: {
+          count: monthData.manual,
+          percentage: calculatePercentage(monthData.manual, monthData.total),
         },
         total: monthData.total,
       }));

@@ -28,6 +28,8 @@ enum JobStatus {
   Failed
   Stopped
   InQueue
+  NothingToReport
+  Manual
 }
 
 /// Identifies which "kind" of evaluation a JobTagEntry represents.

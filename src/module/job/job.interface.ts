@@ -38,6 +38,8 @@ export interface IJobRepository {
     running: { count: number; percentage: number };
     completed: { count: number; percentage: number };
     stopped: { count: number; percentage: number };
+    nothingToReport: { count: number; percentage: number };
+    manual: { count: number; percentage: number };
     total: number;
   }>;
   getMonthlyJobStats(userId?: string): Promise<
@@ -48,6 +50,8 @@ export interface IJobRepository {
       running: { count: number; percentage: number };
       completed: { count: number; percentage: number };
       stopped: { count: number; percentage: number };
+      nothingToReport: { count: number; percentage: number };
+      manual: { count: number; percentage: number };
       total: number;
     }>
   >;

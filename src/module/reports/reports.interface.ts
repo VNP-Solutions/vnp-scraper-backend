@@ -160,6 +160,8 @@ export interface ReportsCurrentCounts {
   running: ReportsStatusItem;
   completed: ReportsStatusItem;
   stopped: ReportsStatusItem;
+  nothingToReport: ReportsStatusItem;
+  manual: ReportsStatusItem;
   total: number;
 }
 
