@@ -299,6 +299,110 @@ export class ImportJobsResponseDto {
   recurringJobs: any[];
 }
 
+export class JobCurrentOtpResponseDto {
+  @ApiProperty({ example: '65f0a3c4e2b7a1d2c3e4f5a6' })
+  id: string;
+
+  @ApiProperty({ example: '123456' })
+  otp: string;
+
+  @ApiProperty({ example: 'Expedia', enum: OTAProvider })
+  ota: OTAProvider;
+
+  @ApiProperty({ example: '65f0a3c4e2b7a1d2c3e4f5a6' })
+  job_id: string;
+
+  @ApiProperty({ example: '2026-06-10T12:00:00.000Z' })
+  createdAt: Date;
+
+  @ApiProperty({ example: '2026-06-10T12:00:00.000Z' })
+  updatedAt: Date;
+}
+
+export class JobListItemResponseDto {
+  @ApiProperty({ example: '65f0a3c4e2b7a1d2c3e4f5a6' })
+  job_id: string;
+
+  @ApiProperty({ example: 'Expedia' })
+  ota_name: string;
+
+  @ApiProperty({ example: 'Sample Hotel', nullable: true })
+  property_name: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'Linked property document with portfolio / sub-portfolio summary',
+  })
+  property: Record<string, unknown> | null;
+
+  @ApiProperty({ example: 'Running' })
+  job_status: string;
+
+  @ApiProperty({ example: false })
+  is_quick_job: boolean;
+
+  @ApiProperty({ example: true })
+  otp_needed: boolean;
+
+  @ApiProperty({ example: false })
+  otp_fulfilled: boolean;
+
+  @ApiProperty({
+    type: 'array',
+    items: { type: 'object' },
+    example: [],
+  })
+  screenshot_urls: unknown[];
+
+  @ApiProperty({
+    type: JobCurrentOtpResponseDto,
+    nullable: true,
+    description: 'Latest JobCurrentOtp for this job',
+    example: {
+      id: '65f0a3c4e2b7a1d2c3e4f5a6',
+      otp: '123456',
+      ota: 'Expedia',
+      job_id: '65f0a3c4e2b7a1d2c3e4f5a6',
+      createdAt: '2026-06-10T12:00:00.000Z',
+      updatedAt: '2026-06-10T12:00:00.000Z',
+    },
+  })
+  job_current_otp: JobCurrentOtpResponseDto | null;
+}
+
+export class JobListMetadataDto {
+  @ApiProperty({ example: 100 })
+  totalDocuments: number;
+
+  @ApiProperty({ example: 1 })
+  currentPage: number;
+
+  @ApiProperty({ example: 10 })
+  totalPage: number;
+
+  @ApiProperty({ example: 10 })
+  limit: number;
+
+  @ApiProperty({
+    example: { pending: 5, failed: 2, completed: 80 },
+  })
+  statusCounts: { pending: number; failed: number; completed: number };
+}
+
+export class GetJobsResponseDto {
+  @ApiProperty({ example: 200 })
+  statusCode: number;
+
+  @ApiProperty({ example: 'Jobs retrieved successfully' })
+  message: string;
+
+  @ApiProperty({ type: [JobListItemResponseDto] })
+  data: JobListItemResponseDto[];
+
+  @ApiProperty({ type: JobListMetadataDto })
+  metadata: JobListMetadataDto;
+}
+
 export class JobStatusItemDto {
   @ApiProperty({ description: 'Count of jobs', example: 15 })
   count: number;

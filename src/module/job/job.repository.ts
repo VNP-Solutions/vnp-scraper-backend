@@ -91,6 +91,12 @@ export class JobRepository implements IJobRepository {
     try {
       const job = await this.db.job.findUnique({
         where: { id },
+        include: {
+          jobCurrentOtps: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
+        },
       });
       return job;
     } catch (error) {
@@ -322,6 +328,18 @@ export class JobRepository implements IJobRepository {
             portfolio: { select: { id: true, name: true } },
             subPortfolio: { select: { id: true, name: true } },
           },
+        },
+        jobCurrentOtps: {
+          select: {
+            id: true,
+            otp: true,
+            ota: true,
+            job_id: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
         },
       } as Prisma.JobSelect;
 

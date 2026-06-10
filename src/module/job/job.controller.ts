@@ -49,6 +49,7 @@ import {
   CreateBatchDto,
   CreateJobDto,
   ExportMasterJobsDto,
+  GetJobsResponseDto,
   ImportJobsResponseDto,
   JobStatisticsResponseDto,
   SendOtpReminderSmsDto,
@@ -121,9 +122,13 @@ export class JobController {
   @ApiOperation({
     summary: 'Get all jobs',
     description:
-      'Returns a paginated list where each job includes: job_id, ota_name, property_name (on the job), job_status, and property (linked property document with portfolio and subPortfolio id/name). metadata includes statusCounts: pending, failed, and completed for the same filter set.',
+      'Returns a paginated list where each job includes: job_id, ota_name, property_name (on the job), job_status, property (linked property document with portfolio and subPortfolio id/name), and job_current_otp (latest JobCurrentOtp: otp, ota, job_id). metadata includes statusCounts: pending, failed, and completed for the same filter set.',
   })
-  @ApiResponse({ status: 200, description: 'Returns list of jobs' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns list of jobs',
+    type: GetJobsResponseDto,
+  })
   @ApiQuery({
     name: 'search',
     required: false,

@@ -15,6 +15,15 @@ export interface JobScreenshotUrlDto {
   type: string;
 }
 
+export interface JobCurrentOtpDto {
+  id: string;
+  otp: string;
+  ota: string;
+  job_id: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface JobListItemDto {
   /** Job document id (Mongo ObjectId). */
   job_id: string;
@@ -27,6 +36,8 @@ export interface JobListItemDto {
   otp_needed: boolean;
   otp_fulfilled: boolean;
   screenshot_urls: JobScreenshotUrlDto[];
+  /** Latest JobCurrentOtp for this job, if any. */
+  job_current_otp: JobCurrentOtpDto | null;
 }
 
 /** Property payload on job list (scalars + portfolio / sub-portfolio summary). */

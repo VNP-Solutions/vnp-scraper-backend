@@ -106,6 +106,7 @@ export class JobService implements IJobService {
         screenshot_urls: Array.isArray(job.screenshot_urls)
           ? job.screenshot_urls
           : [],
+        job_current_otp: job.jobCurrentOtps?.[0] ?? null,
       }));
       return { ...result, data };
     } catch (error) {
