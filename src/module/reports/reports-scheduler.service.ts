@@ -162,7 +162,7 @@ export class ReportsSchedulerService implements OnModuleInit {
         }
 
         csvAttachment = {
-          filename: `failed-nothing-to-report-jobs-${dateStr}.csv`,
+          filename: `daily-report-jobs-${dateStr}.csv`,
           content: this.buildCsv(failedJobs, credentialsMap),
         };
       }
