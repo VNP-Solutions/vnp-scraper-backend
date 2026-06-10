@@ -13,7 +13,6 @@ const DEFAULT_CRON_TIME = '0 0 12 * * *';
 
 /** All statuses included in the daily CSV attachment. */
 const ATTACHMENT_STATUSES = [
-  'Pending',
   'Running',
   'Completed',
   'Partial',
