@@ -13,6 +13,7 @@ import { DbDataModule } from './module/db-data/db-data.module';
 import { EncryptionModule } from './module/encryption/encryption.module';
 import { GoogleOAuthModule } from './module/google-oauth/google-oauth.module';
 import { JobModule } from './module/job/job.module';
+import { JobOtpModule } from './module/job-otp/job-otp.module';
 import { NotificationModule } from './module/notification/notification.module';
 import { NotesModule } from './module/notes/notes.module';
 import { OnboardingModule } from './module/onboarding/onboarding.module';
@@ -46,6 +47,7 @@ import { UserModule } from './module/user/user.module';
     PropertyModule,
     SubPortfolioModule,
     JobModule,
+    JobOtpModule,
     RecurringJobModule,
     UploadModule,
     UserFeatureAccessPermissionModule,

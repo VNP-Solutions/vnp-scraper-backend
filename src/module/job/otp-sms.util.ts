@@ -51,16 +51,29 @@ export function resolveOtpSmsLastThreeDigits(job: JobForOtpSmsLike): string | nu
   return lastThree || null;
 }
 
-/** e.g. 15551205205 → 15...205 (first 2 digit chars + last 3 digit chars) */
+/** e.g. 15551205205 → 15************205 (first 2 + ** per hidden digit + last 3) */
 export function formatPhoneFirstTwoLastThree(phone: string): string {
   const digits = phone.replace(/\D/g, '');
   if (digits.length === 0) {
     return phone.trim();
   }
 
-  const firstTwo = digits.slice(0, Math.min(2, digits.length));
-  const lastThree = digits.slice(-Math.min(3, digits.length));
-  return `${firstTwo}...${lastThree}`;
+  if (digits.length <= 5) {
+    const firstTwo = digits.slice(0, Math.min(2, digits.length));
+    const lastThree = digits.slice(-Math.min(3, digits.length));
+    const overlap = firstTwo.length + lastThree.length - digits.length;
+    if (overlap > 0) {
+      return `${firstTwo}${lastThree.slice(overlap)}`;
+    }
+    const middleCount = digits.length - firstTwo.length - lastThree.length;
+    const middle = middleCount > 0 ? '**'.repeat(middleCount) : '';
+    return `${firstTwo}${middle}${lastThree}`;
+  }
+
+  const firstTwo = digits.slice(0, 2);
+  const lastThree = digits.slice(-3);
+  const middle = '**'.repeat(digits.length - 5);
+  return `${firstTwo}${middle}${lastThree}`;
 }
 
 export function buildOtpReminderSmsBody(
@@ -72,7 +85,7 @@ export function buildOtpReminderSmsBody(
   const maskedPhone = formatPhoneFirstTwoLastThree(phoneNumber);
 
   return `Hello,
-Another OTP was sent to take from ${maskedPhone} (ending with the last 3 digits shown in the system: ${lastThreeDigits}). Could you please send that OTP to ${supportPhone} or forward it to ${supportEmail}?
+Another OTP was sent to ${maskedPhone}. Could you please send that OTP to ${supportPhone} or forward it to ${supportEmail}?
 
 Thank you!`;
 }

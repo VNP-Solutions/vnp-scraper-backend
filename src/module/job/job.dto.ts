@@ -544,8 +544,8 @@ export class SendOtpReminderSmsResponseDto {
 
   @ApiProperty({
     description:
-      'Masked phone from phone_number_slots (first 2 + last 3 digits)',
-    example: '15...205',
+      'Masked phone from phone_number_slots (first 2 + ** per hidden digit + last 3)',
+    example: '15************205',
   })
   phone_number: string;
 

@@ -263,6 +263,7 @@ model Job {
   dbData        DbData[]
   dbEntries     DbEntry[]
   otpCodes      OtpCode[]
+  jobCurrentOtps JobCurrentOtp[]
 
   @@map("jobs")
 }
@@ -571,6 +572,21 @@ model OtpCode {
   @@index([createdAt(sort: Desc)])
   @@index([provider, job_id, used])
   @@map("otp_codes")
+}
+
+model JobCurrentOtp {
+  id        String      @id @default(auto()) @map("_id") @db.ObjectId
+  otp       String
+  ota       OTAProvider @map("OTA")
+  job_id    String      @db.ObjectId
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  job Job @relation(fields: [job_id], references: [id], onDelete: Cascade)
+
+  @@index([job_id])
+  @@index([ota, job_id])
+  @@map("job_current_otps")
 }
 
 model PhoneNumberSlot {
