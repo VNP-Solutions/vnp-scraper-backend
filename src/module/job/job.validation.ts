@@ -97,6 +97,10 @@ export const exportMasterJobsSchema = z.object({
     .min(1, 'At least one job ID is required'),
 });
 
+export const sendOtpReminderSmsSchema = z.object({
+  job_id: objectIdSchema,
+});
+
 export type CreateJobType = z.infer<typeof createJobSchema>;
 export type UpdateJobType = z.infer<typeof updateJobSchema>;
 export type CreateBatchType = z.infer<typeof createBatchSchema>;
@@ -105,3 +109,4 @@ export type BulkArchiveJobsType = z.infer<typeof bulkArchiveJobsSchema>;
 export type BulkDeleteJobsType = z.infer<typeof bulkDeleteJobsSchema>;
 export type BulkDeleteBatchesType = z.infer<typeof bulkDeleteBatchesSchema>;
 export type ExportMasterJobsType = z.infer<typeof exportMasterJobsSchema>;
+export type SendOtpReminderSmsType = z.infer<typeof sendOtpReminderSmsSchema>;

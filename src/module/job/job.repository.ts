@@ -99,6 +99,25 @@ export class JobRepository implements IJobRepository {
     }
   }
 
+  async findByIdForOtpSms(jobId: string) {
+    try {
+      return await this.db.job.findUnique({
+        where: { id: jobId },
+        include: {
+          phoneNumberSlots: true,
+          property: {
+            include: {
+              phoneNumberSlot: true,
+            },
+          },
+        },
+      });
+    } catch (error) {
+      this.logger.error(error);
+      throw error;
+    }
+  }
+
   async findAll(
     query: Record<string, any>,
   ): Promise<{ data: any[]; metadata: any }> {

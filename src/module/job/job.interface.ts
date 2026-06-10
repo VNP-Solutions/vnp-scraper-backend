@@ -55,6 +55,7 @@ export interface JobListPropertyDto {
 export interface IJobRepository {
   create(data: CreateJobDto): Promise<Job>;
   findById(id: string): Promise<Job>;
+  findByIdForOtpSms(jobId: string): Promise<any>;
   findAll(query: Record<string, any>): Promise<{ data: any[]; metadata: any }>;
   update(id: string, data: UpdateJobDto): Promise<Job>;
   delete(id: string): Promise<Job>;
@@ -199,4 +200,12 @@ export interface IJobService {
     recurringId: string,
     bucketId: string,
   ): Promise<{ buffer: Buffer; fileName: string }>;
+  sendOtpReminderSms(jobId: string): Promise<{
+    job_id: string;
+    to: string;
+    provider: string;
+    message_sid: string;
+    last_three_digits: string;
+    message: string;
+  }>;
 }

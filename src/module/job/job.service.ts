@@ -5,6 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Batch, Job, OTAProvider, PostingType } from '@prisma/client';
 import * as archiver from 'archiver';
 import { PassThrough } from 'stream';
@@ -23,6 +24,12 @@ import {
   MASTER_EXPORT_HEADER,
   buildMasterRows,
 } from './master-export.util';
+import {
+  buildOtpReminderSmsBody,
+  resolveOtpSmsDestinationPhone,
+  resolveOtpSmsLastThreeDigits,
+} from './otp-sms.util';
+import { SmsService } from '../sms/sms.service';
 
 @Injectable()
 export class JobService implements IJobService {
@@ -33,6 +40,8 @@ export class JobService implements IJobService {
     private readonly scheduledJobService: IScheduledJobService,
     @Inject('IRecurringJobService')
     private readonly recurringJobService: IRecurringJobService,
+    private readonly smsService: SmsService,
+    private readonly configService: ConfigService,
     private readonly logger: Logger,
   ) {}
 
@@ -1178,6 +1187,57 @@ export class JobService implements IJobService {
       );
       throw error;
     }
+  }
+
+  async sendOtpReminderSms(jobId: string): Promise<{
+    job_id: string;
+    to: string;
+    provider: string;
+    message_sid: string;
+    last_three_digits: string;
+    message: string;
+  }> {
+    const job = await this.repository.findByIdForOtpSms(jobId);
+    if (!job) {
+      throw new NotFoundException(`Job with ID ${jobId} not found`);
+    }
+
+    const lastThreeDigits = resolveOtpSmsLastThreeDigits(job);
+    if (!lastThreeDigits) {
+      throw new BadRequestException(
+        'No phone_number_slots phone found for this job. Link a phone number slot to the job or property first.',
+      );
+    }
+
+    const destinationPhone = resolveOtpSmsDestinationPhone(job);
+    if (!destinationPhone) {
+      throw new BadRequestException(
+        'No destination phone number found for this job. Set phone_number_for_report or link a phone_number_slot.',
+      );
+    }
+
+    const supportPhone =
+      this.configService.get<string>('OTP_SUPPORT_PHONE') ?? '(571) 238-0638';
+    const supportEmail =
+      this.configService.get<string>('OTP_SUPPORT_EMAIL') ??
+      'ITSUPPORT@vnpsolutions.com';
+
+    const message = buildOtpReminderSmsBody(
+      lastThreeDigits,
+      supportPhone,
+      supportEmail,
+    );
+
+    const smsResult = await this.smsService.sendSms(destinationPhone, message);
+
+    return {
+      job_id: jobId,
+      to: smsResult.to,
+      provider: smsResult.provider,
+      message_sid: smsResult.messageId,
+      last_three_digits: lastThreeDigits,
+      message,
+    };
   }
 
 }

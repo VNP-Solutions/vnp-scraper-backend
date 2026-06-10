@@ -51,6 +51,8 @@ import {
   ExportMasterJobsDto,
   ImportJobsResponseDto,
   JobStatisticsResponseDto,
+  SendOtpReminderSmsDto,
+  SendOtpReminderSmsResponseDto,
   UpdateBatchDto,
   UpdateJobDto,
 } from './job.dto';
@@ -69,7 +71,9 @@ import {
   createBatchSchema,
   createJobSchema,
   exportMasterJobsSchema,
+  sendOtpReminderSmsSchema,
   type ExportMasterJobsType,
+  type SendOtpReminderSmsType,
 } from './job.validation';
 
 @ApiTags('Jobs')
@@ -419,6 +423,39 @@ export class JobController {
           statusCode: 200,
           message: 'Batches retrieved successfully',
           data: batches,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Post('/send-otp-sms')
+  @UseGuards(JwtAuthGuard)
+  @ValidateBody(sendOtpReminderSmsSchema)
+  @ApiOperation({
+    summary: 'Send OTP reminder SMS for a job (job_id in body)',
+    description:
+      'Resolves phone_number_slots for the job, includes the MFA phone last 3 digits in the message, and sends an SMS asking the recipient to forward the OTP to VNP support.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'OTP reminder SMS sent successfully',
+    type: SendOtpReminderSmsResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Missing phone slot or SMS failure' })
+  @ApiResponse({ status: 404, description: 'Job not found' })
+  async sendOtpReminderSmsByBody(
+    @Body() body: SendOtpReminderSmsType,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result = await this.jobService.sendOtpReminderSms(body.job_id);
+        return {
+          statusCode: 200,
+          message: 'OTP reminder SMS sent successfully',
+          data: result,
         };
       },
       this.logger,
@@ -1121,6 +1158,38 @@ export class JobController {
         this.logger,
       );
     }
+  }
+
+  @Post('/:id/send-otp-sms')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Send OTP reminder SMS for a job (job_id in path)',
+    description:
+      'Same as POST /jobs/send-otp-sms but uses the job id from the URL path.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'OTP reminder SMS sent successfully',
+    type: SendOtpReminderSmsResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Missing phone slot or SMS failure' })
+  @ApiResponse({ status: 404, description: 'Job not found' })
+  async sendOtpReminderSmsByParam(
+    @Param('id') jobId: string,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result = await this.jobService.sendOtpReminderSms(jobId);
+        return {
+          statusCode: 200,
+          message: 'OTP reminder SMS sent successfully',
+          data: result,
+        };
+      },
+      this.logger,
+    );
   }
 
   @Get('/:id/db-entries')

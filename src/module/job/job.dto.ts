@@ -515,6 +515,43 @@ export class ExportMasterJobsDto {
   job_ids: string[];
 }
 
+export class SendOtpReminderSmsDto {
+  @ApiProperty({
+    description: 'Job ID used to resolve phone_number_slots and send the OTP reminder SMS',
+    example: '65f0a3c4e2b7a1d2c3e4f5a6',
+  })
+  job_id: string;
+}
+
+export class SendOtpReminderSmsResponseDto {
+  @ApiProperty({ description: 'Job ID' })
+  job_id: string;
+
+  @ApiProperty({ description: 'Normalized destination phone number' })
+  to: string;
+
+  @ApiProperty({
+    description: 'SMS provider used',
+    enum: ['ejoin', 'twilio'],
+    example: 'ejoin',
+  })
+  provider: string;
+
+  @ApiProperty({
+    description: 'Provider message/task id (Ejoin task id or Twilio SID)',
+  })
+  message_sid: string;
+
+  @ApiProperty({
+    description: 'Last 3 digits of the MFA phone from phone_number_slots',
+    example: '638',
+  })
+  last_three_digits: string;
+
+  @ApiProperty({ description: 'SMS body that was sent' })
+  message: string;
+}
+
 export class BulkDeleteJobsResponseDto {
   @ApiProperty({
     description: 'Number of jobs deleted',

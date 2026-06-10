@@ -5,6 +5,7 @@ import { DatabaseService } from '../database/database.service';
 import { PropertyModule } from '../property/property.module';
 import { RecurringJobModule } from '../recurring-job/recurring-job.module';
 import { ScraperModule } from '../scraper/scraper.module';
+import { SmsModule } from '../sms/sms.module';
 import { JobController } from './job.controller';
 import { JobRepository } from './job.repository';
 import { JobService } from './job.service';
@@ -14,6 +15,7 @@ import { JobService } from './job.service';
     forwardRef(() => ScraperModule),
     forwardRef(() => RecurringJobModule),
     PropertyModule,
+    SmsModule,
   ],
   controllers: [JobController],
   providers: [
