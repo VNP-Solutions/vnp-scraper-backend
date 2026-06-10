@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
+import { ReportsCurrentCounts } from '../../module/reports/reports.interface';
 
 /**
  * Shared SMTP / Nodemailer wrapper.
@@ -201,7 +202,125 @@ export class MailService {
     );
   }
 
+  /**
+   * Send the daily job-statistics summary email to a list of recipients.
+   * Called by the reports scheduler cron every day at noon.
+   */
+  async sendDailyStatisticsEmail(opts: {
+    to: string[];
+    stats: ReportsCurrentCounts;
+    date: string;
+    failedJobsCsv?: { filename: string; content: string } | null;
+  }): Promise<void> {
+    if (!opts.to.length) return;
+
+    const subject = `VNP Daily Job Statistics — ${opts.date}`;
+    const html = this.buildStatisticsHtml(opts.stats, opts.date, !!opts.failedJobsCsv);
+    const text = this.buildStatisticsText(opts.stats, opts.date);
+
+    const attachments: nodemailer.SendMailOptions['attachments'] = [];
+    if (opts.failedJobsCsv) {
+      attachments.push({
+        filename: opts.failedJobsCsv.filename,
+        content: opts.failedJobsCsv.content,
+        contentType: 'text/csv',
+      });
+    }
+
+    await this.transporter.sendMail({
+      from: this.fromAddress,
+      to: opts.to.join(', '),
+      subject,
+      html,
+      text,
+      ...(attachments.length ? { attachments } : {}),
+    });
+    this.logger.log(
+      `Sent daily statistics email to [${opts.to.join(', ')}] for ${opts.date}`,
+    );
+  }
+
   // ---------- private templates -------------------------------------------
+
+  private buildStatisticsHtml(stats: ReportsCurrentCounts, date: string, hasCsv = false): string {
+    const rows = [
+      { label: 'Pending',          key: 'pending'         },
+      { label: 'Running',          key: 'running'         },
+      { label: 'Completed',        key: 'completed'       },
+      { label: 'Failed',           key: 'failed'          },
+      { label: 'Stopped',          key: 'stopped'         },
+      { label: 'Nothing to Report',key: 'nothingToReport' },
+      { label: 'Manual',           key: 'manual'          },
+    ] as const;
+
+    const rowsHtml = rows.map((r) => {
+      const item = stats[r.key];
+      return `<tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;font-size:14px;">${r.label}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;font-size:14px;text-align:right;font-weight:600;">${item.count}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;font-size:14px;text-align:right;color:#666;">${item.percentage}%</td>
+      </tr>`;
+    }).join('');
+
+    return `<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background-color:#f4f4f4;color:#333;line-height:1.6;">
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.05);">
+    <tr>
+      <td style="padding:30px 20px;text-align:center;background:#ffffff;border-bottom:1px solid #eee;">
+        <img src="https://argobot-bucket.s3.us-east-2.amazonaws.com/VNP+LOGO_PNG.png" alt="VNP Solutions" style="max-width:200px;height:auto;">
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:30px 24px;">
+        <h2 style="margin:0 0 4px 0;color:#222;">Daily Job Statistics</h2>
+        <p style="margin:0 0 24px 0;color:#666;font-size:14px;">${this.escape(date)} &mdash; All OTA providers &amp; job types</p>
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;border:1px solid #eee;border-radius:6px;overflow:hidden;">
+          <thead>
+            <tr style="background:#f9fafb;">
+              <th style="padding:10px 12px;text-align:left;font-size:13px;color:#555;font-weight:600;border-bottom:1px solid #eee;">Status</th>
+              <th style="padding:10px 12px;text-align:right;font-size:13px;color:#555;font-weight:600;border-bottom:1px solid #eee;">Count</th>
+              <th style="padding:10px 12px;text-align:right;font-size:13px;color:#555;font-weight:600;border-bottom:1px solid #eee;">%</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+            <tr style="background:#f9fafb;">
+              <td style="padding:10px 12px;font-size:14px;font-weight:700;">Total</td>
+              <td style="padding:10px 12px;font-size:14px;font-weight:700;text-align:right;">${stats.total}</td>
+              <td style="padding:10px 12px;font-size:14px;text-align:right;color:#666;">100%</td>
+            </tr>
+          </tbody>
+        </table>
+        ${hasCsv ? `<p style="margin-top:20px;font-size:13px;color:#b91c1c;background:#fff5f5;border-left:3px solid #b91c1c;padding:10px 14px;border-radius:4px;">
+          &#x26A0;&#xFE0F; <strong>${stats.failed.count} Failed</strong> and <strong>${stats.nothingToReport.count} Nothing to Report</strong> job${(stats.failed.count + stats.nothingToReport.count) === 1 ? '' : 's'} detected today. See the attached CSV for the full list.
+        </p>` : ''}
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:16px 24px;text-align:center;background:#fafafa;color:#999;font-size:12px;border-top:1px solid #eee;">
+        VNP Reports · automated daily summary, please do not reply
+      </td>
+    </tr>
+  </table>
+</body>`;
+  }
+
+  private buildStatisticsText(stats: ReportsCurrentCounts, date: string): string {
+    return (
+      `VNP Daily Job Statistics — ${date}\n` +
+      `All OTA providers & job types\n\n` +
+      `Pending          : ${stats.pending.count} (${stats.pending.percentage}%)\n` +
+      `Running          : ${stats.running.count} (${stats.running.percentage}%)\n` +
+      `Completed        : ${stats.completed.count} (${stats.completed.percentage}%)\n` +
+      `Failed           : ${stats.failed.count} (${stats.failed.percentage}%)\n` +
+      `Stopped          : ${stats.stopped.count} (${stats.stopped.percentage}%)\n` +
+      `Nothing to Report: ${stats.nothingToReport.count} (${stats.nothingToReport.percentage}%)\n` +
+      `Manual           : ${stats.manual.count} (${stats.manual.percentage}%)\n` +
+      `─────────────────────────────\n` +
+      `Total            : ${stats.total}\n\n` +
+      `— VNP Reports`
+    );
+  }
+
 
   private buildReadyHtml(o: {
     safeName: string;

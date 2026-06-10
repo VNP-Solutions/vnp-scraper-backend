@@ -1,4 +1,5 @@
 import { Logger, Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { MailService } from '../../common/utils/mail.service';
 import { S3UploadService } from '../../common/utils/s3-upload.util';
 import { DatabaseService } from '../database/database.service';
@@ -6,10 +7,11 @@ import { JobModule } from '../job/job.module';
 import { ReportsExportConsumer } from './reports-export.consumer';
 import { ReportsController } from './reports.controller';
 import { ReportsRepository } from './reports.repository';
+import { ReportsSchedulerService } from './reports-scheduler.service';
 import { ReportsService } from './reports.service';
 
 @Module({
-  imports: [JobModule],
+  imports: [JobModule, ConfigModule],
   controllers: [ReportsController],
   providers: [
     {
@@ -30,6 +32,7 @@ import { ReportsService } from './reports.service';
     ReportsExportConsumer,
     DatabaseService,
     Logger,
+    ReportsSchedulerService,
   ],
   exports: ['IReportsService', 'IReportsRepository'],
 })

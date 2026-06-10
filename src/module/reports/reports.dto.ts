@@ -416,6 +416,12 @@ export class ReportsCurrentCountsDto {
   @ApiProperty({ type: ReportsStatusItemDto })
   stopped: ReportsStatusItemDto;
 
+  @ApiProperty({ type: ReportsStatusItemDto })
+  nothingToReport: ReportsStatusItemDto;
+
+  @ApiProperty({ type: ReportsStatusItemDto })
+  manual: ReportsStatusItemDto;
+
   @ApiProperty({ description: 'Total number of matching jobs', example: 47 })
   total: number;
 }
