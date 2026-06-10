@@ -160,7 +160,7 @@ export class MailService {
   <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.05);">
     <tr>
       <td style="padding:30px 20px;text-align:center;background:#ffffff;border-bottom:1px solid #eee;">
-        <img src="https://argobot-bucket.s3.us-east-2.amazonaws.com/VNP+LOGO_PNG.png" alt="VNP Solutions" style="max-width:200px;height:auto;">
+        <img src="https://qp-console.dashboardvnps.com/assets/logo.svg" alt="VNP Solutions" style="max-width:200px;height:auto;">
       </td>
     </tr>
     <tr>
@@ -266,7 +266,7 @@ export class MailService {
   <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.05);">
     <tr>
       <td style="padding:30px 20px;text-align:center;background:#ffffff;border-bottom:1px solid #eee;">
-        <img src="https://argobot-bucket.s3.us-east-2.amazonaws.com/VNP+LOGO_PNG.png" alt="VNP Solutions" style="max-width:200px;height:auto;">
+        <img src="https://qp-console.dashboardvnps.com/assets/logo.svg" alt="VNP Solutions" style="max-width:200px;height:auto;">
       </td>
     </tr>
     <tr>
@@ -290,8 +290,8 @@ export class MailService {
             </tr>
           </tbody>
         </table>
-        ${hasCsv ? `<p style="margin-top:20px;font-size:13px;color:#b91c1c;background:#fff5f5;border-left:3px solid #b91c1c;padding:10px 14px;border-radius:4px;">
-          &#x26A0;&#xFE0F; <strong>${stats.failed.count} Failed</strong> and <strong>${stats.nothingToReport.count} Nothing to Report</strong> job${(stats.failed.count + stats.nothingToReport.count) === 1 ? '' : 's'} detected today. See the attached CSV for the full list.
+        ${hasCsv ? `<p style="margin-top:20px;font-size:13px;color:#1d4ed8;background:#eff6ff;border-left:3px solid #1d4ed8;padding:10px 14px;border-radius:4px;">
+          &#x1F4CE; A full job list for today (<strong>${stats.total} job${stats.total === 1 ? '' : 's'}</strong>) is attached as a CSV file.
         </p>` : ''}
       </td>
     </tr>
@@ -334,7 +334,7 @@ export class MailService {
   <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.05);">
     <tr>
       <td style="padding:30px 20px;text-align:center;background:#ffffff;border-bottom:1px solid #eee;">
-        <img src="https://argobot-bucket.s3.us-east-2.amazonaws.com/VNP+LOGO_PNG.png" alt="VNP Solutions" style="max-width:200px;height:auto;">
+        <img src="https://qp-console.dashboardvnps.com/assets/logo.svg" alt="VNP Solutions" style="max-width:200px;height:auto;">
       </td>
     </tr>
     <tr>
@@ -395,7 +395,7 @@ export class MailService {
   <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.05);">
     <tr>
       <td style="padding:30px 20px;text-align:center;background:#ffffff;border-bottom:1px solid #eee;">
-        <img src="https://argobot-bucket.s3.us-east-2.amazonaws.com/VNP+LOGO_PNG.png" alt="VNP Solutions" style="max-width:200px;height:auto;">
+        <img src="https://qp-console.dashboardvnps.com/assets/logo.svg" alt="VNP Solutions" style="max-width:200px;height:auto;">
       </td>
     </tr>
     <tr>

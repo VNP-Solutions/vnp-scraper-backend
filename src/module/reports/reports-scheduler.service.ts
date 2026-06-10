@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { OTAProvider } from '@prisma/client';
 import { CronJob } from 'cron';
+import { EncryptionUtil } from '../../common/utils/encryption.util';
 import { DatabaseService } from '../database/database.service';
 import { MailService } from '../../common/utils/mail.service';
 import { ReportsResultItem, IReportsService } from './reports.interface';
@@ -10,8 +11,18 @@ import { ReportsResultItem, IReportsService } from './reports.interface';
 /** Default: every day at 12:00 noon (server local time). */
 const DEFAULT_CRON_TIME = '0 0 12 * * *';
 
-/** Statuses included in the daily CSV attachment. */
-const ATTACHMENT_STATUSES = ['Failed', 'NothingToReport'];
+/** All statuses included in the daily CSV attachment. */
+const ATTACHMENT_STATUSES = [
+  'Pending',
+  'Running',
+  'Completed',
+  'Partial',
+  'Failed',
+  'Stopped',
+  'InQueue',
+  'NothingToReport',
+  'Manual',
+];
 
 /** CSV columns included in the daily attachment. */
 const CSV_HEADERS = [
@@ -50,6 +61,7 @@ export class ReportsSchedulerService implements OnModuleInit {
     private readonly configService: ConfigService,
     private readonly schedulerRegistry: SchedulerRegistry,
     private readonly db: DatabaseService,
+    private readonly encryptionUtil: EncryptionUtil,
   ) {}
 
   onModuleInit(): void {
@@ -163,7 +175,7 @@ export class ReportsSchedulerService implements OnModuleInit {
       });
 
       this.logger.log(
-        `Daily statistics email sent for ${dateStr}. Jobs attached: ${failedJobs.length}.`,
+        `Daily statistics email sent for ${dateStr}. Total jobs in CSV: ${failedJobs.length}.`,
       );
     } catch (error) {
       this.logger.error(
@@ -197,6 +209,15 @@ export class ReportsSchedulerService implements OnModuleInit {
       }
     };
 
+    const safeDecrypt = (encrypted: string | null): string => {
+      if (!encrypted) return '';
+      try {
+        return this.encryptionUtil.decryptPassword(encrypted);
+      } catch {
+        return '';
+      }
+    };
+
     const resolveCredentials = (
       j: ReportsResultItem,
     ): { username: string; password: string } => {
@@ -204,11 +225,11 @@ export class ReportsSchedulerService implements OnModuleInit {
       if (!creds) return { username: '', password: '' };
       switch (j.ota_provider as OTAProvider) {
         case OTAProvider.Expedia:
-          return { username: creds.expediaUsername ?? '', password: creds.expediaPassword ?? '' };
+          return { username: creds.expediaUsername ?? '', password: safeDecrypt(creds.expediaPassword) };
         case OTAProvider.Booking:
-          return { username: creds.bookingUsername ?? '', password: creds.bookingPassword ?? '' };
+          return { username: creds.bookingUsername ?? '', password: safeDecrypt(creds.bookingPassword) };
         case OTAProvider.Agoda:
-          return { username: creds.agodaUsername ?? '', password: creds.agodaPassword ?? '' };
+          return { username: creds.agodaUsername ?? '', password: safeDecrypt(creds.agodaPassword) };
         default:
           return { username: '', password: '' };
       }
