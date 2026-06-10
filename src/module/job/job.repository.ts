@@ -104,7 +104,6 @@ export class JobRepository implements IJobRepository {
       return await this.db.job.findUnique({
         where: { id: jobId },
         include: {
-          phoneNumberSlots: true,
           property: {
             include: {
               phoneNumberSlot: true,

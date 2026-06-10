@@ -205,6 +205,7 @@ export interface IJobService {
     to: string;
     provider: string;
     message_sid: string;
+    phone_number: string;
     last_three_digits: string;
     message: string;
   }>;

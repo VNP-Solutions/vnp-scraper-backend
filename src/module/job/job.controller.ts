@@ -73,7 +73,6 @@ import {
   exportMasterJobsSchema,
   sendOtpReminderSmsSchema,
   type ExportMasterJobsType,
-  type SendOtpReminderSmsType,
 } from './job.validation';
 
 @ApiTags('Jobs')
@@ -437,6 +436,7 @@ export class JobController {
     description:
       'Resolves phone_number_slots for the job, includes the MFA phone last 3 digits in the message, and sends an SMS asking the recipient to forward the OTP to VNP support.',
   })
+  @ApiBody({ type: SendOtpReminderSmsDto })
   @ApiResponse({
     status: 200,
     description: 'OTP reminder SMS sent successfully',
@@ -445,7 +445,7 @@ export class JobController {
   @ApiResponse({ status: 400, description: 'Missing phone slot or SMS failure' })
   @ApiResponse({ status: 404, description: 'Job not found' })
   async sendOtpReminderSmsByBody(
-    @Body() body: SendOtpReminderSmsType,
+    @Body() body: SendOtpReminderSmsDto,
     @Res() response: Response,
   ) {
     return ResponseHandler.handler(

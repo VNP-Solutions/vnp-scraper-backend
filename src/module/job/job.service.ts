@@ -26,8 +26,10 @@ import {
 } from './master-export.util';
 import {
   buildOtpReminderSmsBody,
+  formatPhoneFirstTwoLastThree,
   resolveOtpSmsDestinationPhone,
   resolveOtpSmsLastThreeDigits,
+  resolveOtpSmsMfaPhone,
 } from './otp-sms.util';
 import { SmsService } from '../sms/sms.service';
 
@@ -1194,6 +1196,7 @@ export class JobService implements IJobService {
     to: string;
     provider: string;
     message_sid: string;
+    phone_number: string;
     last_three_digits: string;
     message: string;
   }> {
@@ -1202,17 +1205,36 @@ export class JobService implements IJobService {
       throw new NotFoundException(`Job with ID ${jobId} not found`);
     }
 
+    if (!job.property_id || !job.property) {
+      throw new BadRequestException(
+        'Job has no linked property. Link a property to this job before sending OTP SMS.',
+      );
+    }
+
+    if (!job.property.phone_number_slot_id) {
+      throw new BadRequestException(
+        'Property has no phone_number_slot_id. Set phone_number_slot_id on the property first.',
+      );
+    }
+
+    const mfaPhone = resolveOtpSmsMfaPhone(job);
+    if (!mfaPhone) {
+      throw new BadRequestException(
+        'No phone_number found in phone_number_slots for property phone_number_slot_id.',
+      );
+    }
+
     const lastThreeDigits = resolveOtpSmsLastThreeDigits(job);
     if (!lastThreeDigits) {
       throw new BadRequestException(
-        'No phone_number_slots phone found for this job. Link a phone number slot to the job or property first.',
+        'Could not resolve last 3 digits from phone_number_slots for this property.',
       );
     }
 
     const destinationPhone = resolveOtpSmsDestinationPhone(job);
     if (!destinationPhone) {
       throw new BadRequestException(
-        'No destination phone number found for this job. Set phone_number_for_report or link a phone_number_slot.',
+        'No destination phone number found. Set phone_number_for_report on the job or phone_number on the property.',
       );
     }
 
@@ -1223,6 +1245,7 @@ export class JobService implements IJobService {
       'ITSUPPORT@vnpsolutions.com';
 
     const message = buildOtpReminderSmsBody(
+      mfaPhone,
       lastThreeDigits,
       supportPhone,
       supportEmail,
@@ -1235,6 +1258,7 @@ export class JobService implements IJobService {
       to: smsResult.to,
       provider: smsResult.provider,
       message_sid: smsResult.messageId,
+      phone_number: formatPhoneFirstTwoLastThree(mfaPhone),
       last_three_digits: lastThreeDigits,
       message,
     };

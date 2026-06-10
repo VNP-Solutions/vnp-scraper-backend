@@ -543,8 +543,15 @@ export class SendOtpReminderSmsResponseDto {
   message_sid: string;
 
   @ApiProperty({
+    description:
+      'Masked phone from phone_number_slots (first 2 + last 3 digits)',
+    example: '15...205',
+  })
+  phone_number: string;
+
+  @ApiProperty({
     description: 'Last 3 digits of the MFA phone from phone_number_slots',
-    example: '638',
+    example: '205',
   })
   last_three_digits: string;
 
