@@ -3144,11 +3144,25 @@ export class ScraperController {
           return { statusCode: 400, message: 'property_id is required', data: null };
         }
 
-        const result = await this.jobItemService.uploadJobItemsFromFile(
-          jobId,
-          propertyId,
-          file,
-        );
+        let result;
+        try {
+          result = await this.jobItemService.uploadJobItemsFromFile(
+            jobId,
+            propertyId,
+            file,
+          );
+        } catch (err: any) {
+          // Surface validation errors (row-level) with the full errors array
+          const body = err?.getResponse?.();
+          if (body && typeof body === 'object' && Array.isArray(body.errors)) {
+            return {
+              statusCode: 400,
+              message: body.message ?? 'Validation failed',
+              data: { errors: body.errors },
+            };
+          }
+          throw err; // re-throw anything else (404, 500, …)
+        }
 
         return {
           statusCode: 200,

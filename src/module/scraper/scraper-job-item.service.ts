@@ -344,17 +344,40 @@ export class ScraperJobItemService implements IScraperJobItemService {
     const workbook = XLSX.read(file.buffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json<Record<string, string>>(worksheet, {
-      raw: false,
+
+    // Read as a 2-D array with raw: true so numbers stay as JS numbers
+    // (avoids scientific-notation / comma-formatted strings from raw:false)
+    // then normalize header names and convert every value to a plain string.
+    const rawMatrix = XLSX.utils.sheet_to_json<any[]>(worksheet, {
+      header: 1,
+      raw: true,
       defval: '',
     });
 
-    if (!rows || rows.length === 0) {
+    if (!rawMatrix || rawMatrix.length < 2) {
       throw new BadRequestException('The uploaded file is empty or contains no data rows');
     }
 
+    const headers: string[] = (rawMatrix[0] as any[]).map((h) =>
+      h !== undefined && h !== null ? String(h).trim() : '',
+    );
+
+    const rows: Record<string, string>[] = (rawMatrix.slice(1) as any[][]).map(
+      (rowArr) => {
+        const obj: Record<string, string> = {};
+        headers.forEach((header, idx) => {
+          if (header) {
+            const cell = rowArr[idx];
+            obj[header] =
+              cell !== undefined && cell !== null ? String(cell).trim() : '';
+          }
+        });
+        return obj;
+      },
+    );
+
     // ── 2. Check required column headers ─────────────────────────────────────
-    const presentHeaders = new Set(Object.keys(rows[0]));
+    const presentHeaders = new Set(headers.filter(Boolean));
     const missingHeaders = REQUIRED_HEADERS.filter((h) => !presentHeaders.has(h));
     if (missingHeaders.length > 0) {
       throw new BadRequestException(
@@ -472,8 +495,14 @@ export class ScraperJobItemService implements IScraperJobItemService {
       }
     }
 
+    // ── 6. Mark job as Completed ──────────────────────────────────────────────
+    await this.db.job.update({
+      where: { id: jobId },
+      data: { job_status: 'Completed' },
+    });
+
     this.logger.log(
-      `Job item upload complete for job ${jobId}: ${created} created, ${updated} updated`,
+      `Job item upload complete for job ${jobId}: ${created} created, ${updated} updated. Job status set to Completed.`,
     );
 
     return { uploaded: items.length, created, updated, items };
