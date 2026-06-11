@@ -1121,7 +1121,7 @@ export class ScraperController {
   @ApiOperation({
     summary: 'Upload job items from an Excel/CSV sheet',
     description:
-      'Upload an Excel (.xlsx / .xls) or CSV file to create or update job items for a specific job. The file must contain at least two columns: one whose name contains "Reservation" (e.g. "Reservation info") and one whose name contains "Amount" (e.g. "Amount"). Amount values may include a currency prefix such as "US$464.74", "AU$100.00", "€50.00". Each row creates or updates a job item with `reservation_id`, `total_guest_payment`, `total_payout`, `amount_to_charge_or_refund`, and `amount_to_charge_or_refund_currency` set from the parsed amount.',
+      'Upload an Excel (.xlsx / .xls) or CSV file to create or update job items for a specific job. The file must contain at least two columns: one whose name contains "Reservation" (e.g. "Reservation info") and one whose name contains "Amount" (e.g. "Amount"). Amount values support many currency formats: ISO codes ("CAD 235.78", "235.78 AED"), dollar prefixes ("US$202.63", "CA$50", "MX$100"), symbols ("£254.30", "€50,00", "₹1,200", "R$99.90"), regional number formats ("1.234,56 EUR", "1\'234.56 CHF"), negatives ("-CAD 50", "(235.78)"), and plain numbers (defaults to USD). Each row creates or updates a job item with `reservation_id`, `total_guest_payment`, `total_payout`, `amount_to_charge_or_refund`, and `amount_to_charge_or_refund_currency` set from the parsed amount.',
   })
   @ApiConsumes('multipart/form-data')
   @ApiBody({

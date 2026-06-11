@@ -8,62 +8,10 @@ import {
   JobItemListRowDto,
   JobItemUpsertInput,
 } from './scraper-job-item.interface';
-import { readPaymentCurrencyCode } from './scraper-job-item-payment.util';
-
-/** Currency prefix → ISO 4217 code map for COUNTRY$ patterns (e.g. US$, AU$). */
-const COUNTRY_PREFIX_MAP: Record<string, string> = {
-  US: 'USD',
-  AU: 'AUD',
-  CA: 'CAD',
-  NZ: 'NZD',
-  HK: 'HKD',
-  SG: 'SGD',
-  S: 'SGD',
-  T: 'THB',
-  '': 'USD',
-};
-
-/** Symbol → ISO 4217 code map for single-character symbols. */
-const SYMBOL_MAP: Record<string, string> = {
-  '€': 'EUR',
-  '£': 'GBP',
-  '¥': 'JPY',
-  '₩': 'KRW',
-  '₹': 'INR',
-};
-
-/**
- * Parses an amount string like "US$464.74", "AU$100.00", "€50.00", "$30", "464.74".
- * Returns null when the string cannot be parsed as a number.
- */
-function parseAmount(raw: string): { amount: number; currency: string } | null {
-  const cleaned = String(raw ?? '').trim().replace(/\s/g, '');
-  if (!cleaned) return null;
-
-  // COUNTRY$ pattern: letters + $ + digits (e.g. "US$464.74", "AU$100")
-  const dollarMatch = cleaned.match(/^([A-Za-z]*)\$([\d,]+\.?\d*)$/);
-  if (dollarMatch) {
-    const prefix = dollarMatch[1].toUpperCase();
-    const amount = parseFloat(dollarMatch[2].replace(/,/g, ''));
-    if (isNaN(amount)) return null;
-    const currency = COUNTRY_PREFIX_MAP[prefix] ?? `${prefix}D`;
-    return { amount, currency };
-  }
-
-  // Single symbol pattern: €, £, ¥, ₩, ₹ + digits
-  const symbolMatch = cleaned.match(/^([€£¥₩₹])([\d,]+\.?\d*)$/);
-  if (symbolMatch) {
-    const amount = parseFloat(symbolMatch[2].replace(/,/g, ''));
-    if (isNaN(amount)) return null;
-    return { amount, currency: SYMBOL_MAP[symbolMatch[1]] ?? 'USD' };
-  }
-
-  // Plain number
-  const num = parseFloat(cleaned.replace(/,/g, ''));
-  if (!isNaN(num)) return { amount: num, currency: 'USD' };
-
-  return null;
-}
+import {
+  parseAmount,
+  readPaymentCurrencyCode,
+} from './scraper-job-item-payment.util';
 
 /**
  * Parses a human-readable date string (e.g. "Jun 11, 2027", "June 11 2027", "2027-06-11")
