@@ -5,6 +5,7 @@ import { startOfDay } from '../job/job-item-derived.util';
 import {
   DerivedFieldsUpdate,
   IScraperJobItemRepository,
+  JobItemUploadRow,
 } from './scraper-job-item.interface';
 
 const OVER_160_DAYS = 160;
@@ -207,6 +208,61 @@ export class ScraperJobItemRepository implements IScraperJobItemRepository {
       this.logger.error(`Error updating current_url for job ${jobId}:`, error);
       throw error;
     }
+  }
+
+  /**
+   * Creates or updates a single JobItem row identified by (job_id, reservation_id).
+   * When reservation_id is null/empty a new record is always created since there
+   * is no unique key to match on.
+   */
+  async upsertJobItem(
+    row: JobItemUploadRow,
+  ): Promise<{ item: JobItem; wasCreated: boolean }> {
+    if (row.reservation_id) {
+      const existing = await this.db.jobItem.findFirst({
+        where: { job_id: row.job_id, reservation_id: row.reservation_id },
+      });
+
+      if (existing) {
+        const updated = await this.db.jobItem.update({
+          where: { id: existing.id },
+          data: {
+            guest_name: row.guest_name,
+            confirmation_number: row.confirmation_number,
+            check_in_date: row.check_in_date,
+            check_out_date: row.check_out_date,
+            room_type: row.room_type,
+            booked_date: row.booked_date,
+            has_card_info: row.has_card_info,
+            card_info: row.card_info ?? undefined,
+            has_payment_info: row.has_payment_info,
+            payment_info: row.payment_info ?? undefined,
+            reservation_status: row.reservation_status,
+          },
+        });
+        return { item: updated, wasCreated: false };
+      }
+    }
+
+    const created = await this.db.jobItem.create({
+      data: {
+        job_id: row.job_id,
+        property_id: row.property_id,
+        guest_name: row.guest_name,
+        reservation_id: row.reservation_id,
+        confirmation_number: row.confirmation_number,
+        check_in_date: row.check_in_date,
+        check_out_date: row.check_out_date,
+        room_type: row.room_type,
+        booked_date: row.booked_date,
+        has_card_info: row.has_card_info,
+        card_info: row.card_info ?? undefined,
+        has_payment_info: row.has_payment_info,
+        payment_info: row.payment_info ?? undefined,
+        reservation_status: row.reservation_status,
+      },
+    });
+    return { item: created, wasCreated: true };
   }
 
   /**

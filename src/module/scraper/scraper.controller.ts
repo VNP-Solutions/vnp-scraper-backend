@@ -12,8 +12,12 @@ import {
     Query,
     Req,
     Res,
+    UploadedFile,
     UseGuards,
+    UseInterceptors,
 } from '@nestjs/common';
+import { ApiConsumes } from '@nestjs/swagger';
+import { ExcelFileInterceptor } from '../../common/interceptors/excel-file.interceptor';
 import { ConfigService } from '@nestjs/config';
 import {
     ApiBearerAuth,
@@ -80,6 +84,7 @@ import {
     ScheduledJobResponseDto,
     ScrapingStatusResponseDto,
     StopScrapingRequestDto,
+    UploadJobItemsResponseDto,
 } from './scraper.dto';
 
 @ApiTags('Unified Scraper')
@@ -3067,6 +3072,92 @@ export class ScraperController {
           statusCode: 200,
           message: `${existingBefore ? 'Existing' : 'New'} scheduled job for ${body.creating_date}. Found ${jobs.length} job(s) with schedule date ${body.schedule_date} and status ${body.status}.`,
           data: { scheduledJob, created: !existingBefore, jobs, total: jobs.length },
+        };
+      },
+      this.logger,
+    );
+  }
+
+  // ─── Job-item bulk upload ─────────────────────────────────────────────────
+
+  @Post('/job-items/upload')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(ExcelFileInterceptor)
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Bulk-upload job items from a CSV / XLSX file',
+    description:
+      'Parses the uploaded file, validates every row against the job\'s OTA provider and the property\'s OTA ID, then creates or updates the corresponding JobItem records. ' +
+      'The file must contain these columns: OTA, OTA ID, Reservation ID, Hotel Confirmation Code (Expedia), Guest name, Check In (MM/DD/YYYY) (Expedia, Agoda), Check Out (MM/DD/YYYY) (Expedia, Agoda), Charge Before (Booking), Currency, Booking Amount (Expedia), Amount to Charge, Card Status (Expedia), Card Number, Expiry date, CVV. ' +
+      'Check In and Check Out dates must be in MM/DD/YYYY format (e.g. 06/15/2026). Any other format is rejected. ' +
+      'If any row fails validation the entire upload is rejected and all errors are returned.',
+  })
+  @ApiBody({
+    description: 'Multipart form with job_id, property_id and the file',
+    schema: {
+      type: 'object',
+      required: ['job_id', 'property_id', 'file'],
+      properties: {
+        job_id: { type: 'string', example: '507f1f77bcf86cd799439011' },
+        property_id: { type: 'string', example: '507f1f77bcf86cd799439012' },
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Excel (.xlsx) or CSV file',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Job items uploaded successfully',
+    type: UploadJobItemsResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation failed — missing columns, OTA mismatch, or invalid cell values',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Job or property not found' })
+  async uploadJobItems(
+    @UploadedFile() file: Express.Multer.File,
+    @Body('job_id') jobId: string,
+    @Body('property_id') propertyId: string,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        if (!file) {
+          return {
+            statusCode: 400,
+            message: 'A CSV or XLSX file is required',
+            data: null,
+          };
+        }
+
+        if (!jobId) {
+          return { statusCode: 400, message: 'job_id is required', data: null };
+        }
+
+        if (!propertyId) {
+          return { statusCode: 400, message: 'property_id is required', data: null };
+        }
+
+        const result = await this.jobItemService.uploadJobItemsFromFile(
+          jobId,
+          propertyId,
+          file,
+        );
+
+        return {
+          statusCode: 200,
+          message: `Job items uploaded successfully: ${result.created} created, ${result.updated} updated`,
+          data: {
+            uploaded: result.uploaded,
+            created: result.created,
+            updated: result.updated,
+          },
         };
       },
       this.logger,
