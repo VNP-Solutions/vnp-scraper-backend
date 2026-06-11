@@ -56,7 +56,6 @@ const COL = {
 const OTA_REQUIRED_FIELDS: Record<OTAProvider, string[]> = {
   [OTAProvider.Expedia]: [
     COL.RESERVATION_ID,
-    COL.CONFIRMATION_NUMBER,
     COL.GUEST_NAME,
     COL.CHECK_IN,
     COL.CHECK_OUT,
@@ -341,16 +340,15 @@ export class ScraperJobItemService implements IScraperJobItemService {
       throw new BadRequestException('File buffer is empty');
     }
 
-    const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+    // cellDates:true makes XLSX return JS Date objects for date-formatted cells
+    // instead of raw serial numbers (e.g. 45993 → Date(2025-12-02))
+    const workbook = XLSX.read(file.buffer, { type: 'buffer', cellDates: true });
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
 
-    // Read as a 2-D array with raw: true so numbers stay as JS numbers
-    // (avoids scientific-notation / comma-formatted strings from raw:false)
-    // then normalize header names and convert every value to a plain string.
     const rawMatrix = XLSX.utils.sheet_to_json<any[]>(worksheet, {
       header: 1,
-      raw: true,
+      raw: true,   // keep numbers as numbers; Date objects stay as Date objects
       defval: '',
     });
 
@@ -362,19 +360,33 @@ export class ScraperJobItemService implements IScraperJobItemService {
       h !== undefined && h !== null ? String(h).trim() : '',
     );
 
-    const rows: Record<string, string>[] = (rawMatrix.slice(1) as any[][]).map(
-      (rowArr) => {
+    /** Convert any cell value to a trimmed string.
+     *  Date objects (from Excel date-formatted cells) are formatted as MM/DD/YYYY
+     *  so they pass the strict date validation without the user having to worry
+     *  about Excel's internal serial-number storage. */
+    const cellToString = (cell: any): string => {
+      if (cell === undefined || cell === null || cell === '') return '';
+      if (cell instanceof Date) {
+        const mm = String(cell.getUTCMonth() + 1).padStart(2, '0');
+        const dd = String(cell.getUTCDate()).padStart(2, '0');
+        const yyyy = cell.getUTCFullYear();
+        return `${mm}/${dd}/${yyyy}`;
+      }
+      return String(cell).trim();
+    };
+
+    const rows: Record<string, string>[] = (rawMatrix.slice(1) as any[][])
+      .map((rowArr) => {
         const obj: Record<string, string> = {};
         headers.forEach((header, idx) => {
           if (header) {
-            const cell = rowArr[idx];
-            obj[header] =
-              cell !== undefined && cell !== null ? String(cell).trim() : '';
+            obj[header] = cellToString(rowArr[idx]);
           }
         });
         return obj;
-      },
-    );
+      })
+      // Drop fully-empty rows (Excel often includes blank trailing rows)
+      .filter((obj) => Object.values(obj).some((v) => v !== ''));
 
     // ── 2. Check required column headers ─────────────────────────────────────
     const presentHeaders = new Set(headers.filter(Boolean));
