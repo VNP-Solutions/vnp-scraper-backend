@@ -683,3 +683,29 @@ export class JobsWithScheduledJobResponseDto {
   @ApiProperty({ example: 5 })
   total: number;
 }
+
+export class UploadJobItemsValidationErrorDto {
+  @ApiProperty({ example: 2 })
+  row: number;
+
+  @ApiProperty({ example: "OTA value 'Booking' does not match job OTA provider 'Expedia'" })
+  message: string;
+}
+
+export class UploadJobItemsResponseDto {
+  @ApiProperty({ example: 200 })
+  statusCode: number;
+
+  @ApiProperty({ example: 'Job items uploaded successfully' })
+  message: string;
+
+  @ApiProperty({
+    description: 'Upload summary',
+    example: { uploaded: 10, created: 8, updated: 2 },
+  })
+  data: {
+    uploaded: number;
+    created: number;
+    updated: number;
+  };
+}
