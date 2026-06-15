@@ -853,3 +853,26 @@ model ScheduledJob {
   @@index([date])
   @@map("scheduled_jobs")
 }
+
+enum QaPanelStatus {
+  Processing
+  success
+  failed
+}
+
+type QaPanelFailedReason {
+  row_number Int
+  reason       String
+}
+
+model QaPanel {
+  id             String                @id @default(auto()) @map("_id") @db.ObjectId
+  file_url       String
+  file_name      String
+  status         QaPanelStatus
+  failed_reasons QaPanelFailedReason[]
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@map("qa_panels")
+}
