@@ -20,6 +20,7 @@ import { PhoneNumberSlotModule } from './module/phone-number-slot/phone-number-s
 import { PortfolioModule } from './module/portfolio/portfolio.module';
 import { PropertyCredentialsModule } from './module/property-credentials/property-credentials.module';
 import { PropertyModule } from './module/property/property.module';
+import { QaPanelModule } from './module/qa-panel/qa-panel.module';
 import { RecurringJobModule } from './module/recurring-job/recurring-job.module';
 import { ReportsModule } from './module/reports/reports.module';
 import { RetrievalModule } from './module/retrieval/retrieval.module';
@@ -48,6 +49,7 @@ import { UserModule } from './module/user/user.module';
     RecurringJobModule,
     ServerModule,
     UploadModule,
+    QaPanelModule,
     UserFeatureAccessPermissionModule,
     UserInvitationModule,
     ActivityLogModule,

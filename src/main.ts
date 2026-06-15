@@ -67,6 +67,17 @@ async function bootstrap() {
       },
       'JWT-auth', // This name here is important for @ApiBearerAuth() decorator
     )
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        name: 'Communication JWT',
+        description: 'JWT signed with JWT_COMMUNICATION_SECRET (type: external-communication)',
+        in: 'header',
+      },
+      'external-jwt',
+    )
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api', app, document);
