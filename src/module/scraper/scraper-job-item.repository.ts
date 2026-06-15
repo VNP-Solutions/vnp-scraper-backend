@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { JobItem, Prisma } from '@prisma/client';
+import { JobItem, JobStatus, Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import {
   IScraperJobItemRepository,
@@ -285,5 +285,37 @@ export class ScraperJobItemRepository implements IScraperJobItemRepository {
 
     this.logger.log(`upsertJobItems: created=${created}, updated=${updated}`);
     return { created, updated };
+  }
+
+  async completeJob(jobId: string): Promise<{
+    wasAlreadyCompleted: boolean;
+    phone_number_for_report: string | null;
+  }> {
+    const job = await this.db.job.findUnique({
+      where: { id: jobId },
+      select: { job_status: true, phone_number_for_report: true },
+    });
+
+    if (!job) {
+      throw new Error(`Job ${jobId} not found`);
+    }
+
+    if (job.job_status === JobStatus.Completed) {
+      return {
+        wasAlreadyCompleted: true,
+        phone_number_for_report: job.phone_number_for_report,
+      };
+    }
+
+    await this.db.job.update({
+      where: { id: jobId },
+      data: { job_status: JobStatus.Completed },
+    });
+
+    this.logger.log(`Marked job ${jobId} as Completed`);
+    return {
+      wasAlreadyCompleted: false,
+      phone_number_for_report: job.phone_number_for_report,
+    };
   }
 }

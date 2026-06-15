@@ -326,10 +326,16 @@ export async function sendAuditReadySms(
   phone: string,
   jobId: string,
 ): Promise<void> {
-  await sendAuditSms(
-    phone,
-    'Your Audit is ready',
-    'audits',
-    jobId,
-  );
+  if (!isAuditSmsConfigured()) {
+    return;
+  }
+
+  const demo = demoWebsiteUrl();
+  if (!demo) {
+    return;
+  }
+
+  const link = `${demo}/audits/${jobId}`;
+  const message = `Your Audit is ready please take a look ${link}`;
+  await sendOutboundSms(phone, message);
 }

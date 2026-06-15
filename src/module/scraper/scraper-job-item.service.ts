@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { JobItem } from '@prisma/client';
 import * as XLSX from 'xlsx';
+import { sendAuditReadySms } from 'src/common/audit-ready-sms';
 import {
   IScraperJobItemRepository,
   IScraperJobItemService,
@@ -195,6 +196,23 @@ export class ScraperJobItemService implements IScraperJobItemService {
     }
 
     const result = await this.jobItemRepository.upsertJobItems(validItems);
+
+    const completion = await this.jobItemRepository.completeJob(jobId);
+    const reportPhone = completion.phone_number_for_report?.trim();
+    if (!completion.wasAlreadyCompleted && reportPhone) {
+      try {
+        await sendAuditReadySms(reportPhone, jobId);
+        this.logger.log(
+          `Sent audit-ready SMS for job ${jobId} to ${reportPhone}`,
+        );
+      } catch (error) {
+        this.logger.error(
+          `Failed to send audit-ready SMS for job ${jobId}: ${error.message}`,
+          error.stack,
+        );
+      }
+    }
+
     return { ...result, skipped, errors };
   }
 }

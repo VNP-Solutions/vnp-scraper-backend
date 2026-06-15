@@ -50,6 +50,10 @@ export interface IScraperJobItemRepository {
   ): Promise<{ data: any[]; metadata: JobItemListMetadataDto }>;
   updateJobCurrentUrl(jobId: string, currentUrl: string): Promise<void>;
   upsertJobItems(items: JobItemUpsertInput[]): Promise<JobItemUpsertResult>;
+  completeJob(jobId: string): Promise<{
+    wasAlreadyCompleted: boolean;
+    phone_number_for_report: string | null;
+  }>;
 }
 
 export interface IScraperJobItemService {
