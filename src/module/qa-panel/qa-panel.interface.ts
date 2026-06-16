@@ -76,4 +76,9 @@ export interface IQaPanelService {
   uploadAndProcess(file: Express.Multer.File): Promise<unknown>;
 
   processImportCallback(data: QaPanelImportCallbackType): Promise<QaPanel>;
+
+  generateCommunicationToken(): Promise<{
+    token: string;
+    expiresIn: string;
+  }>;
 }

@@ -6,6 +6,7 @@ import * as https from 'https';
 import { MailService } from '../../common/utils/mail.service';
 import { S3UploadService } from '../../common/utils/s3-upload.util';
 import { ExternalJwtGuard } from './guards/external-jwt.guard';
+import { ExternalRawSecretGuard } from './guards/external-raw-secret.guard';
 import { QaPanelController } from './qa-panel.controller';
 import { QaPanelRepository } from './qa-panel.repository';
 import { QaPanelService } from './qa-panel.service';
@@ -44,6 +45,7 @@ import { QaPanelService } from './qa-panel.service';
     S3UploadService,
     MailService,
     ExternalJwtGuard,
+    ExternalRawSecretGuard,
     Logger,
     {
       provide: 'IQaPanelService',

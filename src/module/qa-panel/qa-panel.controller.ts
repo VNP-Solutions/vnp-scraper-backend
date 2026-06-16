@@ -33,6 +33,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
   BulkDeleteQaPanelDto,
   CreateQaPanelDto,
+  GenerateCommunicationTokenApiResponseDto,
   QaPanelImportCallbackDto,
   QaPanelListResponseDto,
   QaPanelResponseDto,
@@ -40,6 +41,7 @@ import {
   UpdateQaPanelDto,
 } from './qa-panel.dto';
 import { ExternalJwtGuard } from './guards/external-jwt.guard';
+import { ExternalRawSecretGuard } from './guards/external-raw-secret.guard';
 import { IQaPanelService } from './qa-panel.interface';
 import {
   bulkDeleteQaPanelSchema,
@@ -57,6 +59,35 @@ export class QaPanelController {
     @Inject('IQaPanelService')
     private readonly qaPanelService: IQaPanelService,
   ) {}
+
+  @Post('generate-token')
+  @UseGuards(ExternalRawSecretGuard)
+  @ApiBearerAuth('communication-secret')
+  @ApiOperation({
+    summary: 'Generate external communication JWT',
+    description:
+      'Exchange the raw JWT_COMMUNICATION_SECRET for a signed communication JWT (type: external-communication). Same pattern as the dashboard proxy generate-token endpoint.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Communication token generated successfully',
+    type: GenerateCommunicationTokenApiResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Invalid communication secret' })
+  async generateToken(@Res() response: Response) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result = await this.qaPanelService.generateCommunicationToken();
+        return {
+          statusCode: 200,
+          message: 'Communication token generated successfully',
+          data: result,
+        };
+      },
+      this.logger,
+    );
+  }
 
   @Post('import-callback')
   @UseGuards(ExternalJwtGuard)
