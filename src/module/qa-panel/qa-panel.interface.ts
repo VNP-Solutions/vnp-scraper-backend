@@ -73,7 +73,7 @@ export interface IQaPanelService {
     deletedIds: string[];
   }>;
 
-  uploadAndProcess(file: Express.Multer.File): Promise<unknown>;
+  uploadAndProcess(file: Express.Multer.File, email: string): Promise<unknown>;
 
   processImportCallback(data: QaPanelImportCallbackType): Promise<QaPanel>;
 

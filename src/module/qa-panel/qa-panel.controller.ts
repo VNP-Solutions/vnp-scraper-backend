@@ -8,6 +8,7 @@ import {
   Param,
   Post,
   Put,
+  Req,
   Res,
   UploadedFile,
   UseGuards,
@@ -233,7 +234,7 @@ export class QaPanelController {
   @ApiOperation({
     summary: 'Upload a CSV/XLSX file for QA panel processing',
     description:
-      'Uploads the file to S3, creates a QA panel record, forwards the file and qa_panel_id to the dashboard proxy API, then returns the proxy response in data.',
+      'Uploads the file to S3, creates a QA panel record, forwards the file, qa_panel_id, and the authenticated user email to the dashboard proxy API, then returns the proxy response in data.',
   })
   @ApiBody({
     schema: {
@@ -265,6 +266,7 @@ export class QaPanelController {
   })
   @ApiResponse({ status: 400, description: 'Invalid file or missing configuration' })
   async upload(
+    @Req() req: { user?: { email?: string } },
     @UploadedFile() file: Express.Multer.File,
     @Res() response: Response,
   ) {
@@ -279,7 +281,19 @@ export class QaPanelController {
           };
         }
 
-        const proxyResponse = await this.qaPanelService.uploadAndProcess(file);
+        const email = req.user?.email;
+        if (!email) {
+          return {
+            statusCode: 401,
+            message: 'Authenticated user email not found in token',
+            data: null,
+          };
+        }
+
+        const proxyResponse = await this.qaPanelService.uploadAndProcess(
+          file,
+          email,
+        );
         const proxyMessage =
           proxyResponse &&
           typeof proxyResponse === 'object' &&

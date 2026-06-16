@@ -112,7 +112,10 @@ export class QaPanelService implements IQaPanelService {
     };
   }
 
-  async uploadAndProcess(file: Express.Multer.File): Promise<unknown> {
+  async uploadAndProcess(
+    file: Express.Multer.File,
+    email: string,
+  ): Promise<unknown> {
     const fileName = basename(file.originalname);
     const fileUrl = await this.s3UploadService.uploadFile(file);
 
@@ -128,6 +131,7 @@ export class QaPanelService implements IQaPanelService {
       file,
       proxyUrl,
       qaPanel.id,
+      email,
     );
 
     const failedReasons = extractFailedReasonsFromProxyResponse(proxyResponse);
@@ -242,6 +246,7 @@ export class QaPanelService implements IQaPanelService {
     file: Express.Multer.File,
     proxyUrl: string,
     qaPanelId: string,
+    email: string,
   ): Promise<{ proxyResponse: unknown; status: QaPanelStatus }> {
     const form = new FormData();
     form.append('file', file.buffer, {
@@ -249,6 +254,7 @@ export class QaPanelService implements IQaPanelService {
       contentType: file.mimetype,
     });
     form.append('qa_panel_id', qaPanelId);
+    form.append('email', email);
 
     const bearerToken = this.generateProxyBearerToken();
 
