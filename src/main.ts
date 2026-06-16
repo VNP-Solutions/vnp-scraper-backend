@@ -78,6 +78,17 @@ async function bootstrap() {
       },
       'external-jwt',
     )
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'Secret',
+        name: 'Communication Secret',
+        description: 'Raw JWT_COMMUNICATION_SECRET value',
+        in: 'header',
+      },
+      'communication-secret',
+    )
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api', app, document);

@@ -169,6 +169,24 @@ export class QaPanelService implements IQaPanelService {
     return updatedQaPanel;
   }
 
+  async generateCommunicationToken(): Promise<{
+    token: string;
+    expiresIn: string;
+  }> {
+    this.getCommunicationSecret();
+
+    const expiresIn =
+      this.configService.get<string>('JWT_COMMUNICATION_TOKEN_EXPIRES_IN') ??
+      '1d';
+
+    const token = this.jwtService.sign(
+      { type: 'external-communication' },
+      { expiresIn: expiresIn as NonNullable<SignOptions['expiresIn']> },
+    );
+
+    return { token, expiresIn };
+  }
+
   private async tryDeleteS3File(fileUrl: string): Promise<void> {
     try {
       await this.s3UploadService.deleteFile(fileUrl);
@@ -196,7 +214,7 @@ export class QaPanelService implements IQaPanelService {
   private getCommunicationSecret(): string {
     const secret =
       this.configService.get<string>('JWT_COMMUNICATION_SECRET') ??
-      this.configService.get<string>('JWT_COMMUNICATION_SECRET');
+      this.configService.get<string>('DASHBOARD_PROXY_SECRET');
 
     if (!secret) {
       throw new BadRequestException(
