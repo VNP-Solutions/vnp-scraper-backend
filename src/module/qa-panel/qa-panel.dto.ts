@@ -167,7 +167,11 @@ export class QaPanelImportCallbackDto implements QaPanelImportCallbackType {
   @ApiProperty({ example: 'user@example.com' })
   email: string;
 
-  @ApiProperty({ enum: ['success', 'failed'], example: 'failed' })
+  @ApiProperty({
+    enum: ['success', 'failed', 'Success', 'Failed'],
+    example: 'Failed',
+    description: 'Import result. Accepts success/Success or failed/Failed.',
+  })
   status: 'success' | 'failed';
 
   @ApiProperty({ type: QaPanelImportCallbackReportDto })
