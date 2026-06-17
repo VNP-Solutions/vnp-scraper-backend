@@ -260,6 +260,11 @@ export class MailService {
 
     const statusColor = opts.status === 'success' ? '#16a34a' : '#b91c1c';
     const statusLabel = opts.status === 'success' ? 'Completed' : 'Completed with failures';
+    const hasFailures = opts.report.failed > 0;
+
+    const successRowHtml = hasFailures
+      ? ''
+      : `<tr><td style="padding:4px 0;color:#666;font-size:14px;">Successful</td><td style="padding:4px 0;font-weight:600;text-align:right;color:#16a34a;">${opts.report.success}</td></tr>`;
 
     const html = `<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background-color:#f4f4f4;color:#333;line-height:1.6;">
   <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.05);">
@@ -274,7 +279,7 @@ export class MailService {
         <p>Your QA panel file <strong>${this.escape(opts.fileName)}</strong> has been processed.</p>
         <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:20px 0;background:#f9fafb;border-radius:6px;padding:16px;width:100%;">
           <tr><td style="padding:4px 0;color:#666;font-size:14px;">Total rows</td><td style="padding:4px 0;font-weight:600;text-align:right;">${opts.report.total}</td></tr>
-          <tr><td style="padding:4px 0;color:#666;font-size:14px;">Successful</td><td style="padding:4px 0;font-weight:600;text-align:right;color:#16a34a;">${opts.report.success}</td></tr>
+          ${successRowHtml}
           <tr><td style="padding:4px 0;color:#666;font-size:14px;">Failed</td><td style="padding:4px 0;font-weight:600;text-align:right;color:#b91c1c;">${opts.report.failed}</td></tr>
         </table>
       </td>
@@ -291,7 +296,7 @@ export class MailService {
       `QA Panel Import ${statusLabel}\n\n` +
       `File: ${opts.fileName}\n` +
       `Total rows: ${opts.report.total}\n` +
-      `Successful: ${opts.report.success}\n` +
+      (hasFailures ? '' : `Successful: ${opts.report.success}\n`) +
       `Failed: ${opts.report.failed}\n\n` +
       `— VNP QA Panel`;
 
