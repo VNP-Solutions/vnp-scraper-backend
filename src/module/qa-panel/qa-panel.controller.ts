@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -48,6 +49,7 @@ import {
   bulkDeleteQaPanelSchema,
   createQaPanelSchema,
   qaPanelImportCallbackSchema,
+  qaPanelListQuerySchema,
   updateQaPanelSchema,
 } from './qa-panel.validation';
 
@@ -158,7 +160,12 @@ export class QaPanelController {
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Get all QA panel records with pagination and filtering' })
   @ApiQuery({ name: 'search', required: false, description: 'Search by file name, file URL, or ID' })
-  @ApiQuery({ name: 'status', required: false, enum: QaPanelStatus, description: 'Filter by status' })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: QaPanelStatus,
+    description: 'Filter by status (Processing, Success, Failed). Lowercase aliases are also accepted.',
+  })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 10 })
   @ApiQuery({ name: 'order', required: false, enum: ['asc', 'desc'], example: 'desc' })
@@ -174,8 +181,23 @@ export class QaPanelController {
     return ResponseHandler.handler(
       response,
       async () => {
+        const parsedQuery = qaPanelListQuerySchema.safeParse(query);
+
+        if (!parsedQuery.success) {
+          const formattedErrors = parsedQuery.error.errors.map((err) => ({
+            field: err.path.join('.'),
+            message: err.message,
+          }));
+
+          throw new BadRequestException({
+            statusCode: 400,
+            message: 'Validation failed',
+            errors: formattedErrors,
+          });
+        }
+
+        const { search, status, page, limit, order } = parsedQuery.data;
         const filters: Record<string, unknown> = {};
-        const { search, status, page, limit, order } = query;
 
         if (search) filters.search = search;
         if (status) filters.status = status;
