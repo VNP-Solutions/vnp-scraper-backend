@@ -122,7 +122,7 @@ export class QaPanelService implements IQaPanelService {
     const qaPanel = await this.repository.create({
       file_url: fileUrl,
       file_name: fileName,
-      status: QaPanelStatus.success,
+      status: QaPanelStatus.Processing,
       failed_reasons: [],
     });
 
@@ -155,7 +155,10 @@ export class QaPanelService implements IQaPanelService {
     }));
 
     const updatedQaPanel = await this.repository.update(data.qa_panel_id, {
-      status: data.status,
+      status:
+        data.status === 'success'
+          ? QaPanelStatus.success
+          : QaPanelStatus.failed,
       failed_reasons: failedReasons,
     });
 
@@ -274,7 +277,7 @@ export class QaPanelService implements IQaPanelService {
 
       return {
         proxyResponse: response.data,
-        status: isSuccess ? QaPanelStatus.success : QaPanelStatus.failed,
+        status: isSuccess ? QaPanelStatus.Processing : QaPanelStatus.failed,
       };
     } catch (error: any) {
       this.logger.error(

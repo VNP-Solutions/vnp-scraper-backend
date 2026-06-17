@@ -856,8 +856,8 @@ model ScheduledJob {
 
 enum QaPanelStatus {
   Processing
-  success
-  failed
+  Success
+  Failed
 }
 
 type QaPanelFailedReason {
