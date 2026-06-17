@@ -157,8 +157,8 @@ export class QaPanelService implements IQaPanelService {
     const updatedQaPanel = await this.repository.update(data.qa_panel_id, {
       status:
         data.status === 'success'
-          ? QaPanelStatus.success
-          : QaPanelStatus.failed,
+          ? QaPanelStatus.Success
+          : QaPanelStatus.Failed,
       failed_reasons: failedReasons,
     });
 
@@ -277,7 +277,7 @@ export class QaPanelService implements IQaPanelService {
 
       return {
         proxyResponse: response.data,
-        status: isSuccess ? QaPanelStatus.Processing : QaPanelStatus.failed,
+        status: isSuccess ? QaPanelStatus.Processing : QaPanelStatus.Failed,
       };
     } catch (error: any) {
       this.logger.error(
@@ -289,7 +289,7 @@ export class QaPanelService implements IQaPanelService {
         proxyResponse: error.response?.data ?? {
           message: error.message ?? 'Proxy API request failed',
         },
-        status: QaPanelStatus.failed,
+        status: QaPanelStatus.Failed,
       };
     }
   }

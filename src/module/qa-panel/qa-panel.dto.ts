@@ -25,7 +25,7 @@ export class CreateQaPanelDto implements CreateQaPanelType {
   @ApiProperty({ example: 'report.xlsx' })
   file_name: string;
 
-  @ApiProperty({ enum: QaPanelStatus, example: QaPanelStatus.success })
+  @ApiProperty({ enum: QaPanelStatus, example: QaPanelStatus.Processing })
   status: QaPanelStatus;
 
   @ApiPropertyOptional({
@@ -44,7 +44,7 @@ export class UpdateQaPanelDto implements UpdateQaPanelType {
   @ApiPropertyOptional({ example: 'report.xlsx' })
   file_name?: string;
 
-  @ApiPropertyOptional({ enum: QaPanelStatus, example: QaPanelStatus.failed })
+  @ApiPropertyOptional({ enum: QaPanelStatus, example: QaPanelStatus.Failed })
   status?: QaPanelStatus;
 
   @ApiPropertyOptional({
@@ -74,7 +74,7 @@ export class QaPanelResponseDto {
   @ApiProperty({ example: 'report.xlsx' })
   file_name: string;
 
-  @ApiProperty({ enum: QaPanelStatus, example: QaPanelStatus.success })
+  @ApiProperty({ enum: QaPanelStatus, example: QaPanelStatus.Processing })
   status: QaPanelStatus;
 
   @ApiProperty({

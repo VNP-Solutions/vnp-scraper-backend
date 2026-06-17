@@ -15,14 +15,14 @@ export const qaPanelFailedReasonSchema = z.object({
 export const createQaPanelSchema = z.object({
   file_url: urlSchema,
   file_name: z.string().min(1, 'File name is required'),
-  status: z.enum(['success', 'failed']),
+  status: z.enum(['Processing', 'Success', 'Failed']),
   failed_reasons: z.array(qaPanelFailedReasonSchema).optional().default([]),
 });
 
 export const updateQaPanelSchema = z.object({
   file_url: urlSchema.optional(),
   file_name: z.string().min(1, 'File name must not be empty').optional(),
-  status: z.enum(['success', 'failed']).optional(),
+  status: z.enum(['Processing', 'Success', 'Failed']).optional(),
   failed_reasons: z.array(qaPanelFailedReasonSchema).optional(),
 });
 
