@@ -1,6 +1,9 @@
 import { QaPanelStatus } from '@prisma/client';
 import { z } from 'zod';
-import { normalizeQaPanelStatus } from './qa-panel-status.util';
+import {
+  normalizeQaPanelImportCallbackStatus,
+  normalizeQaPanelStatus,
+} from './qa-panel-status.util';
 
 const objectIdSchema = z
   .string()
@@ -61,10 +64,25 @@ export const qaPanelImportCallbackErrorSchema = z.object({
   failed_reason: z.string().min(1, 'Failed reason is required'),
 });
 
+export const qaPanelImportCallbackStatusSchema = z.preprocess(
+  (value) => {
+    if (typeof value !== 'string') {
+      return value;
+    }
+
+    return normalizeQaPanelImportCallbackStatus(value) ?? value;
+  },
+  z.enum(['success', 'failed'], {
+    errorMap: () => ({
+      message: "Status must be one of: success, failed",
+    }),
+  }),
+);
+
 export const qaPanelImportCallbackSchema = z.object({
   qa_panel_id: objectIdSchema,
   email: z.string().email('Invalid email address'),
-  status: z.enum(['success', 'failed']),
+  status: qaPanelImportCallbackStatusSchema,
   report: z.object({
     total: z.number().int().min(0),
     success: z.number().int().min(0),
