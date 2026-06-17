@@ -1,11 +1,37 @@
 import { QaPanelStatus } from '@prisma/client';
 import { z } from 'zod';
+import { normalizeQaPanelStatus } from './qa-panel-status.util';
 
 const objectIdSchema = z
   .string()
   .regex(/^[0-9a-fA-F]{24}$/, 'Invalid ObjectId format');
 
 const urlSchema = z.string().url('Invalid URL format');
+
+export const qaPanelStatusSchema = z.preprocess(
+  (value) => {
+    if (typeof value !== 'string') {
+      return value;
+    }
+
+    return normalizeQaPanelStatus(value) ?? value;
+  },
+  z.enum(['Processing', 'Success', 'Failed'], {
+    errorMap: () => ({
+      message: 'Status must be one of: Processing, Success, Failed',
+    }),
+  }),
+);
+
+export const qaPanelListQuerySchema = z.object({
+  search: z.string().optional(),
+  status: qaPanelStatusSchema.optional(),
+  page: z.coerce.number().int().min(1).optional(),
+  limit: z.coerce.number().int().min(1).optional(),
+  order: z.enum(['asc', 'desc']).optional(),
+});
+
+export type QaPanelListQueryType = z.infer<typeof qaPanelListQuerySchema>;
 
 export const qaPanelFailedReasonSchema = z.object({
   row_number: z.number().int().min(1, 'Row number must be at least 1'),
@@ -15,14 +41,14 @@ export const qaPanelFailedReasonSchema = z.object({
 export const createQaPanelSchema = z.object({
   file_url: urlSchema,
   file_name: z.string().min(1, 'File name is required'),
-  status: z.enum(['Processing', 'Success', 'Failed']),
+  status: qaPanelStatusSchema,
   failed_reasons: z.array(qaPanelFailedReasonSchema).optional().default([]),
 });
 
 export const updateQaPanelSchema = z.object({
   file_url: urlSchema.optional(),
   file_name: z.string().min(1, 'File name must not be empty').optional(),
-  status: z.enum(['Processing', 'Success', 'Failed']).optional(),
+  status: qaPanelStatusSchema.optional(),
   failed_reasons: z.array(qaPanelFailedReasonSchema).optional(),
 });
 

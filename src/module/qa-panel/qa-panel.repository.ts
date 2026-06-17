@@ -40,6 +40,30 @@ export class QaPanelRepository implements IQaPanelRepository {
     }
   }
 
+  private buildWhereClause(filters?: {
+    search?: string;
+    status?: QaPanelStatus;
+  }): Prisma.QaPanelWhereInput {
+    const where: Prisma.QaPanelWhereInput = {};
+
+    if (filters?.status) {
+      where.status = filters.status;
+    }
+
+    if (filters?.search) {
+      const searchTerm = filters.search.toString().trim();
+      const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(searchTerm);
+
+      where.OR = [
+        { file_name: { contains: searchTerm, mode: 'insensitive' } },
+        { file_url: { contains: searchTerm, mode: 'insensitive' } },
+        ...(isValidObjectId ? [{ id: searchTerm }] : []),
+      ];
+    }
+
+    return where;
+  }
+
   async findAll(filters?: {
     search?: string;
     status?: QaPanelStatus;
@@ -59,22 +83,7 @@ export class QaPanelRepository implements IQaPanelRepository {
       const skip = (page - 1) * limit;
       const order = filters?.order || 'desc';
 
-      const where: Record<string, unknown> = {};
-
-      if (filters?.status) {
-        where.status = filters.status;
-      }
-
-      if (filters?.search) {
-        const searchTerm = filters.search.toString().trim();
-        const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(searchTerm);
-
-        where.OR = [
-          { file_name: { contains: searchTerm, mode: 'insensitive' } },
-          { file_url: { contains: searchTerm, mode: 'insensitive' } },
-          ...(isValidObjectId ? [{ id: searchTerm }] : []),
-        ];
-      }
+      const where = this.buildWhereClause(filters);
 
       const [qaPanels, totalDocuments] = await Promise.all([
         this.db.qaPanel.findMany({
