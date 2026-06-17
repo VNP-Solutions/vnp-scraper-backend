@@ -9,16 +9,6 @@ import {
 } from './scraper-job-item.interface';
 import { readPaymentCurrencyCode } from './scraper-job-item-payment.util';
 
-function isMeaningfulPayment(paymentInfo: unknown): boolean {
-  if (!paymentInfo || typeof paymentInfo !== 'object') return false;
-  const pi = paymentInfo as Record<string, unknown>;
-  const t = pi.total_guest_payment;
-  const a = pi.amount_to_charge_or_refund;
-  const tOk = typeof t === 'number' && !Number.isNaN(t) && t !== 0;
-  const aOk = typeof a === 'number' && !Number.isNaN(a) && a !== 0;
-  return tOk && aOk;
-}
-
 function resolveAggregateCurrency(
   rows: Array<{ payment_info: unknown }>,
 ): string | null {
@@ -82,10 +72,16 @@ export class ScraperJobItemRepository implements IScraperJobItemRepository {
         start_date,
         end_date,
         reason_for_charge,
-        page: _page,
-        limit: _limit,
+        page,
+        limit,
         ...filters
       } = query || {};
+
+      const currentPage = parseInt(String(page || '1'), 10);
+      const pageLimit = parseInt(String(limit || '10'), 10);
+      const skip =
+        currentPage > 0 ? (currentPage - 1) * pageLimit : 0;
+      const take = pageLimit > 0 ? pageLimit : 10;
 
       const listSelect = {
         reservation_id: true,
@@ -178,33 +174,21 @@ export class ScraperJobItemRepository implements IScraperJobItemRepository {
       const total_amount_to_charge_or_refund_currency =
         resolveAggregateCurrency(forAggregates);
 
-      const batchSize = 100;
-      const maxScan = 50_000;
-      const jobItems: any[] = [];
-      let skip = 0;
-      while (jobItems.length < 3 && skip < maxScan) {
-        const batch = await this.db.jobItem.findMany({
-          where: allFilters,
-          select: listSelect,
-          orderBy,
-          skip,
-          take: batchSize,
-        });
-        if (batch.length === 0) break;
-        for (const row of batch) {
-          if (isMeaningfulPayment(row.payment_info)) {
-            jobItems.push(row);
-            if (jobItems.length >= 3) break;
-          }
-        }
-        skip += batchSize;
-        if (batch.length < batchSize) break;
-      }
+      const jobItems = await this.db.jobItem.findMany({
+        where: allFilters,
+        select: listSelect,
+        orderBy,
+        skip,
+        take,
+      });
 
       const metadata: JobItemListMetadataDto = {
         total_reservations_count,
         total_amount_to_charge_or_refund,
         total_amount_to_charge_or_refund_currency,
+        currentPage,
+        limit: take,
+        totalPage: Math.ceil(total_reservations_count / take) || 0,
       };
 
       return {

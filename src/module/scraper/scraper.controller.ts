@@ -2025,7 +2025,7 @@ export class ScraperController {
   @ApiOperation({
     summary: 'Get job items',
     description:
-      'Returns up to 3 reservation rows that have **both** `total_guest_payment` and `amount_to_charge_or_refund` set, non-zero, and non-NaN (rows with null or 0 for either field are skipped while scanning in sort order). Each row: reservation_id, check_in, check_out, payment_info (amounts plus `total_guest_payment_currency` and `amount_to_charge_or_refund_currency` from `amount_to_charge_or_refund_currency` in the DB when present). metadata: total_reservations_count (all rows matching filters), total_amount_to_charge_or_refund (sum of `amount_to_charge_or_refund` over those rows), and total_amount_to_charge_or_refund_currency when every non-null stored currency agrees (otherwise null). Pagination query params (page, limit) are ignored for the list size.',
+      'Returns a paginated list of reservation rows for the job (`page`, `limit`; default page 1, limit 10). Each row includes reservation_id, check_in, check_out, and payment_info from the database. metadata totals (total_reservations_count, total_amount_to_charge_or_refund, total_amount_to_charge_or_refund_currency) are computed from **all** matching rows, not just the current page.',
   })
   @ApiParam({
     name: 'jobId',
@@ -2037,14 +2037,14 @@ export class ScraperController {
     name: 'page',
     required: false,
     type: Number,
-    description: 'Deprecated for this endpoint — list is capped at 3 items',
+    description: 'Page number for the item list (default 1)',
     example: 1,
   })
   @ApiQuery({
     name: 'limit',
     required: false,
     type: Number,
-    description: 'Deprecated for this endpoint — list is capped at 3 items',
+    description: 'Items per page for the item list (default 10)',
     example: 10,
   })
   @ApiQuery({

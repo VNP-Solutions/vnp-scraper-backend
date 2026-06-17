@@ -9,10 +9,7 @@ import {
   JobItemListRowDto,
   JobItemUpsertInput,
 } from './scraper-job-item.interface';
-import {
-  parseAmount,
-  readPaymentCurrencyCode,
-} from './scraper-job-item-payment.util';
+import { parseAmount } from './scraper-job-item-payment.util';
 
 /**
  * Parses a human-readable date string (e.g. "Jun 11, 2027", "June 11 2027", "2027-06-11")
@@ -71,18 +68,17 @@ export class ScraperJobItemService implements IScraperJobItemService {
         query,
       );
       const data: JobItemListRowDto[] = (result.data || []).map((row: any) => {
-        const pi = row.payment_info;
-        const currency = readPaymentCurrencyCode(pi);
+        const pi = row.payment_info ?? {};
         return {
           reservation_id: row.reservation_id ?? null,
           check_in: row.check_in_date,
           check_out: row.check_out_date,
           payment_info: {
-            total_guest_payment: pi.total_guest_payment as number,
-            amount_to_charge_or_refund: pi.amount_to_charge_or_refund as number,
-            total_guest_payment_currency: currency,
-            amount_to_charge_or_refund_currency: currency,
-            charge_before: (pi.charge_before as string) ?? null,
+            total_guest_payment: pi.total_guest_payment ?? null,
+            amount_to_charge_or_refund: pi.amount_to_charge_or_refund ?? null,
+            amount_to_charge_or_refund_currency:
+              pi.amount_to_charge_or_refund_currency ?? null,
+            charge_before: pi.charge_before ?? null,
           },
         };
       });

@@ -14,25 +14,21 @@ export interface JobItemUpsertResult {
   updated: number;
 }
 
-/** One row from GET /api/jobs/:jobId/items (max 3, payment rows only). */
+/** One row from GET /api/jobs/:jobId/items. */
 export interface JobItemListRowDto {
   reservation_id: string | null;
   check_in: Date;
   check_out: Date;
   payment_info: {
-    total_guest_payment: number;
-    amount_to_charge_or_refund: number;
-    /** Same as DB `payment_info.amount_to_charge_or_refund_currency` when set (e.g. EUR). */
-    total_guest_payment_currency: string | null;
-    /** From DB `payment_info.amount_to_charge_or_refund_currency`. */
+    total_guest_payment: number | null;
+    amount_to_charge_or_refund: number | null;
     amount_to_charge_or_refund_currency: string | null;
-    /** From DB `payment_info.charge_before` (e.g. "Jun 11, 2027"). */
     charge_before: string | null;
   };
 }
 
 export interface JobItemListMetadataDto {
-  /** All job items matching the same filters (not limited to 3). */
+  /** All job items matching the same filters (used for totals, not limited by page). */
   total_reservations_count: number;
   /** Sum of `payment_info.amount_to_charge_or_refund` across all matching items (null/NaN skipped). */
   total_amount_to_charge_or_refund: number;
@@ -40,6 +36,10 @@ export interface JobItemListMetadataDto {
    * `amount_to_charge_or_refund_currency` from DB when every non-null currency on those rows matches; otherwise null.
    */
   total_amount_to_charge_or_refund_currency: string | null;
+  /** Pagination for `data` only. */
+  currentPage: number;
+  limit: number;
+  totalPage: number;
 }
 
 export interface IScraperJobItemRepository {
