@@ -201,6 +201,16 @@ export class PropertyRepository implements IPropertyRepository {
     }
   }
 
+  async findIdsByOtaIds(ota: { expedia_id?: number | null; booking_id?: number | null; agoda_id?: number | null }): Promise<string[]> {
+    const or: any[] = []
+    if (ota.expedia_id != null) or.push({ expedia_id: Number(ota.expedia_id) })
+    if (ota.booking_id != null) or.push({ booking_id: Number(ota.booking_id) })
+    if (ota.agoda_id   != null) or.push({ agoda_id:   Number(ota.agoda_id) })
+    if (!or.length) return []
+    const rows = await this.db.property.findMany({ where: { OR: or }, select: { id: true } })
+    return rows.map(r => r.id)
+  }
+  
   async findByExpediaId(expediaId: number): Promise<Property | null> {
     try {
       const property = await this.db.property.findFirst({

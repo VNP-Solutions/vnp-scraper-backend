@@ -326,3 +326,10 @@ export class RevealOtaCredentialsResponseDto {
   })
   password: string;
 }
+
+export class SyncByOtaDto {
+  expedia_id?: number | null;
+  booking_id?: number | null;
+  agoda_id?: number | null;
+  data?: Record<string, any>;
+}

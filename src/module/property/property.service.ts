@@ -1,14 +1,19 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { Property } from '@prisma/client';
+import { Prisma, Property } from '@prisma/client';
 import { EncryptionUtil } from 'src/common/utils/encryption.util';
-import { CreatePropertyDto, UpdatePropertyDto } from './property.dto';
-import type { RevealOtaCredentialsBody } from './property.validation';
+import { CreatePropertyDto, SyncByOtaDto, UpdatePropertyDto } from './property.dto';
+import type {
+  RevealOtaCredentialsBody,
+  UpdateOtaCredentialsBody,
+} from './property.validation';
 import {
   IPropertyRepository,
   IPropertyService,
   PropertyDropdownItem,
 } from './property.interface';
-import type { UpdateOtaCredentialsBody } from './property.validation';
+import { DatabaseService } from '../database/database.service';
+import { ConfigService } from '@nestjs/config';
+import axios, { AxiosInstance } from 'axios';
 
 @Injectable()
 export class PropertyService implements IPropertyService {
@@ -17,8 +22,35 @@ export class PropertyService implements IPropertyService {
     private readonly repository: IPropertyRepository,
     private readonly logger: Logger,
     private readonly encryptionUtil: EncryptionUtil,
+    private readonly db: DatabaseService,
+    private readonly config: ConfigService
   ) {}
 
+  private readonly propertyScalars = new Set(
+    Prisma.dmmf.datamodel.models.find(m => m.name === 'Property')!
+      .fields.filter(f => f.kind === 'scalar').map(f => f.name)
+  )
+  private readonly immutableSyncFields = new Set([
+    'id', 'createdAt', 'updatedAt',
+    'portfolio_id', 'sub_portfolio_id'
+  ])
+
+  async syncByOta(dto: SyncByOtaDto) {
+    if (dto.expedia_id == null && dto.booking_id == null && dto.agoda_id == null) return { status: 'no_ota_ids' }
+    const ids = await this.repository.findIdsByOtaIds(dto)
+    if (!ids.length) return { status: 'not_found' }
+    if (ids.length > 1) { this.logger.warn(`[sync] ambiguous: ${ids.join(',')}`); return { status: 'ambiguous', candidates: ids } }
+  
+    const patch: Record<string, any> = {}
+    for (const [k, v] of Object.entries(dto.data ?? {})) {
+      if (this.propertyScalars.has(k) && !this.immutableSyncFields.has(k) && v !== undefined) patch[k] = v
+    }
+    if (!Object.keys(patch).length) return { status: 'no_op', id: ids[0] }
+  
+    const updated = await this.repository.update(ids[0], patch as UpdatePropertyDto)
+    return { status: 'updated', id: updated.id }
+  }
+  
   async createProperty(data: CreatePropertyDto): Promise<Property> {
     try {
       const property = await this.repository.create(data);
@@ -304,5 +336,51 @@ export class PropertyService implements IPropertyService {
       );
       throw error;
     }
+  }
+
+  private readonly dbmsClient: AxiosInstance | null = (() => {
+    const url = this.config.get<string>('DBMS_BACKEND_URL') ?? ''
+    const tok = this.config.get<string>('DBMS_SERVICE_TOKEN') ?? ''
+    const timeout = parseInt(this.config.get<string>('SYNC_TIMEOUT_MS') ?? '15000', 10)
+    return url && tok ? axios.create({ baseURL: url, timeout, headers: { 'X-Service-Token': tok } }) : null
+  })()
+  private readonly dashboardClient: AxiosInstance | null = (() => {
+    const url = this.config.get<string>('DASHBOARD_BACKEND_URL') ?? ''
+    const tok = this.config.get<string>('DASHBOARD_SERVICE_TOKEN') ?? ''
+    const timeout = parseInt(this.config.get<string>('SYNC_TIMEOUT_MS') ?? '15000', 10)
+    return url && tok ? axios.create({ baseURL: url, timeout, headers: { 'X-Service-Token': tok } }) : null
+  })()
+  private async fanOut(
+    otaIds: { expedia_id: number | null; booking_id: number | null; agoda_id: number | null },
+    data: Record<string, any>,
+  ) {
+    const jobs: Promise<any>[] = []
+    if (this.dbmsClient) {
+      jobs.push(this.dbmsClient.patch('/api/property/sync-by-ota', { ...otaIds, data })
+        .then(r => ['dbms', r.data]).catch(e => ['dbms', { error: e?.message }]))
+    }
+    if (this.dashboardClient) {
+      jobs.push(this.dashboardClient.patch('/api/property/sync-by-ota', { ...otaIds, data })
+        .then(r => ['dashboard', r.data]).catch(e => ['dashboard', { error: e?.message }]))
+    }
+    const results = await Promise.allSettled(jobs)
+    for (const r of results) {
+      if (r.status === 'fulfilled') this.logger.log(`[sync] ${r.value[0]}: ${JSON.stringify(r.value[1])}`)
+      else this.logger.error(`[sync] failed: ${r.reason}`)
+    }
+  }
+  async updateAndSync(id: string, data: UpdatePropertyDto): Promise<Property> {
+    const before = await this.repository.findById(id)
+    if (!before) throw new Error(`Property with ID ${id} not found`)
+    const updated = await this.updateProperty(id, data)
+    try {
+      await this.fanOut(
+        { expedia_id: before.expedia_id ?? null, booking_id: before.booking_id ?? null, agoda_id: before.agoda_id ?? null },
+        data,
+      )
+    } catch (e: any) {
+      this.logger.error(`[sync] unexpected: ${e?.message ?? e}`)
+    }
+    return updated
   }
 }

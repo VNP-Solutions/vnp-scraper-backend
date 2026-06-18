@@ -6,6 +6,7 @@ import {
   Inject,
   Logger,
   Param,
+  Patch,
   Post,
   Put,
   Req,
@@ -35,6 +36,7 @@ import {
   ImportPropertiesResponseDto,
   RevealOtaCredentialsDto,
   RevealOtaCredentialsResponseDto,
+  SyncByOtaDto,
   UpdateOtaCredentialsDto,
   UpdateOtaCredentialsResponseDto,
   UpdatePropertyDto,
@@ -47,6 +49,7 @@ import {
   updateOtaCredentialsSchema,
   type UpdateOtaCredentialsBody,
 } from './property.validation';
+import { ServiceTokenGuard } from './guards/service-token.guard';
 
 @ApiTags('Properties')
 @ApiBearerAuth('JWT-auth')
@@ -746,6 +749,52 @@ export class PropertyController {
           data: result,
         };
       },
+      this.logger,
+    );
+  }
+
+  @Patch('/:id/sync')
+  @ApiOperation({ summary: 'Update property and sync to dbms + dashboard' })
+  @ApiBody({
+    type: UpdatePropertyDto,
+    examples: {
+      syncDelta: {
+        summary: 'Update synced to dbms + dashboard',
+        value: {
+          name: 'Grand Hotel & Spa',
+          expedia_status: 'Active',
+          booking_status: 'Suspended'
+        }
+      }
+    }
+  })
+  @UseGuards(JwtAuthGuard)
+  async updateAndSync(
+    @Req() request: Request,
+    @Param('id') id: string,
+    @Body() updatePropertyDto: UpdatePropertyDto,
+    @Res() response: Response,
+  ) {
+    const { user } = request as any
+    if (user.role !== 'admin') { /* return 403 via ResponseHandler, same as updateProperty */ }
+    return ResponseHandler.handler(response, async () => ({
+      statusCode: 200,
+      message: 'Property updated and synced',
+      data: await this.propertyService.updateAndSync(id, updatePropertyDto),
+    }), this.logger)
+  }
+
+  @Patch('/sync-by-ota')
+  @UseGuards(ServiceTokenGuard)
+  @ApiOperation({ summary: 'Internal: sync property from dbms by OTA id' })
+  async syncByOta(@Body() dto: SyncByOtaDto, @Res() response: Response) {
+    return ResponseHandler.handler(
+      response,
+      async () => ({
+        statusCode: 200,
+        message: 'Sync processed',
+        data: await this.propertyService.syncByOta(dto),
+      }),
       this.logger,
     );
   }
