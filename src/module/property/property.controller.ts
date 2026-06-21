@@ -35,6 +35,7 @@ import {
   ImportPropertiesResponseDto,
   RevealOtaCredentialsDto,
   RevealOtaCredentialsResponseDto,
+  SyncDeleteDto,
   UpdateOtaCredentialsDto,
   UpdateOtaCredentialsResponseDto,
   UpdatePropertyDto,
@@ -47,6 +48,7 @@ import {
   updateOtaCredentialsSchema,
   type UpdateOtaCredentialsBody,
 } from './property.validation';
+import { ServiceTokenGuard } from './guards/service-token';
 
 @ApiTags('Properties')
 @ApiBearerAuth('JWT-auth')
@@ -748,5 +750,33 @@ export class PropertyController {
       },
       this.logger,
     );
+  }
+  @Post('/sync-create')
+  @UseGuards(ServiceTokenGuard)
+  @ApiOperation({ summary: 'Internal: create property synced from DBMS' })
+  async syncCreate(@Body() dto: CreatePropertyDto, @Res() response: Response) {
+    return ResponseHandler.handler(
+      response,
+      async () => ({
+        statusCode: 201,
+        message: 'Sync create processed',
+        data: await this.propertyService.syncCreate(dto),
+      }),
+      this.logger,
+    )
+  }
+  @Post('/sync-delete')
+  @UseGuards(ServiceTokenGuard)
+  @ApiOperation({ summary: 'Internal: delete property synced from DBMS' })
+  async syncDelete(@Body() dto: SyncDeleteDto, @Res() response: Response) {
+  return ResponseHandler.handler(
+  response,
+  async () => ({
+    statusCode: 200,
+    message: 'Sync delete processed',
+    data: await this.propertyService.syncDelete(dto),
+  }),
+  this.logger,
+  )
   }
 }
