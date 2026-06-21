@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Property } from '@prisma/client';
 import { EncryptionUtil } from 'src/common/utils/encryption.util';
-import { CreatePropertyDto, UpdatePropertyDto } from './property.dto';
+import { CreatePropertyDto, SyncDeleteDto, UpdatePropertyDto } from './property.dto';
 import type { RevealOtaCredentialsBody } from './property.validation';
 import {
   IPropertyRepository,
@@ -64,6 +64,72 @@ export class PropertyService implements IPropertyService {
     }
   }
 
+  async syncCreate(data: CreatePropertyDto): Promise<{ status: string; id?: string }> {
+    // duplicate check (unchanged)
+    if (data.expedia_id || data.booking_id || data.agoda_id) {
+      const existing = await this.repository.findByOtaIds({
+        expedia_id: data.expedia_id ?? null,
+        booking_id: data.booking_id ?? null,
+        agoda_id:   data.agoda_id   ?? null,
+      })
+      if (existing) {
+        this.logger.log(`[sync] property already exists by OTA id: ${existing.id}`)
+        return { status: 'already_exists', id: existing.id }
+      }
+    } else {
+      const existing = await this.repository.findByName(data.name)
+      if (existing) {
+        this.logger.log(`[sync] property already exists by name: ${data.name}`)
+        return { status: 'already_exists', id: existing.id }
+      }
+    }
+  
+    let portfolioId: string | undefined
+    if (data.portfolio_name) {
+      const existingPf = await this.repository.findPortfolioByName(data.portfolio_name)
+      portfolioId = existingPf
+        ? existingPf.id
+        : (await this.repository.createPortfolio(data.portfolio_name)).id
+      this.logger.log(`[sync] portfolio "${data.portfolio_name}" -> ${portfolioId}`)
+    }
+  
+    let subPortfolioId: string | undefined
+    if (data.sub_portfolio_name && portfolioId) {
+      const existingSub = await this.repository.findSubPortfolioByNameAndPortfolio(
+        data.sub_portfolio_name,
+        portfolioId,
+      )
+      subPortfolioId = existingSub
+        ? existingSub.id
+        : (await this.repository.createSubPortfolio(data.sub_portfolio_name, portfolioId)).id
+    }
+  
+    const created = await this.createProperty({
+      ...data,
+      portfolio_id: portfolioId,        // scraper id, not DBMS id
+      sub_portfolio_id: subPortfolioId,
+    })
+    return { status: 'created', id: created.id }
+  }
+
+  async syncDelete(dto: SyncDeleteDto): Promise<{ status: string; id?: string }> {
+    if (dto.expedia_id == null && dto.booking_id == null && dto.agoda_id == null) {
+      return { status: 'no_ota_ids' }
+    }
+    const existing = await this.repository.findByOtaIds({
+      expedia_id: dto.expedia_id ?? null,
+      booking_id: dto.booking_id ?? null,
+      agoda_id:   dto.agoda_id   ?? null,
+    })
+    if (!existing) {
+      this.logger.log(`[sync] delete: property not found for OTA ids`)
+      return { status: 'not_found' }
+    }
+    await this.repository.delete(existing.id)
+    this.logger.log(`[sync] property deleted: ${existing.id}`)
+    return { status: 'deleted', id: existing.id }
+  }
+  
   async updateProperty(id: string, data: UpdatePropertyDto): Promise<Property> {
     try {
       const property = await this.repository.update(id, data);
