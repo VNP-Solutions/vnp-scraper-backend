@@ -371,4 +371,28 @@ export class PropertyService implements IPropertyService {
       throw error;
     }
   }
+
+  async syncBulkCreate(items: CreatePropertyDto[]): Promise<{
+    created: number; alreadyExists: number; failed: number;
+    results: Array<{ name: string; status: string; id?: string }>;
+  }> {
+    let created = 0, alreadyExists = 0, failed = 0;
+    const results: Array<{ name: string; status: string; id?: string }> = [];
+  
+    for (const item of items) {
+      try {
+        const r = await this.syncCreate(item);
+        if (r.status === 'created') created++;
+        else if (r.status === 'already_exists') alreadyExists++;
+        results.push({ name: item.name, status: r.status, id: r.id });
+      } catch (e: any) {
+        failed++;
+        this.logger.error(`[sync] bulk create failed for "${item.name}": ${e?.message ?? e}`);
+        results.push({ name: item.name, status: 'failed' });
+      }
+    }
+  
+    this.logger.log(`[sync] bulk create done: created=${created}, exists=${alreadyExists}, failed=${failed}`);
+    return { created, alreadyExists, failed, results };
+  }
 }

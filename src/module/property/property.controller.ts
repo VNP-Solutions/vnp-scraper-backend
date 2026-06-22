@@ -779,4 +779,19 @@ export class PropertyController {
   this.logger,
   )
   }
+
+  @Post('/sync-bulk-create')
+  @UseGuards(ServiceTokenGuard)
+  @ApiOperation({ summary: 'Internal: bulk create properties synced from DBMS' })
+  async syncBulkCreate(@Body() dto: SyncBulkCreateDto, @Res() response: Response) {
+    return ResponseHandler.handler(
+      response,
+      async () => ({
+        statusCode: 201,
+        message: 'Sync bulk create processed',
+        data: await this.propertyService.syncBulkCreate(dto.items ?? []),
+      }),
+      this.logger,
+    )
+  }
 }
