@@ -153,6 +153,15 @@ export class PortfolioRepository implements IPortfolioRepository {
     }
   }
 
+  async findByName(name: string): Promise<Portfolio | null> {
+    try {
+      return await this.db.portfolio.findFirst({ where: { name: name.trim() } });
+    } catch (error) {
+      this.logger.error(error);
+      return null;
+    }
+  }
+
   async update(
     id: string,
     data: UpdatePortfolioDto,
@@ -289,5 +298,24 @@ export class PortfolioRepository implements IPortfolioRepository {
       this.logger.error(error);
       return null;
     }
+  }
+  async ensureInternalPortfolio(): Promise<Portfolio> {
+    const existing = await this.db.portfolio.findFirst({
+      where: { name: 'Internal Portfolio' },
+    });
+    if (existing) return existing;
+    return this.db.portfolio.create({
+      data: { name: 'Internal Portfolio', createdBy: 'dbms-sync', updatedBy: 'dbms-sync' },
+    });
+  }
+  async reassignPropertiesToPortfolio(
+    fromPortfolioId: string,
+    toPortfolioId: string,
+  ): Promise<number> {
+    const result = await this.db.property.updateMany({
+      where: { portfolio_id: fromPortfolioId },
+      data: { portfolio_id: toPortfolioId, sub_portfolio_id: null },
+    });
+    return result.count;
   }
 }
