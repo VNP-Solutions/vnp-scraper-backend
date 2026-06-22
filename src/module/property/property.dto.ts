@@ -338,3 +338,7 @@ export class SyncDeleteDto {
   booking_id?: number | null;
   agoda_id?: number | null;
 }
+
+export class SyncBulkCreateDto {
+  items: CreatePropertyDto[];
+}

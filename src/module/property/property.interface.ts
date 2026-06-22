@@ -165,4 +165,8 @@ export interface IPropertyService {
   applyPropertyCredentialsShape(property: any | null | undefined): void;
   syncCreate(dto: CreatePropertyDto): Promise<{ status: string; id?: string }>
   syncDelete(dto: SyncDeleteDto): Promise<{ status: string; id?: string }>
+  syncBulkCreate(items: CreatePropertyDto[]): Promise<{
+    created: number; alreadyExists: number; failed: number;
+    results: Array<{ name: string; status: string; id?: string }>;
+  }>
 }
