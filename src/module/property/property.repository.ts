@@ -235,6 +235,23 @@ export class PropertyRepository implements IPropertyRepository {
     }
   }
 
+  async findByOtaIds(ids: {
+    expedia_id: number | null
+    booking_id: number | null
+    agoda_id: number | null
+  }): Promise<Property | null> {
+    const conditions: any[] = []
+    if (ids.expedia_id) conditions.push({ expedia_id: ids.expedia_id })
+    if (ids.booking_id) conditions.push({ booking_id: ids.booking_id })
+    if (ids.agoda_id)   conditions.push({ agoda_id: ids.agoda_id })
+    if (!conditions.length) return null
+    return this.db.property.findFirst({ where: { OR: conditions } })
+  }
+  
+  async findByName(name: string): Promise<Property | null> {
+    return this.db.property.findFirst({ where: { name } })
+  }
+
   async update(id: string, data: UpdatePropertyDto): Promise<Property> {
     try {
       const property = await this.db.property.update({

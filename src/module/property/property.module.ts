@@ -5,6 +5,7 @@ import { DatabaseService } from '../database/database.service';
 import { PropertyController } from './property.controller';
 import { PropertyRepository } from './property.repository';
 import { PropertyService } from './property.service';
+import { ServiceTokenGuard } from './guards/service-token';
 
 @Module({
   imports: [],
@@ -22,6 +23,7 @@ import { PropertyService } from './property.service';
     Logger,
     EncryptionUtil,
     ConfigService,
+    ServiceTokenGuard,
   ],
   exports: ['IPropertyService', 'IPropertyRepository'],
 })

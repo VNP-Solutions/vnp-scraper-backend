@@ -17,6 +17,12 @@ export class CreatePropertyDto {
   })
   sub_portfolio_id?: string;
 
+  @ApiPropertyOptional({ description: 'Portfolio name (for sync resolution)' })
+  portfolio_name?: string;
+  
+  @ApiPropertyOptional({ description: 'Sub Portfolio name (for sync resolution)' })
+  sub_portfolio_name?: string;
+
   @ApiPropertyOptional({
     description: 'Expedia ID',
   })
@@ -325,4 +331,14 @@ export class RevealOtaCredentialsResponseDto {
       'Decrypted password for the requested OTA (empty if unset or decryption failed)',
   })
   password: string;
+}
+
+export class SyncDeleteDto {
+  expedia_id?: number | null;
+  booking_id?: number | null;
+  agoda_id?: number | null;
+}
+
+export class SyncBulkCreateDto {
+  items: CreatePropertyDto[];
 }
