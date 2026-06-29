@@ -35,6 +35,7 @@ import {
   ImportPropertiesResponseDto,
   RevealOtaCredentialsDto,
   RevealOtaCredentialsResponseDto,
+  SyncBulkCreateDto,
   SyncDeleteDto,
   UpdateOtaCredentialsDto,
   UpdateOtaCredentialsResponseDto,
