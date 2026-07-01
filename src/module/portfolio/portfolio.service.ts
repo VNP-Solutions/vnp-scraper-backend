@@ -4,6 +4,7 @@ import {
   CreatePortfolioDto,
   SyncCreatePortfolioDto,
   SyncUpdatePortfolioDto,
+  SyncDeletePortfolioDto,
   UpdatePortfolioDto,
 } from './portfolio.dto';
 import { IPortfolioRepository, IPortfolioService } from './portfolio.interface';
@@ -161,17 +162,31 @@ export class PortfolioService implements IPortfolioService {
   }
 
   async syncDelete(
-    name: string,
+    dto: SyncDeletePortfolioDto,
   ): Promise<{ status: string; id?: string; movedProperties?: number }> {
-    const existing = await this.repository.findByName(name);
+    let existing: Portfolio | null = await this.repository.findById(dto._id);
+
+    if (!existing && dto.name) {
+      existing = await this.repository.findByName(dto.name);
+    }
+
     if (!existing) {
-      this.logger.warn(`[sync] portfolio not found for delete: ${name}`);
+      this.logger.warn(
+        `[sync] portfolio not found for delete: ${dto.name} (_id: ${dto._id})`,
+      );
       return { status: 'not_found' };
     }
-    if (name.trim().toLowerCase() === INTERNAL_PORTFOLIO_NAME.toLowerCase()) {
+
+    const portfolioName = existing.name;
+    if (
+      portfolioName.trim().toLowerCase() ===
+        INTERNAL_PORTFOLIO_NAME.toLowerCase() ||
+      dto.name.trim().toLowerCase() === INTERNAL_PORTFOLIO_NAME.toLowerCase()
+    ) {
       this.logger.warn(`[sync] refusing to delete internal portfolio`);
       return { status: 'skipped_internal', id: existing.id };
     }
+
     const internal = await this.repository.ensureInternalPortfolio();
     const moved = await this.repository.reassignPropertiesToPortfolio(
       existing.id,
@@ -179,7 +194,7 @@ export class PortfolioService implements IPortfolioService {
     );
     await this.repository.delete(existing.id);
     this.logger.log(
-      `[sync] portfolio deleted: ${name}, moved ${moved} properties to internal`,
+      `[sync] portfolio deleted: ${portfolioName}, moved ${moved} properties to internal`,
     );
     return { status: 'deleted', id: existing.id, movedProperties: moved };
   }

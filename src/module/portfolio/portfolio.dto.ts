@@ -28,5 +28,6 @@ export class SyncUpdatePortfolioDto {
 }
 
 export class SyncDeletePortfolioDto {
+  _id: string;
   name: string;
 }

@@ -3,6 +3,7 @@ import {
   CreatePortfolioDto,
   SyncCreatePortfolioDto,
   SyncUpdatePortfolioDto,
+  SyncDeletePortfolioDto,
   UpdatePortfolioDto,
 } from './portfolio.dto';
 
@@ -57,6 +58,6 @@ export interface IPortfolioService {
     dto: SyncUpdatePortfolioDto,
   ): Promise<{ status: string; id?: string }>;
   syncDelete(
-    name: string,
+    dto: SyncDeletePortfolioDto,
   ): Promise<{ status: string; id?: string; movedProperties?: number }>;
 }

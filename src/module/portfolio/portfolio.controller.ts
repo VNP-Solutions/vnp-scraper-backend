@@ -302,7 +302,7 @@ export class PortfolioController {
       async () => ({
         statusCode: 200,
         message: 'Sync delete processed',
-        data: await this.portfolioService.syncDelete(dto.name),
+        data: await this.portfolioService.syncDelete(dto),
       }),
       this.logger,
     );
