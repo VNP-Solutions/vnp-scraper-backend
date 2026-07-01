@@ -17,13 +17,14 @@ export class UpdatePortfolioDto {
 }
 
 export class SyncCreatePortfolioDto {
-  id?: string;
+  _id: string;
   name: string;
 }
 
 export class SyncUpdatePortfolioDto {
+  _id: string;
   oldName: string;
-  newName: string;
+  name?: string;
 }
 
 export class SyncDeletePortfolioDto {

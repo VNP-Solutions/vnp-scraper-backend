@@ -329,7 +329,7 @@ export class PortfolioController {
   @Post('/sync-update')
   @UseGuards(ExternalJwtGuard)
   @ApiOperation({
-    summary: 'Internal: update (rename) portfolio synced from DBMS',
+    summary: 'Internal: update portfolio synced from DBMS',
   })
   async syncUpdate(
     @Body() dto: SyncUpdatePortfolioDto,
@@ -340,7 +340,7 @@ export class PortfolioController {
       async () => ({
         statusCode: 200,
         message: 'Sync update processed',
-        data: await this.portfolioService.syncUpdate(dto.oldName, dto.newName),
+        data: await this.portfolioService.syncUpdate(dto),
       }),
       this.logger,
     );

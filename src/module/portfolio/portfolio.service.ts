@@ -3,6 +3,7 @@ import { Portfolio } from '@prisma/client';
 import {
   CreatePortfolioDto,
   SyncCreatePortfolioDto,
+  SyncUpdatePortfolioDto,
   UpdatePortfolioDto,
 } from './portfolio.dto';
 import { IPortfolioRepository, IPortfolioService } from './portfolio.interface';
@@ -34,10 +35,10 @@ export class PortfolioService implements IPortfolioService {
   async syncCreate(
     dto: SyncCreatePortfolioDto,
   ): Promise<{ status: string; id?: string }> {
-    if (dto.id) {
-      const byId = await this.repository.findById(dto.id);
+    if (dto._id) {
+      const byId = await this.repository.findById(dto._id);
       if (byId) {
-        this.logger.log(`[sync] portfolio already exists by id: ${dto.id}`);
+        this.logger.log(`[sync] portfolio already exists by _id: ${dto._id}`);
         return { status: 'already_exists', id: byId.id };
       }
     }
@@ -51,36 +52,49 @@ export class PortfolioService implements IPortfolioService {
     const created = await this.repository.create(
       { name: dto.name },
       'dbms-sync',
-      dto.id,
+      dto._id,
     );
     return { status: 'created', id: created.id };
   }
 
   async syncUpdate(
-    oldName: string,
-    newName: string,
+    dto: SyncUpdatePortfolioDto,
   ): Promise<{ status: string; id?: string }> {
-    const existing = await this.repository.findByName(oldName);
+    let existing: Portfolio | null = await this.repository.findById(dto._id);
+
+    if (!existing && dto.oldName) {
+      existing = await this.repository.findByName(dto.oldName);
+    }
+
+    const targetName = dto.name ?? dto.oldName;
+
     if (!existing) {
       this.logger.warn(
-        `[sync] portfolio not found for update, creating: ${newName}`,
+        `[sync] portfolio not found for update, creating: ${targetName}`,
       );
-      const created = await this.repository.create(
-        { name: newName },
-        'dbms-sync',
-      );
-      return { status: 'created', id: created?.id };
+      return this.syncCreate({
+        _id: dto._id,
+        name: targetName,
+      });
     }
-    const clash = await this.repository.findByName(newName);
-    if (clash && clash.id !== existing.id) {
-      this.logger.warn(
-        `[sync] target name already exists, skipping: ${newName}`,
-      );
-      return { status: 'conflict', id: clash.id };
+
+    if (dto.name && dto.name !== existing.name) {
+      const clash = await this.repository.findByName(dto.name);
+      if (clash && clash.id !== existing.id) {
+        this.logger.warn(
+          `[sync] target name already exists, skipping: ${dto.name}`,
+        );
+        return { status: 'conflict', id: clash.id };
+      }
     }
+
+    if (!dto.name || dto.name === existing.name) {
+      return { status: 'no_op', id: existing.id };
+    }
+
     const updated = await this.repository.update(
       existing.id,
-      { name: newName },
+      { name: dto.name },
       'dbms-sync',
     );
     return { status: 'updated', id: updated?.id };

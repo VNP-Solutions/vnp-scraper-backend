@@ -2,6 +2,7 @@ import { Portfolio } from '@prisma/client';
 import {
   CreatePortfolioDto,
   SyncCreatePortfolioDto,
+  SyncUpdatePortfolioDto,
   UpdatePortfolioDto,
 } from './portfolio.dto';
 
@@ -53,8 +54,7 @@ export interface IPortfolioService {
     dto: SyncCreatePortfolioDto,
   ): Promise<{ status: string; id?: string }>;
   syncUpdate(
-    oldName: string,
-    newName: string,
+    dto: SyncUpdatePortfolioDto,
   ): Promise<{ status: string; id?: string }>;
   syncDelete(
     name: string,
