@@ -607,7 +607,7 @@ export class ScraperController {
       'Search by guest name or reservation ID (partial match, case-insensitive)',
   })
   @ApiQuery({
-    name: 'reasonForCharge',
+    name: 'reason_for_charge',
     required: false,
     type: String,
     description:
