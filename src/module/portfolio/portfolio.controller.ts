@@ -28,7 +28,14 @@ import { IPortfolioService } from './portfolio.interface';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { createPortfolioSchema } from './portfolio.validation';
 import { ServiceTokenGuard } from '../property/guards/service-token';
-import { CreatePortfolioDto, SyncCreatePortfolioDto, SyncDeletePortfolioDto, SyncUpdatePortfolioDto, UpdatePortfolioDto } from './portfolio.dto';
+import { ExternalJwtGuard } from './guards/external-jwt.guard';
+import {
+  CreatePortfolioDto,
+  SyncCreatePortfolioDto,
+  SyncDeletePortfolioDto,
+  SyncUpdatePortfolioDto,
+  UpdatePortfolioDto,
+} from './portfolio.dto';
 
 @ApiTags('Portfolios')
 @ApiBearerAuth('JWT-auth')
@@ -281,35 +288,61 @@ export class PortfolioController {
   }
 
   @Post('/sync-delete')
-  @UseGuards(ServiceTokenGuard)
-  @ApiOperation({ summary: 'Internal: delete portfolio synced from DBMS (reassigns properties to Internal)' })
-  async syncDelete(@Body() dto: SyncDeletePortfolioDto, @Res() response: Response) {
-    return ResponseHandler.handler(response, async () => ({
-      statusCode: 200,
-      message: 'Sync delete processed',
-      data: await this.portfolioService.syncDelete(dto.name),
-    }), this.logger);
+  @UseGuards(ExternalJwtGuard)
+  @ApiOperation({
+    summary:
+      'Internal: delete portfolio synced from DBMS (reassigns properties to Internal)',
+  })
+  async syncDelete(
+    @Body() dto: SyncDeletePortfolioDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => ({
+        statusCode: 200,
+        message: 'Sync delete processed',
+        data: await this.portfolioService.syncDelete(dto.name),
+      }),
+      this.logger,
+    );
   }
 
   @Post('/sync-create')
-  @UseGuards(ServiceTokenGuard)
+  @UseGuards(ExternalJwtGuard)
   @ApiOperation({ summary: 'Internal: create portfolio synced from DBMS' })
-  async syncCreate(@Body() dto: SyncCreatePortfolioDto, @Res() response: Response) {
-    return ResponseHandler.handler(response, async () => ({
-      statusCode: 201,  
-      message: 'Sync create processed',
-      data: await this.portfolioService.syncCreate(dto.name),
-    }), this.logger);
+  async syncCreate(
+    @Body() dto: SyncCreatePortfolioDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => ({
+        statusCode: 201,
+        message: 'Sync create processed',
+        data: await this.portfolioService.syncCreate(dto),
+      }),
+      this.logger,
+    );
   }
 
   @Post('/sync-update')
-  @UseGuards(ServiceTokenGuard)
-  @ApiOperation({ summary: 'Internal: update (rename) portfolio synced from DBMS' })
-  async syncUpdate(@Body() dto: SyncUpdatePortfolioDto, @Res() response: Response) {
-    return ResponseHandler.handler(response, async () => ({
-      statusCode: 200,
-      message: 'Sync update processed',
-      data: await this.portfolioService.syncUpdate(dto.oldName, dto.newName),
-    }), this.logger);
+  @UseGuards(ExternalJwtGuard)
+  @ApiOperation({
+    summary: 'Internal: update (rename) portfolio synced from DBMS',
+  })
+  async syncUpdate(
+    @Body() dto: SyncUpdatePortfolioDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => ({
+        statusCode: 200,
+        message: 'Sync update processed',
+        data: await this.portfolioService.syncUpdate(dto.oldName, dto.newName),
+      }),
+      this.logger,
+    );
   }
 }

@@ -1,6 +1,10 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Portfolio } from '@prisma/client';
-import { CreatePortfolioDto, UpdatePortfolioDto } from './portfolio.dto';
+import {
+  CreatePortfolioDto,
+  SyncCreatePortfolioDto,
+  UpdatePortfolioDto,
+} from './portfolio.dto';
 import { IPortfolioRepository, IPortfolioService } from './portfolio.interface';
 const INTERNAL_PORTFOLIO_NAME = 'Internal Portfolio';
 @Injectable()
@@ -27,29 +31,58 @@ export class PortfolioService implements IPortfolioService {
     }
   }
 
-  async syncCreate(name: string): Promise<{ status: string; id?: string }> {
-    const existing = await this.repository.findByName(name);
+  async syncCreate(
+    dto: SyncCreatePortfolioDto,
+  ): Promise<{ status: string; id?: string }> {
+    if (dto.id) {
+      const byId = await this.repository.findById(dto.id);
+      if (byId) {
+        this.logger.log(`[sync] portfolio already exists by id: ${dto.id}`);
+        return { status: 'already_exists', id: byId.id };
+      }
+    }
+
+    const existing = await this.repository.findByName(dto.name);
     if (existing) {
-      this.logger.log(`[sync] portfolio already exists: ${name}`);
+      this.logger.log(`[sync] portfolio already exists by name: ${dto.name}`);
       return { status: 'already_exists', id: existing.id };
     }
-    const created = await this.repository.create({ name }, 'dbms-sync');
+
+    const created = await this.repository.create(
+      { name: dto.name },
+      'dbms-sync',
+      dto.id,
+    );
     return { status: 'created', id: created.id };
   }
 
-  async syncUpdate(oldName: string, newName: string): Promise<{ status: string; id?: string }> {
+  async syncUpdate(
+    oldName: string,
+    newName: string,
+  ): Promise<{ status: string; id?: string }> {
     const existing = await this.repository.findByName(oldName);
     if (!existing) {
-      this.logger.warn(`[sync] portfolio not found for update, creating: ${newName}`);
-      const created = await this.repository.create({ name: newName }, 'dbms-sync');
+      this.logger.warn(
+        `[sync] portfolio not found for update, creating: ${newName}`,
+      );
+      const created = await this.repository.create(
+        { name: newName },
+        'dbms-sync',
+      );
       return { status: 'created', id: created?.id };
     }
     const clash = await this.repository.findByName(newName);
     if (clash && clash.id !== existing.id) {
-      this.logger.warn(`[sync] target name already exists, skipping: ${newName}`);
+      this.logger.warn(
+        `[sync] target name already exists, skipping: ${newName}`,
+      );
       return { status: 'conflict', id: clash.id };
     }
-    const updated = await this.repository.update(existing.id, { name: newName }, 'dbms-sync');
+    const updated = await this.repository.update(
+      existing.id,
+      { name: newName },
+      'dbms-sync',
+    );
     return { status: 'updated', id: updated?.id };
   }
 
@@ -113,7 +146,9 @@ export class PortfolioService implements IPortfolioService {
     }
   }
 
-  async syncDelete(name: string): Promise<{ status: string; id?: string; movedProperties?: number }> {
+  async syncDelete(
+    name: string,
+  ): Promise<{ status: string; id?: string; movedProperties?: number }> {
     const existing = await this.repository.findByName(name);
     if (!existing) {
       this.logger.warn(`[sync] portfolio not found for delete: ${name}`);
@@ -124,9 +159,14 @@ export class PortfolioService implements IPortfolioService {
       return { status: 'skipped_internal', id: existing.id };
     }
     const internal = await this.repository.ensureInternalPortfolio();
-    const moved = await this.repository.reassignPropertiesToPortfolio(existing.id, internal.id);
+    const moved = await this.repository.reassignPropertiesToPortfolio(
+      existing.id,
+      internal.id,
+    );
     await this.repository.delete(existing.id);
-    this.logger.log(`[sync] portfolio deleted: ${name}, moved ${moved} properties to internal`);
+    this.logger.log(
+      `[sync] portfolio deleted: ${name}, moved ${moved} properties to internal`,
+    );
     return { status: 'deleted', id: existing.id, movedProperties: moved };
   }
 

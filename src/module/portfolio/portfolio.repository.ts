@@ -15,13 +15,18 @@ export class PortfolioRepository implements IPortfolioRepository {
     return this.db;
   }
 
-  async create(data: CreatePortfolioDto, id: string): Promise<Portfolio> {
+  async create(
+    data: CreatePortfolioDto,
+    auditUserId: string,
+    documentId?: string,
+  ): Promise<Portfolio> {
     try {
       const portfolio = await this.db.portfolio.create({
         data: {
           ...data,
-          createdBy: id,
-          updatedBy: id,
+          ...(documentId ? { id: documentId } : {}),
+          createdBy: auditUserId,
+          updatedBy: auditUserId,
         },
       });
       return portfolio;
@@ -124,7 +129,7 @@ export class PortfolioRepository implements IPortfolioRepository {
         totalDocuments,
         currentPage: page ? parseInt(page) : 1,
         limit: take,
-        totalPage: Math.ceil(totalDocuments / take)
+        totalPage: Math.ceil(totalDocuments / take),
       };
 
       return {
@@ -155,7 +160,9 @@ export class PortfolioRepository implements IPortfolioRepository {
 
   async findByName(name: string): Promise<Portfolio | null> {
     try {
-      return await this.db.portfolio.findFirst({ where: { name: name.trim() } });
+      return await this.db.portfolio.findFirst({
+        where: { name: name.trim() },
+      });
     } catch (error) {
       this.logger.error(error);
       return null;
@@ -269,7 +276,7 @@ export class PortfolioRepository implements IPortfolioRepository {
         totalDocuments,
         currentPage: page ? parseInt(page) : 1,
         limit: take,
-        totalPage: Math.ceil(totalDocuments / take)
+        totalPage: Math.ceil(totalDocuments / take),
       };
 
       return {
@@ -305,7 +312,11 @@ export class PortfolioRepository implements IPortfolioRepository {
     });
     if (existing) return existing;
     return this.db.portfolio.create({
-      data: { name: 'Internal Portfolio', createdBy: 'dbms-sync', updatedBy: 'dbms-sync' },
+      data: {
+        name: 'Internal Portfolio',
+        createdBy: 'dbms-sync',
+        updatedBy: 'dbms-sync',
+      },
     });
   }
   async reassignPropertiesToPortfolio(
