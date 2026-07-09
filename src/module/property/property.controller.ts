@@ -51,6 +51,7 @@ import {
   type UpdateOtaCredentialsBody,
 } from './property.validation';
 import { ServiceTokenGuard } from './guards/service-token';
+import { ExternalJwtGuard } from '../qa-panel/guards/external-jwt.guard';
 
 @ApiTags('Properties')
 @ApiBearerAuth('JWT-auth')
@@ -798,7 +799,8 @@ export class PropertyController {
   }
 
   @Post('/upsert/:parent_id')
-  @UseGuards(ServiceTokenGuard)
+  @UseGuards(ExternalJwtGuard)
+  @ApiBearerAuth('external-jwt')
   @ApiOperation({ summary: 'Upsert a property by parent_id' })
   @ApiResponse({ status: 200, description: 'Property upserted successfully' })
   async upsertProperty(

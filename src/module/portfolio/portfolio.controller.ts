@@ -29,6 +29,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { createPortfolioSchema } from './portfolio.validation';
 import { ServiceTokenGuard } from '../property/guards/service-token';
 import { CreatePortfolioDto, SyncCreatePortfolioDto, SyncDeletePortfolioDto, SyncUpdatePortfolioDto, UpdatePortfolioDto, UpsertPortfolioDto } from './portfolio.dto';
+import { ExternalJwtGuard } from '../qa-panel/guards/external-jwt.guard';
 
 @ApiTags('Portfolios')
 @ApiBearerAuth('JWT-auth')
@@ -314,7 +315,8 @@ export class PortfolioController {
   }
 
   @Post('/upsert/:parent_id')
-  @UseGuards(ServiceTokenGuard)
+  @UseGuards(ExternalJwtGuard)
+  @ApiBearerAuth('external-jwt')
   @ApiOperation({ summary: 'Upsert a portfolio by parent_id' })
   @ApiResponse({ status: 200, description: 'Portfolio upserted successfully' })
   async upsertPortfolio(
