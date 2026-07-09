@@ -40,6 +40,7 @@ import {
   UpdateOtaCredentialsDto,
   UpdateOtaCredentialsResponseDto,
   UpdatePropertyDto,
+  UpsertPropertyDto,
 } from './property.dto';
 import { IPropertyService } from './property.interface';
 import {
@@ -50,6 +51,7 @@ import {
   type UpdateOtaCredentialsBody,
 } from './property.validation';
 import { ServiceTokenGuard } from './guards/service-token';
+import { ExternalJwtGuard } from '../qa-panel/guards/external-jwt.guard';
 
 @ApiTags('Properties')
 @ApiBearerAuth('JWT-auth')
@@ -794,5 +796,26 @@ export class PropertyController {
       }),
       this.logger,
     )
+  }
+
+  @Post('/upsert/:parent_id')
+  @UseGuards(ExternalJwtGuard)
+  @ApiBearerAuth('external-jwt')
+  @ApiOperation({ summary: 'Upsert a property by parent_id' })
+  @ApiResponse({ status: 200, description: 'Property upserted successfully' })
+  async upsertProperty(
+    @Param('parent_id') parentId: string,
+    @Body() dto: UpsertPropertyDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => ({
+        statusCode: 200,
+        message: 'Property upserted successfully',
+        data: await this.propertyService.upsertPropertyByParentId(parentId, dto),
+      }),
+      this.logger,
+    );
   }
 }

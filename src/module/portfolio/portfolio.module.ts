@@ -3,9 +3,21 @@ import { DatabaseService } from '../database/database.service';
 import { PortfolioController } from './portfolio.controller';
 import { PortfolioRepository } from './portfolio.repository';
 import { PortfolioService } from './portfolio.service';
+import { ExternalJwtGuard } from '../qa-panel/guards/external-jwt.guard';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
 
 @Module({
-  imports: [],
+  imports: [
+    ConfigModule,
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.get<string>('JWT_COMMUNICATION_SECRET'),
+      }),
+    }),
+  ],
   controllers: [PortfolioController],
   providers: [
     {
@@ -18,6 +30,7 @@ import { PortfolioService } from './portfolio.service';
     },
     DatabaseService,
     Logger,
+    ExternalJwtGuard,
   ],
   exports: ['IPortfolioService', 'IPortfolioRepository'],
 })

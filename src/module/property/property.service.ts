@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Property } from '@prisma/client';
 import { EncryptionUtil } from 'src/common/utils/encryption.util';
-import { CreatePropertyDto, SyncDeleteDto, UpdatePropertyDto } from './property.dto';
+import { CreatePropertyDto, SyncDeleteDto, UpdatePropertyDto, UpsertPropertyDto } from './property.dto';
 import type { RevealOtaCredentialsBody } from './property.validation';
 import {
   IPropertyRepository,
@@ -394,5 +394,21 @@ export class PropertyService implements IPropertyService {
   
     this.logger.log(`[sync] bulk create done: created=${created}, exists=${alreadyExists}, failed=${failed}`);
     return { created, alreadyExists, failed, results };
+  }
+
+  async upsertPropertyByParentId(
+    parentId: string,
+    data: UpsertPropertyDto,
+  ): Promise<Property> {
+    try {
+      const property = await this.repository.upsertByParentId(parentId, data);
+      return this.processProperty(property);
+    } catch (error) {
+      this.logger.error(
+        `Error upserting property by parent_id ${parentId}: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
   }
 }

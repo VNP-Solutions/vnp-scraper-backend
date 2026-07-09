@@ -6,9 +6,21 @@ import { PropertyController } from './property.controller';
 import { PropertyRepository } from './property.repository';
 import { PropertyService } from './property.service';
 import { ServiceTokenGuard } from './guards/service-token';
+import { ExternalJwtGuard } from '../qa-panel/guards/external-jwt.guard';
+import { ConfigModule } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
 
 @Module({
-  imports: [],
+  imports: [
+    ConfigModule,
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.get<string>('JWT_COMMUNICATION_SECRET'),
+      }),
+    }),
+  ],
   controllers: [PropertyController],
   providers: [
     {
@@ -24,6 +36,7 @@ import { ServiceTokenGuard } from './guards/service-token';
     EncryptionUtil,
     ConfigService,
     ServiceTokenGuard,
+    ExternalJwtGuard
   ],
   exports: ['IPropertyService', 'IPropertyRepository'],
 })

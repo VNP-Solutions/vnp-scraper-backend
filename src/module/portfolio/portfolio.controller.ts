@@ -28,7 +28,8 @@ import { IPortfolioService } from './portfolio.interface';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { createPortfolioSchema } from './portfolio.validation';
 import { ServiceTokenGuard } from '../property/guards/service-token';
-import { CreatePortfolioDto, SyncCreatePortfolioDto, SyncDeletePortfolioDto, SyncUpdatePortfolioDto, UpdatePortfolioDto } from './portfolio.dto';
+import { CreatePortfolioDto, SyncCreatePortfolioDto, SyncDeletePortfolioDto, SyncUpdatePortfolioDto, UpdatePortfolioDto, UpsertPortfolioDto } from './portfolio.dto';
+import { ExternalJwtGuard } from '../qa-panel/guards/external-jwt.guard';
 
 @ApiTags('Portfolios')
 @ApiBearerAuth('JWT-auth')
@@ -311,5 +312,26 @@ export class PortfolioController {
       message: 'Sync update processed',
       data: await this.portfolioService.syncUpdate(dto.oldName, dto.newName),
     }), this.logger);
+  }
+
+  @Post('/upsert/:parent_id')
+  @UseGuards(ExternalJwtGuard)
+  @ApiBearerAuth('external-jwt')
+  @ApiOperation({ summary: 'Upsert a portfolio by parent_id' })
+  @ApiResponse({ status: 200, description: 'Portfolio upserted successfully' })
+  async upsertPortfolio(
+    @Param('parent_id') parentId: string,
+    @Body() dto: UpsertPortfolioDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => ({
+        statusCode: 200,
+        message: 'Portfolio upserted successfully',
+        data: await this.portfolioService.upsertPortfolioByParentId(parentId, dto),
+      }),
+      this.logger,
+    );
   }
 }
