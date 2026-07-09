@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Portfolio } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
-import { CreatePortfolioDto, UpdatePortfolioDto } from './portfolio.dto';
+import { CreatePortfolioDto, UpdatePortfolioDto, UpsertPortfolioDto } from './portfolio.dto';
 import { IPortfolioRepository } from './portfolio.interface';
 
 @Injectable()
@@ -317,5 +317,38 @@ export class PortfolioRepository implements IPortfolioRepository {
       data: { portfolio_id: toPortfolioId, sub_portfolio_id: null },
     });
     return result.count;
+  }
+
+  async findByParentId(parentId: string): Promise<Portfolio | null> {
+    try {
+      return await this.db.portfolio.findFirst({ where: { parent_id: parentId } });
+    } catch (error) {
+      this.logger.error(error);
+      return null;
+    }
+  }
+  
+  async upsertByParentId(
+    parentId: string,
+    data: UpsertPortfolioDto,
+    actor: string,
+  ): Promise<Portfolio> {
+    const name = data.name?.trim();
+  
+    const existing = await this.findByParentId(parentId);
+    if (existing) {
+      return this.db.portfolio.update({
+        where: { id: existing.id },
+        data: { ...data, ...(name ? { name } : {}), updatedBy: actor },
+      });
+    }
+  
+    if (!name) {
+      throw new Error('name is required to create a portfolio');
+    }
+  
+    return this.db.portfolio.create({
+      data: { ...data, name, parent_id: parentId, createdBy: actor, updatedBy: actor },
+    });
   }
 }

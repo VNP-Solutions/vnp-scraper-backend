@@ -9,7 +9,7 @@ import { EncryptionUtil } from 'src/common/utils/encryption.util';
 import * as XLSX from 'xlsx';
 import { getPhoneLastThreeDigitsKey } from '../phone-number-slot/phone-number-slot.utils';
 import { DatabaseService } from '../database/database.service';
-import { CreatePropertyDto, UpdatePropertyDto } from './property.dto';
+import { CreatePropertyDto, UpdatePropertyDto, UpsertPropertyDto } from './property.dto';
 import {
   IPropertyRepository,
   PropertyDropdownItem,
@@ -2086,5 +2086,42 @@ export class PropertyRepository implements IPropertyRepository {
       );
       throw error;
     }
+  }
+  async findByParentId(parentId: string): Promise<Property | null> {
+    try {
+      return await this.db.property.findFirst({ where: { parent_id: parentId } });
+    } catch (error) {
+      this.logger.error(error);
+      return null;
+    }
+  }
+  
+  async upsertByParentId(
+    parentId: string,
+    data: UpsertPropertyDto,
+  ): Promise<Property> {
+    if (typeof data.portfolio_id === 'string' && data.portfolio_id.trim() === '') {
+      data.portfolio_id = undefined;
+    }
+    if (typeof data.sub_portfolio_id === 'string' && data.sub_portfolio_id.trim() === '') {
+      data.sub_portfolio_id = undefined;
+    }
+  
+    const existing = await this.findByParentId(parentId);
+    if (existing) {
+      return this.db.property.update({
+        where: { id: existing.id },
+        data,
+      });
+    }
+  
+    const name = data.name;
+    if (!name) {
+      throw new Error('name is required to create a property');
+    }
+  
+    return this.db.property.create({
+      data: { ...data, name, parent_id: parentId },
+    });
   }
 }

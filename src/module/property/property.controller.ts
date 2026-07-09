@@ -40,6 +40,7 @@ import {
   UpdateOtaCredentialsDto,
   UpdateOtaCredentialsResponseDto,
   UpdatePropertyDto,
+  UpsertPropertyDto,
 } from './property.dto';
 import { IPropertyService } from './property.interface';
 import {
@@ -794,5 +795,25 @@ export class PropertyController {
       }),
       this.logger,
     )
+  }
+
+  @Post('/upsert/:parent_id')
+  @UseGuards(ServiceTokenGuard)
+  @ApiOperation({ summary: 'Upsert a property by parent_id' })
+  @ApiResponse({ status: 200, description: 'Property upserted successfully' })
+  async upsertProperty(
+    @Param('parent_id') parentId: string,
+    @Body() dto: UpsertPropertyDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => ({
+        statusCode: 200,
+        message: 'Property upserted successfully',
+        data: await this.propertyService.upsertPropertyByParentId(parentId, dto),
+      }),
+      this.logger,
+    );
   }
 }

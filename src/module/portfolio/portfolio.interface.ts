@@ -1,5 +1,5 @@
 import { Portfolio } from '@prisma/client';
-import { CreatePortfolioDto, UpdatePortfolioDto } from './portfolio.dto';
+import { CreatePortfolioDto, UpdatePortfolioDto, UpsertPortfolioDto } from './portfolio.dto';
 
 export interface IPortfolioRepository {
   create(data: CreatePortfolioDto, id: string): Promise<Portfolio>;
@@ -20,6 +20,12 @@ export interface IPortfolioRepository {
   findByName(name: string): Promise<Portfolio | null>;
   ensureInternalPortfolio(): Promise<Portfolio>;
   reassignPropertiesToPortfolio(fromPortfolioId: string, toPortfolioId: string): Promise<number>;
+  findByParentId(parentId: string): Promise<Portfolio | null>;
+  upsertByParentId(
+    parentId: string,
+    data: UpsertPortfolioDto,
+    actor: string,
+  ): Promise<Portfolio>;
 }
 
 export interface IPortfolioService {
@@ -41,4 +47,8 @@ export interface IPortfolioService {
   syncCreate(name: string): Promise<{ status: string; id?: string }>;
   syncUpdate(oldName: string, newName: string): Promise<{ status: string; id?: string }>;
   syncDelete(name: string): Promise<{ status: string; id?: string; movedProperties?: number }>;
+  upsertPortfolioByParentId(
+    parentId: string,
+    data: UpsertPortfolioDto,
+  ): Promise<Portfolio>;
 }

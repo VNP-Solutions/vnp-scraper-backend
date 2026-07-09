@@ -132,6 +132,35 @@ export class UpdatePropertyDto {
   phone_number_slot_id?: string;
 }
 
+export class UpsertPropertyDto {
+  @ApiPropertyOptional({ description: 'Property name (required when creating)' })
+  name?: string;
+
+  @ApiPropertyOptional({ description: 'Portfolio ID' })
+  portfolio_id?: string;
+
+  @ApiPropertyOptional({ description: 'Sub Portfolio ID' })
+  sub_portfolio_id?: string;
+
+  @ApiPropertyOptional({ description: 'Expedia ID' })
+  expedia_id?: number;
+
+  @ApiPropertyOptional({ description: 'Expedia Status' })
+  expedia_status?: string;
+
+  @ApiPropertyOptional({ description: 'Booking.com ID' })
+  booking_id?: number;
+
+  @ApiPropertyOptional({ description: 'Booking.com Status' })
+  booking_status?: string;
+
+  @ApiPropertyOptional({ description: 'Agoda ID' })
+  agoda_id?: number;
+
+  @ApiPropertyOptional({ description: 'Agoda Status' })
+  agoda_status?: string;
+}
+
 export class ImportPropertiesResponseDto {
   @ApiProperty({
     description: 'Number of portfolios created',

@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Portfolio } from '@prisma/client';
-import { CreatePortfolioDto, UpdatePortfolioDto } from './portfolio.dto';
+import { CreatePortfolioDto, UpdatePortfolioDto, UpsertPortfolioDto } from './portfolio.dto';
 import { IPortfolioRepository, IPortfolioService } from './portfolio.interface';
 const INTERNAL_PORTFOLIO_NAME = 'Internal Portfolio';
 @Injectable()
@@ -147,5 +147,22 @@ export class PortfolioService implements IPortfolioService {
 
   async getPermission(id: string, userId: string): Promise<any> {
     return this.repository.findPermission(id, userId);
+  }
+
+  private readonly UPSERT_ACTOR = 'system';
+
+  async upsertPortfolioByParentId(
+    parentId: string,
+    data: UpsertPortfolioDto,
+  ): Promise<Portfolio> {
+    try {
+      return await this.repository.upsertByParentId(parentId, data, this.UPSERT_ACTOR);
+    } catch (error) {
+      this.logger.error(
+        `Error upserting portfolio by parent_id ${parentId}: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
   }
 }

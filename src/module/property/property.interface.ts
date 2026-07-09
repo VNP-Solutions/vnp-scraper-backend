@@ -1,5 +1,5 @@
 import { OTAProvider, Property } from '@prisma/client';
-import { CreatePropertyDto, SyncDeleteDto, UpdatePropertyDto } from './property.dto';
+import { CreatePropertyDto, SyncDeleteDto, UpdatePropertyDto, UpsertPropertyDto } from './property.dto';
 import type {
   RevealOtaCredentialsBody,
   UpdateOtaCredentialsBody,
@@ -101,6 +101,8 @@ export interface IPropertyRepository {
   }>;
   findByOtaIds(ids: { expedia_id: number | null; booking_id: number | null; agoda_id: number | null }): Promise<Property | null>
   findByName(name: string): Promise<Property | null>
+  findByParentId(parentId: string): Promise<Property | null>;
+  upsertByParentId(parentId: string, data: UpsertPropertyDto): Promise<Property>;
 }
 
 export interface IPropertyService {
@@ -169,4 +171,5 @@ export interface IPropertyService {
     created: number; alreadyExists: number; failed: number;
     results: Array<{ name: string; status: string; id?: string }>;
   }>
+  upsertPropertyByParentId(parentId: string, data: UpsertPropertyDto): Promise<Property>;
 }

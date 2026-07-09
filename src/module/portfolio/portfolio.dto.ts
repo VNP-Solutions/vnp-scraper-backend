@@ -28,3 +28,11 @@ export class SyncUpdatePortfolioDto {
 export class SyncDeletePortfolioDto {
   name: string;
 }
+
+export class UpsertPortfolioDto {
+  @ApiPropertyOptional({
+    example: 'Main Portfolio',
+    description: 'Portfolio name',
+  })
+  name?: string;
+}
