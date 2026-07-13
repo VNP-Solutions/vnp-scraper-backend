@@ -298,7 +298,7 @@ export class PortfolioController {
     return ResponseHandler.handler(response, async () => ({
       statusCode: 201,  
       message: 'Sync create processed',
-      data: await this.portfolioService.syncCreate(dto.name),
+      data: await this.portfolioService.syncCreate(dto.name, dto._id),
     }), this.logger);
   }
 
