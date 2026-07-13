@@ -36,6 +36,7 @@ import {
   RevealOtaCredentialsDto,
   RevealOtaCredentialsResponseDto,
   SyncBulkCreateDto,
+  SyncBulkUpsertPropertyItemDto,
   SyncDeleteDto,
   UpdateOtaCredentialsDto,
   UpdateOtaCredentialsResponseDto,
@@ -50,6 +51,7 @@ import {
   type UpdateOtaCredentialsBody,
 } from './property.validation';
 import { ServiceTokenGuard } from './guards/service-token';
+import { ExternalJwtGuard } from '../qa-panel/guards/external-jwt.guard';
 
 @ApiTags('Properties')
 @ApiBearerAuth('JWT-auth')
@@ -766,6 +768,26 @@ export class PropertyController {
       this.logger,
     )
   }
+
+  @Post('/sync-bulk-upsert')
+  @UseGuards(ExternalJwtGuard)
+  @ApiOperation({ summary: 'Internal: bulk upsert properties synced from DBMS (parent_id keyed)' })
+  @ApiBody({ type: [SyncBulkUpsertPropertyItemDto] })
+  async syncBulkUpsert(
+    @Body() items: SyncBulkUpsertPropertyItemDto[],
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => ({
+        statusCode: 200,
+        message: 'Sync bulk upsert processed',
+        data: await this.propertyService.syncBulkUpsert(items),
+      }),
+      this.logger,
+    );
+  }
+
   @Post('/sync-delete')
   @UseGuards(ServiceTokenGuard)
   @ApiOperation({ summary: 'Internal: delete property synced from DBMS' })

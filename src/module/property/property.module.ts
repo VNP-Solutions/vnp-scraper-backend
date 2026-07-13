@@ -1,14 +1,16 @@
 import { Logger, Module } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { EncryptionUtil } from 'src/common/utils/encryption.util';
 import { DatabaseService } from '../database/database.service';
 import { PropertyController } from './property.controller';
 import { PropertyRepository } from './property.repository';
 import { PropertyService } from './property.service';
 import { ServiceTokenGuard } from './guards/service-token';
+import { JwtModule } from '@nestjs/jwt';
+import { ExternalJwtGuard } from '../qa-panel/guards/external-jwt.guard';
 
 @Module({
-  imports: [],
+  imports: [ConfigModule, JwtModule.register({})],
   controllers: [PropertyController],
   providers: [
     {
@@ -19,6 +21,7 @@ import { ServiceTokenGuard } from './guards/service-token';
       provide: 'IPropertyRepository',
       useClass: PropertyRepository,
     },
+    ExternalJwtGuard,
     DatabaseService,
     Logger,
     EncryptionUtil,

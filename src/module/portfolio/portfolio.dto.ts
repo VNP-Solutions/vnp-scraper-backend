@@ -17,6 +17,7 @@ export class UpdatePortfolioDto {
 }
 
 export class SyncCreatePortfolioDto {
+  _id?: string;
   name: string;
 }
 

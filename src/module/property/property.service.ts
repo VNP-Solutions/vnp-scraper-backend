@@ -1,7 +1,7 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { Property } from '@prisma/client';
 import { EncryptionUtil } from 'src/common/utils/encryption.util';
-import { CreatePropertyDto, SyncDeleteDto, UpdatePropertyDto } from './property.dto';
+import { CreatePropertyDto, SyncBulkUpsertPropertyItemDto, SyncBulkUpsertPropertyResultDto, SyncDeleteDto, UpdatePropertyDto } from './property.dto';
 import type { RevealOtaCredentialsBody } from './property.validation';
 import {
   IPropertyRepository,
@@ -394,5 +394,137 @@ export class PropertyService implements IPropertyService {
   
     this.logger.log(`[sync] bulk create done: created=${created}, exists=${alreadyExists}, failed=${failed}`);
     return { created, alreadyExists, failed, results };
+  }
+
+  async syncBulkUpsert(
+    items: SyncBulkUpsertPropertyItemDto[],
+  ): Promise<SyncBulkUpsertPropertyResultDto> {
+    if (!Array.isArray(items) || !items.length) {
+      throw new BadRequestException('No items provided');
+    }
+  
+    const result: SyncBulkUpsertPropertyResultDto = {
+      totalRows: items.length,
+      createdCount: 0,
+      updatedCount: 0,
+      failureCount: 0,
+      errors: [],
+      successfulUpserts: [],
+    };
+  
+    for (const item of items) {
+      const rowNumber = item.row;
+      const parentId =
+        typeof item.parent_id === 'string' ? item.parent_id.trim() : '';
+  
+      if (!Number.isInteger(rowNumber) || rowNumber < 1) {
+        result.errors.push({
+          row: Number.isInteger(rowNumber) ? rowNumber : 0,
+          parent_id: parentId || 'Unknown',
+          error: 'Row is required and must be a positive integer',
+        });
+        result.failureCount++;
+        continue;
+      }
+  
+      if (!parentId) {
+        result.errors.push({
+          row: rowNumber,
+          parent_id: 'Unknown',
+          error: 'Parent ID is required',
+        });
+        result.failureCount++;
+        continue;
+      }
+  
+      try {
+        const name = typeof item.name === 'string' ? item.name.trim() : '';
+        if (!name) throw new Error('Property name is required');
+  
+        const portfolioParentId =
+          typeof item.portfolio_parent_id === 'string'
+            ? item.portfolio_parent_id.trim()
+            : '';
+        if (!portfolioParentId) throw new Error('Portfolio Parent ID is required');
+  
+        const action = await this.syncUpsert(parentId, {
+          ...item,
+          name,
+          portfolio_parent_id: portfolioParentId,
+        });
+  
+        if (action === 'created') result.createdCount++;
+        else result.updatedCount++;
+  
+        result.successfulUpserts.push({ parent_id: parentId, action });
+      } catch (error) {
+        result.errors.push({
+          row: rowNumber,
+          parent_id: parentId,
+          error: error instanceof Error ? error.message : 'Unknown error occurred',
+        });
+        result.failureCount++;
+      }
+    }
+  
+    return result;
+  }
+  
+  private async syncUpsert(
+    parentId: string,
+    item: SyncBulkUpsertPropertyItemDto,
+  ): Promise<'created' | 'updated'> {
+    const portfolio = await this.repository.findPortfolioByParentId(
+      item.portfolio_parent_id,
+    );
+    if (!portfolio) {
+      throw new Error(
+        `Portfolio not found with parent_id: ${item.portfolio_parent_id}`,
+      );
+    }
+  
+    const existing = await this.repository.findByParentId(parentId);
+  
+    const propertyData: any = {
+      name: item.name,
+      parent_id: parentId,
+      portfolio_id: portfolio.id,
+      expedia_id: item.expedia_id,
+      booking_id: item.booking_id,
+      agoda_id: item.agoda_id,
+    };
+  
+    let propertyId: string;
+    let action: 'created' | 'updated';
+  
+    if (existing) {
+      if (item.name !== existing.name) {
+        const clash = await this.repository.findByName(item.name);
+        if (clash && clash.id !== existing.id) {
+          throw new Error('Property with this name already exists');
+        }
+      }
+      const updated = await this.repository.update(existing.id, propertyData);
+      if (!updated) throw new Error('Failed to update property');
+      propertyId = updated.id;
+      action = 'updated';
+    } else {
+      const clash = await this.repository.findByName(item.name);
+      if (clash) throw new Error('Property with this name already exists');
+      const created = await this.repository.create(propertyData);
+      propertyId = created.id;
+      action = 'created';
+    }
+  
+    await this.repository.updatePropertyCredentials(propertyId, {
+      expediaUsername: item.expedia_username,
+      expediaPassword: item.expedia_password,
+      agodaUsername: item.agoda_username,
+      agodaPassword: item.agoda_password,
+      bookingUsername: item.booking_username,
+      bookingPassword: item.booking_password,
+    });
+  
+    return action;
   }
 }

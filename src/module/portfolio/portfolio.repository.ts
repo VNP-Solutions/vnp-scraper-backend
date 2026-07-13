@@ -162,6 +162,15 @@ export class PortfolioRepository implements IPortfolioRepository {
     }
   }
 
+  async findByParentId(parentId: string): Promise<Portfolio | null> {
+    try {
+      return await this.db.portfolio.findFirst({ where: { parent_id: parentId } });
+    } catch (error) {
+      this.logger.error(error);
+      return null;
+    }
+  }
+
   async update(
     id: string,
     data: UpdatePortfolioDto,
