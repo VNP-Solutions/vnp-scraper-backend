@@ -792,6 +792,18 @@ export class PropertyController {
   @Post('/sync-delete')
   @UseGuards(ServiceTokenGuard)
   @ApiOperation({ summary: 'Internal: delete property synced from DBMS' })
+  @ApiBody({ type: SyncDeleteDto,
+    examples: {
+      delete_two_hotels: {
+        summary: 'Delete test Hotel + test Hotel 2',
+        value: {
+          items: [
+            { parent_id: 'test-hotel-1' },
+            { parent_id: 'test-hotel-2' },
+          ],
+        },
+      },
+   })
   async syncDelete(@Body() dto: SyncDeleteDto, @Res() response: Response) {
   return ResponseHandler.handler(
   response,
