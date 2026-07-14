@@ -386,3 +386,21 @@ export class SyncDeleteDto {
 export class SyncBulkCreateDto {
   items: CreatePropertyDto[];
 }
+
+export class SyncBulkDeletePropertyItemDto {
+  @ApiProperty({ example: 'dbms-property-123', description: 'DBMS property id (delete key)' })
+  parent_id: string;
+}
+
+export class SyncBulkDeleteDto {
+  @ApiProperty({ type: [SyncBulkDeletePropertyItemDto] })
+  items: SyncBulkDeletePropertyItemDto[];
+}
+
+export class SyncBulkDeletePropertyResultDto {
+  @ApiProperty({ example: 2 }) totalCount: number;
+  @ApiProperty({ example: 1 }) deletedCount: number;
+  @ApiProperty({ example: 1 }) failureCount: number;
+  @ApiProperty() errors: Array<{ parent_id: string; error: string }>;
+  @ApiProperty() successfulDeletes: Array<{ parent_id: string }>;
+}

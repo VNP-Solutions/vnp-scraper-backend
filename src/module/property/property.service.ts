@@ -1,7 +1,7 @@
 import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { Property } from '@prisma/client';
 import { EncryptionUtil } from 'src/common/utils/encryption.util';
-import { CreatePropertyDto, SyncBulkUpsertPropertyItemDto, SyncBulkUpsertPropertyResultDto, SyncDeleteDto, UpdatePropertyDto } from './property.dto';
+import { CreatePropertyDto, SyncBulkDeletePropertyItemDto, SyncBulkDeletePropertyResultDto, SyncBulkUpsertPropertyItemDto, SyncBulkUpsertPropertyResultDto, SyncDeleteDto, UpdatePropertyDto } from './property.dto';
 import type { RevealOtaCredentialsBody } from './property.validation';
 import {
   IPropertyRepository,
@@ -526,5 +526,52 @@ export class PropertyService implements IPropertyService {
     });
   
     return action;
+  }
+
+  async syncBulkDelete(
+    items: SyncBulkDeletePropertyItemDto[],
+  ): Promise<SyncBulkDeletePropertyResultDto> {
+    if (!Array.isArray(items) || !items.length) {
+      throw new BadRequestException('No items provided');
+    }
+  
+    const result: SyncBulkDeletePropertyResultDto = {
+      totalCount: items.length,
+      deletedCount: 0,
+      failureCount: 0,
+      errors: [],
+      successfulDeletes: [],
+    };
+  
+    for (const item of items) {
+      const parentId =
+        typeof item.parent_id === 'string' ? item.parent_id.trim() : '';
+  
+      if (!parentId) {
+        result.errors.push({ parent_id: 'Unknown', error: 'Parent ID is required' });
+        result.failureCount++;
+        continue;
+      }
+  
+      try {
+        const existing = await this.repository.findByParentId(parentId);
+        if (!existing) {
+          throw new Error(`Property not found with parent_id: ${parentId}`);
+        }
+        const deleted = await this.repository.delete(existing.id);
+        if (!deleted) throw new Error('Failed to delete property');
+  
+        result.deletedCount++;
+        result.successfulDeletes.push({ parent_id: parentId });
+      } catch (error) {
+        result.errors.push({
+          parent_id: parentId,
+          error: error instanceof Error ? error.message : 'Unknown error occurred',
+        });
+        result.failureCount++;
+      }
+    }
+  
+    return result;
   }
 }
