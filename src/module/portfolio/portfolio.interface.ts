@@ -18,6 +18,7 @@ export interface IPortfolioRepository {
   ): Promise<{ data: Portfolio[]; metadata: any }>;
   findPermission(id: string, userId: string): Promise<any>;
   findByName(name: string): Promise<Portfolio | null>;
+  findByParentId(parentId: string): Promise<Portfolio | null>;
   ensureInternalPortfolio(): Promise<Portfolio>;
   reassignPropertiesToPortfolio(fromPortfolioId: string, toPortfolioId: string): Promise<number>;
 }
@@ -38,7 +39,12 @@ export interface IPortfolioService {
     userId: string,
   ): Promise<{ data: Portfolio[]; metadata: any }>;
   getPermission(id: string, userId: string): Promise<any>;
-  syncCreate(name: string): Promise<{ status: string; id?: string }>;
+  syncCreate(name: string, parentId?: string): Promise<{ status: string; id?: string }>;
   syncUpdate(oldName: string, newName: string): Promise<{ status: string; id?: string }>;
   syncDelete(name: string): Promise<{ status: string; id?: string; movedProperties?: number }>;
+  syncUpsert(
+    parentId: string,
+    name: string,
+  ): Promise<{ action: 'created' | 'updated'; portfolio: Portfolio }>;
+  syncDeleteByParentId(parentId: string): Promise<{ message: string }>;
 }

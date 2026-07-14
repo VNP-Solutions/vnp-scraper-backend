@@ -189,6 +189,7 @@ model ConnectedEntity {
 
 model Portfolio {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  parent_id String?
   name      String   @unique
   createdBy String?
   updatedBy String?
@@ -201,6 +202,7 @@ model Portfolio {
   property                     Property[]
   recurringJobs                RecurringJob[]
 
+  @@index([parent_id])
   @@map("portfolios")
 }
 
@@ -333,6 +335,7 @@ model RecurringReportBucket {
 
 model Property {
   id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  parent_id        String?
   portfolio_id     String?  @db.ObjectId
   sub_portfolio_id String?  @db.ObjectId
   name             String
@@ -365,6 +368,7 @@ model Property {
   recurringJobs                RecurringJob[]
 
   @@index([phone_number_slot_id])
+  @@index([parent_id])
   @@map("properties")
 }
 

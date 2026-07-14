@@ -38,6 +38,10 @@ export class PropertyRepository implements IPropertyRepository {
       agoda_status: data.agoda_status || 'Access Required',
     };
 
+    if (data.parent_id !== undefined && data.parent_id !== null) {
+      propertyData.parent_id = data.parent_id;
+    }
+
     if (data.expedia_id) {
       propertyData.expedia_id = data.expedia_id;
     }
@@ -199,6 +203,14 @@ export class PropertyRepository implements IPropertyRepository {
       this.logger.error(error);
       return null;
     }
+  }
+
+  async findByParentId(parentId: string): Promise<Property | null> {
+    return this.db.property.findFirst({ where: { parent_id: parentId } })
+  }
+
+  async findPortfolioByParentId(parentId: string): Promise<any> {
+    return this.db.portfolio.findFirst({ where: { parent_id: parentId } });
   }
 
   async findByExpediaId(expediaId: number): Promise<Property | null> {

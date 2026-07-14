@@ -36,7 +36,10 @@ import {
   RevealOtaCredentialsDto,
   RevealOtaCredentialsResponseDto,
   SyncBulkCreateDto,
+  SyncBulkDeletePropertyDto,
+  SyncBulkUpsertPropertyItemDto,
   SyncDeleteDto,
+  SyncUpsertPropertyDto,
   UpdateOtaCredentialsDto,
   UpdateOtaCredentialsResponseDto,
   UpdatePropertyDto,
@@ -50,6 +53,7 @@ import {
   type UpdateOtaCredentialsBody,
 } from './property.validation';
 import { ServiceTokenGuard } from './guards/service-token';
+import { ExternalJwtGuard } from '../qa-panel/guards/external-jwt.guard';
 
 @ApiTags('Properties')
 @ApiBearerAuth('JWT-auth')
@@ -752,6 +756,29 @@ export class PropertyController {
       this.logger,
     );
   }
+  @Post('/sync-upsert/:parent_id')
+  @UseGuards(ExternalJwtGuard)
+  @ApiOperation({ summary: 'Internal: upsert a property synced from DBMS (parent_id keyed)' })
+  @ApiBody({ type: SyncUpsertPropertyDto })
+  async syncUpsert(
+    @Param('parent_id') parentId: string,
+    @Body() dto: SyncUpsertPropertyDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result = await this.propertyService.syncUpsertProperty(parentId, dto);
+        return {
+          statusCode: 200,
+          message: `Property ${result.action} successfully`,
+          data: result.property,
+        };
+      },
+      this.logger,
+    );
+  }
+
   @Post('/sync-create')
   @UseGuards(ServiceTokenGuard)
   @ApiOperation({ summary: 'Internal: create property synced from DBMS' })
@@ -766,9 +793,61 @@ export class PropertyController {
       this.logger,
     )
   }
+
+  @Post('/sync-bulk-upsert')
+  @UseGuards(ExternalJwtGuard)
+  @ApiOperation({ summary: 'Internal: bulk upsert properties synced from DBMS (parent_id keyed)' })
+  @ApiBody({ type: [SyncBulkUpsertPropertyItemDto] })
+  async syncBulkUpsert(
+    @Body() items: SyncBulkUpsertPropertyItemDto[],
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => ({
+        statusCode: 200,
+        message: 'Sync bulk upsert processed',
+        data: await this.propertyService.syncBulkUpsert(items),
+      }),
+      this.logger,
+    );
+  }
+
+  @Post('/sync-delete/:parent_id')
+  @UseGuards(ExternalJwtGuard)
+  @ApiOperation({ summary: 'Internal: delete a property synced from DBMS (parent_id keyed)' })
+  async syncDeleteByParent(
+    @Param('parent_id') parentId: string,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => ({
+        statusCode: 200,
+        message: 'Property deleted successfully',
+        data: await this.propertyService.syncDeleteByParentId(parentId),
+      }),
+      this.logger,
+    );
+  }
+
   @Post('/sync-delete')
   @UseGuards(ServiceTokenGuard)
   @ApiOperation({ summary: 'Internal: delete property synced from DBMS' })
+  @ApiBody({ type: SyncDeleteDto,
+    examples: {
+      delete_two_hotels: {
+        summary: 'Delete test Hotel + test Hotel 2',
+        value: {
+          items: [
+            { parent_id: 'test-hotel-1' },
+            { parent_id: 'test-hotel-2' },
+          ],
+        },
+      },
+   }
+  })
+  
   async syncDelete(@Body() dto: SyncDeleteDto, @Res() response: Response) {
   return ResponseHandler.handler(
   response,
@@ -779,6 +858,25 @@ export class PropertyController {
   }),
   this.logger,
   )
+  }
+
+  @Post('/sync-bulk-delete')
+  @UseGuards(ExternalJwtGuard)
+  @ApiOperation({ summary: 'Internal: bulk delete properties synced from DBMS (parent_id keyed)' })
+  @ApiBody({ type: SyncBulkDeletePropertyDto })
+  async syncBulkDelete(
+    @Body() dto: SyncBulkDeletePropertyDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => ({
+        statusCode: 200,
+        message: 'Sync bulk delete processed',
+        data: await this.propertyService.syncBulkDelete(dto),
+      }),
+      this.logger,
+    );
   }
 
   @Post('/sync-bulk-create')

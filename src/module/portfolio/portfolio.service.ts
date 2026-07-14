@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Portfolio } from '@prisma/client';
 import { CreatePortfolioDto, UpdatePortfolioDto } from './portfolio.dto';
 import { IPortfolioRepository, IPortfolioService } from './portfolio.interface';
@@ -27,13 +27,23 @@ export class PortfolioService implements IPortfolioService {
     }
   }
 
-  async syncCreate(name: string): Promise<{ status: string; id?: string }> {
+  async syncCreate(name: string, parentId?: string): Promise<{ status: string; id?: string }> {
+    if (parentId) {
+      const byParent = await this.repository.findByParentId(parentId);
+      if (byParent) {
+        this.logger.log(`[sync] portfolio already exists by parent_id: ${parentId}`);
+        return { status: 'already_exists', id: byParent.id };
+      }
+    }
     const existing = await this.repository.findByName(name);
     if (existing) {
+      if (parentId && !existing.parent_id) {
+        await this.repository.update(existing.id, { parent_id: parentId } as any, 'dbms-sync');
+      }
       this.logger.log(`[sync] portfolio already exists: ${name}`);
       return { status: 'already_exists', id: existing.id };
     }
-    const created = await this.repository.create({ name }, 'dbms-sync');
+    const created = await this.repository.create({ name, parent_id: parentId } as any, 'dbms-sync');
     return { status: 'created', id: created.id };
   }
 
@@ -101,6 +111,45 @@ export class PortfolioService implements IPortfolioService {
     }
   }
 
+  async syncUpsert(
+    parentId: string,
+    name: string,
+  ): Promise<{ action: 'created' | 'updated'; portfolio: Portfolio }> {
+    const trimmedParent = (parentId ?? '').trim();
+    const trimmedName = (name ?? '').trim();
+    if (!trimmedParent) throw new BadRequestException('Parent ID is required');
+    if (!trimmedName) throw new BadRequestException('Portfolio name is required');
+  
+    const existing = await this.repository.findByParentId(trimmedParent);
+    if (existing) {
+      if (trimmedName !== existing.name) {
+        const clash = await this.repository.findByName(trimmedName);
+        if (clash && clash.id !== existing.id) {
+          throw new ConflictException('Portfolio with this name already exists');
+        }
+      }
+      const updated = await this.repository.update(
+        existing.id,
+        { name: trimmedName, parent_id: trimmedParent } as any,
+        'dbms-sync',
+      );
+      if (!updated) throw new Error('Failed to update portfolio');
+      return { action: 'updated', portfolio: updated };
+    }
+  
+    const nameClash = await this.repository.findByName(trimmedName);
+    if (nameClash) {
+      throw new ConflictException('Portfolio with this name already exists');
+    }
+    const created = await this.repository.create(
+      { name: trimmedName, parent_id: trimmedParent } as any,
+      'dbms-sync',
+    );
+    if (!created) throw new Error('Failed to create portfolio');
+    return { action: 'created', portfolio: created };
+  }
+  
+
   async deletePortfolio(id: string): Promise<any> {
     try {
       await this.repository.delete(id);
@@ -128,6 +177,22 @@ export class PortfolioService implements IPortfolioService {
     await this.repository.delete(existing.id);
     this.logger.log(`[sync] portfolio deleted: ${name}, moved ${moved} properties to internal`);
     return { status: 'deleted', id: existing.id, movedProperties: moved };
+  }
+
+  async syncDeleteByParentId(parentId: string): Promise<{ message: string }> {
+    const trimmedParent = (parentId ?? '').trim();
+    if (!trimmedParent) throw new BadRequestException('Parent ID is required');
+    const existing = await this.repository.findByParentId(trimmedParent);
+    if (!existing) {
+      throw new NotFoundException(`Portfolio not found with parent_id: ${trimmedParent}`);
+    }
+    if (existing.name.trim().toLowerCase() === INTERNAL_PORTFOLIO_NAME.toLowerCase()) {
+      throw new BadRequestException('Cannot delete Internal Portfolio');
+    }
+    const internal = await this.repository.ensureInternalPortfolio();
+    await this.repository.reassignPropertiesToPortfolio(existing.id, internal.id);
+    await this.repository.delete(existing.id);
+    return { message: 'Portfolio deleted successfully' };
   }
 
   async getFilteredPortfolio(

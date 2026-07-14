@@ -8,6 +8,11 @@ export class CreatePropertyDto {
   name: string;
 
   @ApiPropertyOptional({
+    description: 'Parent property ID',
+  })
+  parent_id?: string;
+
+  @ApiPropertyOptional({
     description: 'Portfolio ID',
   })
   portfolio_id?: string;
@@ -75,6 +80,11 @@ export class UpdatePropertyDto {
     example: 'My Property',
   })
   name?: string;
+
+  @ApiPropertyOptional({
+    description: 'Parent property ID',
+  })
+  parent_id?: string;
 
   @ApiPropertyOptional({
     description: 'Portfolio ID',
@@ -333,6 +343,59 @@ export class RevealOtaCredentialsResponseDto {
   password: string;
 }
 
+export class SyncUpsertPropertyDto {
+  @ApiProperty({ example: 'dbms-portfolio-123', description: 'DBMS portfolio id (resolves portfolio)' })
+  portfolio_parent_id: string;
+
+  @ApiProperty({ example: 'Grand Hotel', description: 'Property name' })
+  name: string;
+
+  @ApiPropertyOptional({ example: 123456 }) expedia_id?: number;
+  @ApiPropertyOptional({ example: 654321 }) booking_id?: number;
+  @ApiPropertyOptional({ example: 111222 }) agoda_id?: number;
+
+  @ApiPropertyOptional() expedia_username?: string;
+  @ApiPropertyOptional() expedia_password?: string;
+  @ApiPropertyOptional() agoda_username?: string;
+  @ApiPropertyOptional() agoda_password?: string;
+  @ApiPropertyOptional() booking_username?: string;
+  @ApiPropertyOptional() booking_password?: string;
+}
+
+export class SyncBulkUpsertPropertyItemDto {
+  @ApiProperty({ example: 2, description: 'Source row number for the sync report' })
+  row: number;
+
+  @ApiProperty({ example: 'dbms-property-123', description: 'DBMS property id (upsert key)' })
+  parent_id: string;
+
+  @ApiProperty({ example: 'dbms-portfolio-123', description: 'DBMS portfolio id (resolves portfolio)' })
+  portfolio_parent_id: string;
+
+  @ApiProperty({ example: 'Grand Hotel', description: 'Property name' })
+  name: string;
+
+  @ApiPropertyOptional({ example: 123456 }) expedia_id?: number;
+  @ApiPropertyOptional({ example: 654321 }) booking_id?: number;
+  @ApiPropertyOptional({ example: 111222 }) agoda_id?: number;
+
+  @ApiPropertyOptional() expedia_username?: string;
+  @ApiPropertyOptional() expedia_password?: string;
+  @ApiPropertyOptional() agoda_username?: string;
+  @ApiPropertyOptional() agoda_password?: string;
+  @ApiPropertyOptional() booking_username?: string;
+  @ApiPropertyOptional() booking_password?: string;
+}
+
+export class SyncBulkUpsertPropertyResultDto {
+  @ApiProperty({ example: 10 }) totalRows: number;
+  @ApiProperty({ example: 4 }) createdCount: number;
+  @ApiProperty({ example: 4 }) updatedCount: number;
+  @ApiProperty({ example: 2 }) failureCount: number;
+  @ApiProperty() errors: Array<{ row: number; parent_id: string; error: string }>;
+  @ApiProperty() successfulUpserts: Array<{ parent_id: string; action: 'created' | 'updated' }>;
+}
+
 export class SyncDeleteDto {
   expedia_id?: number | null;
   booking_id?: number | null;
@@ -341,4 +404,25 @@ export class SyncDeleteDto {
 
 export class SyncBulkCreateDto {
   items: CreatePropertyDto[];
+}
+
+export class SyncBulkDeletePropertyItemDto {
+  @ApiProperty({ example: 'dbms-property-123', description: 'DBMS property id (delete key)' })
+  parent_id: string;
+}
+
+export class SyncBulkDeletePropertyDto {
+  @ApiProperty({ type: [SyncBulkDeletePropertyItemDto] })
+  items: SyncBulkDeletePropertyItemDto[];
+}
+
+/** @deprecated Use SyncBulkDeletePropertyDto */
+export class SyncBulkDeleteDto extends SyncBulkDeletePropertyDto {}
+
+export class SyncBulkDeletePropertyResultDto {
+  @ApiProperty({ example: 2 }) totalCount: number;
+  @ApiProperty({ example: 1 }) deletedCount: number;
+  @ApiProperty({ example: 1 }) failureCount: number;
+  @ApiProperty() errors: Array<{ parent_id: string; error: string }>;
+  @ApiProperty() successfulDeletes: Array<{ parent_id: string }>;
 }
