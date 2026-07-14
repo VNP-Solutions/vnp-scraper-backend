@@ -36,7 +36,7 @@ import {
   RevealOtaCredentialsDto,
   RevealOtaCredentialsResponseDto,
   SyncBulkCreateDto,
-  SyncBulkDeleteDto,
+  SyncBulkDeletePropertyDto,
   SyncBulkUpsertPropertyItemDto,
   SyncDeleteDto,
   SyncUpsertPropertyDto,
@@ -863,9 +863,9 @@ export class PropertyController {
   @Post('/sync-bulk-delete')
   @UseGuards(ExternalJwtGuard)
   @ApiOperation({ summary: 'Internal: bulk delete properties synced from DBMS (parent_id keyed)' })
-  @ApiBody({ type: SyncBulkDeleteDto })
+  @ApiBody({ type: SyncBulkDeletePropertyDto })
   async syncBulkDelete(
-    @Body() dto: SyncBulkDeleteDto,
+    @Body() dto: SyncBulkDeletePropertyDto,
     @Res() response: Response,
   ) {
     return ResponseHandler.handler(
@@ -873,7 +873,7 @@ export class PropertyController {
       async () => ({
         statusCode: 200,
         message: 'Sync bulk delete processed',
-        data: await this.propertyService.syncBulkDelete(dto.items ?? []),
+        data: await this.propertyService.syncBulkDelete(dto),
       }),
       this.logger,
     );

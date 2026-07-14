@@ -411,10 +411,13 @@ export class SyncBulkDeletePropertyItemDto {
   parent_id: string;
 }
 
-export class SyncBulkDeleteDto {
+export class SyncBulkDeletePropertyDto {
   @ApiProperty({ type: [SyncBulkDeletePropertyItemDto] })
   items: SyncBulkDeletePropertyItemDto[];
 }
+
+/** @deprecated Use SyncBulkDeletePropertyDto */
+export class SyncBulkDeleteDto extends SyncBulkDeletePropertyDto {}
 
 export class SyncBulkDeletePropertyResultDto {
   @ApiProperty({ example: 2 }) totalCount: number;

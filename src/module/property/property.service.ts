@@ -1,7 +1,7 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Property } from '@prisma/client';
 import { EncryptionUtil } from 'src/common/utils/encryption.util';
-import { CreatePropertyDto, SyncBulkDeletePropertyItemDto, SyncBulkDeletePropertyResultDto, SyncBulkUpsertPropertyItemDto, SyncBulkUpsertPropertyResultDto, SyncDeleteDto, SyncUpsertPropertyDto, UpdatePropertyDto } from './property.dto';
+import { CreatePropertyDto, SyncBulkDeletePropertyDto, SyncBulkDeletePropertyResultDto, SyncBulkUpsertPropertyItemDto, SyncBulkUpsertPropertyResultDto, SyncDeleteDto, SyncUpsertPropertyDto, UpdatePropertyDto } from './property.dto';
 import type { RevealOtaCredentialsBody } from './property.validation';
 import {
   IPropertyRepository,
@@ -574,9 +574,10 @@ export class PropertyService implements IPropertyService {
   }
 
   async syncBulkDelete(
-    items: SyncBulkDeletePropertyItemDto[],
+    dto: SyncBulkDeletePropertyDto,
   ): Promise<SyncBulkDeletePropertyResultDto> {
-    if (!Array.isArray(items) || !items.length) {
+    const items = dto.items ?? [];
+    if (!items.length) {
       throw new BadRequestException('No items provided');
     }
   
