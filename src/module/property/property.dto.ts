@@ -343,6 +343,25 @@ export class RevealOtaCredentialsResponseDto {
   password: string;
 }
 
+export class SyncUpsertPropertyDto {
+  @ApiProperty({ example: 'dbms-portfolio-123', description: 'DBMS portfolio id (resolves portfolio)' })
+  portfolio_parent_id: string;
+
+  @ApiProperty({ example: 'Grand Hotel', description: 'Property name' })
+  name: string;
+
+  @ApiPropertyOptional({ example: 123456 }) expedia_id?: number;
+  @ApiPropertyOptional({ example: 654321 }) booking_id?: number;
+  @ApiPropertyOptional({ example: 111222 }) agoda_id?: number;
+
+  @ApiPropertyOptional() expedia_username?: string;
+  @ApiPropertyOptional() expedia_password?: string;
+  @ApiPropertyOptional() agoda_username?: string;
+  @ApiPropertyOptional() agoda_password?: string;
+  @ApiPropertyOptional() booking_username?: string;
+  @ApiPropertyOptional() booking_password?: string;
+}
+
 export class SyncBulkUpsertPropertyItemDto {
   @ApiProperty({ example: 2, description: 'Source row number for the sync report' })
   row: number;

@@ -1,7 +1,7 @@
-import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Property } from '@prisma/client';
 import { EncryptionUtil } from 'src/common/utils/encryption.util';
-import { CreatePropertyDto, SyncBulkDeletePropertyItemDto, SyncBulkDeletePropertyResultDto, SyncBulkUpsertPropertyItemDto, SyncBulkUpsertPropertyResultDto, SyncDeleteDto, UpdatePropertyDto } from './property.dto';
+import { CreatePropertyDto, SyncBulkDeletePropertyItemDto, SyncBulkDeletePropertyResultDto, SyncBulkUpsertPropertyItemDto, SyncBulkUpsertPropertyResultDto, SyncDeleteDto, SyncUpsertPropertyDto, UpdatePropertyDto } from './property.dto';
 import type { RevealOtaCredentialsBody } from './property.validation';
 import {
   IPropertyRepository,
@@ -396,6 +396,29 @@ export class PropertyService implements IPropertyService {
     return { created, alreadyExists, failed, results };
   }
 
+  async syncUpsertProperty(
+    parentId: string,
+    dto: SyncUpsertPropertyDto,
+  ): Promise<{ action: 'created' | 'updated'; property: Property }> {
+    const trimmedParent = (parentId ?? '').trim();
+    if (!trimmedParent) {
+      throw new BadRequestException('Parent ID is required');
+    }
+
+    const action = await this.syncUpsert(trimmedParent, {
+      row: 1,
+      parent_id: trimmedParent,
+      ...dto,
+    });
+
+    const property = await this.repository.findByParentId(trimmedParent);
+    if (!property) {
+      throw new Error('Property not found after sync upsert');
+    }
+
+    return { action, property };
+  }
+
   async syncBulkUpsert(
     items: SyncBulkUpsertPropertyItemDto[],
   ): Promise<SyncBulkUpsertPropertyResultDto> {
@@ -526,6 +549,28 @@ export class PropertyService implements IPropertyService {
     });
   
     return action;
+  }
+
+  async syncDeleteByParentId(parentId: string): Promise<{ message: string }> {
+    const trimmedParent = (parentId ?? '').trim();
+    if (!trimmedParent) {
+      throw new BadRequestException('Parent ID is required');
+    }
+
+    const existing = await this.repository.findByParentId(trimmedParent);
+    if (!existing) {
+      throw new NotFoundException(
+        `Property not found with parent_id: ${trimmedParent}`,
+      );
+    }
+
+    const deleted = await this.repository.delete(existing.id);
+    if (!deleted) {
+      throw new Error('Failed to delete property');
+    }
+
+    this.logger.log(`[sync] property deleted by parent_id: ${trimmedParent}`);
+    return { message: 'Property deleted successfully' };
   }
 
   async syncBulkDelete(
