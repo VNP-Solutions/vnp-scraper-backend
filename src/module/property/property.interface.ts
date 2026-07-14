@@ -1,5 +1,5 @@
 import { OTAProvider, Property } from '@prisma/client';
-import { CreatePropertyDto, SyncBulkDeletePropertyItemDto, SyncBulkDeletePropertyResultDto, SyncBulkUpsertPropertyItemDto, SyncBulkUpsertPropertyResultDto, SyncDeleteDto, SyncUpsertPropertyDto, UpdatePropertyDto } from './property.dto';
+import { CreatePropertyDto, SyncBulkDeletePropertyDto, SyncBulkDeletePropertyItemDto, SyncBulkDeletePropertyResultDto, SyncBulkUpsertPropertyItemDto, SyncBulkUpsertPropertyResultDto, SyncDeleteDto, SyncUpsertPropertyDto, UpdatePropertyDto } from './property.dto';
 import type {
   RevealOtaCredentialsBody,
   UpdateOtaCredentialsBody,
@@ -180,6 +180,6 @@ export interface IPropertyService {
     items: SyncBulkUpsertPropertyItemDto[],
   ): Promise<SyncBulkUpsertPropertyResultDto>;
   syncBulkDelete(
-    items: SyncBulkDeletePropertyItemDto[],
+    dto: SyncBulkDeletePropertyDto,
   ): Promise<SyncBulkDeletePropertyResultDto>;
 }
