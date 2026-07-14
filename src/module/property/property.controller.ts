@@ -803,7 +803,9 @@ export class PropertyController {
           ],
         },
       },
-   })
+   }
+  })
+  
   async syncDelete(@Body() dto: SyncDeleteDto, @Res() response: Response) {
   return ResponseHandler.handler(
   response,

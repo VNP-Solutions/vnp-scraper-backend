@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiOperation,
   ApiQuery,
   ApiResponse,
@@ -28,7 +29,8 @@ import { IPortfolioService } from './portfolio.interface';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { createPortfolioSchema } from './portfolio.validation';
 import { ServiceTokenGuard } from '../property/guards/service-token';
-import { CreatePortfolioDto, SyncCreatePortfolioDto, SyncDeletePortfolioDto, SyncUpdatePortfolioDto, UpdatePortfolioDto } from './portfolio.dto';
+import { CreatePortfolioDto, SyncCreatePortfolioDto, SyncDeleteByParentPortfolioDto, SyncDeletePortfolioDto, SyncUpdatePortfolioDto, SyncUpsertPortfolioDto, UpdatePortfolioDto } from './portfolio.dto';
+import { ExternalJwtGuard } from '../qa-panel/guards/external-jwt.guard';
 
 @ApiTags('Portfolios')
 @ApiBearerAuth('JWT-auth')
@@ -242,6 +244,25 @@ export class PortfolioController {
     );
   }
 
+  @Post('/sync-upsert/:parent_id')
+  @UseGuards(ExternalJwtGuard)
+  @ApiOperation({ summary: 'Internal: upsert a portfolio synced from DBMS (parent_id keyed)' })
+  @ApiBody({ type: SyncUpsertPortfolioDto })
+  async syncUpsert(
+    @Param('parent_id') parentId: string,
+    @Body() dto: SyncUpsertPortfolioDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(response, async () => {
+      const result = await this.portfolioService.syncUpsert(parentId, dto.name);
+      return {
+        statusCode: 200,
+        message: `Portfolio ${result.action} successfully`,
+        data: result.portfolio,
+      };
+    }, this.logger);
+  }
+
   @Delete('/:id')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Delete portfolio by ID' })
@@ -288,6 +309,20 @@ export class PortfolioController {
       statusCode: 200,
       message: 'Sync delete processed',
       data: await this.portfolioService.syncDelete(dto.name),
+    }), this.logger);
+  }
+
+  @Post('/sync-delete/:parent_id')
+  @UseGuards(ExternalJwtGuard)
+  @ApiOperation({ summary: 'Internal: delete a portfolio synced from DBMS (parent_id keyed, reassigns properties to Internal)' })
+  async syncDeleteByParent(
+    @Param('parent_id') parentId: string,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(response, async () => ({
+      statusCode: 200,
+      message: 'Portfolio deleted successfully',
+      data: await this.portfolioService.syncDeleteByParentId(parentId),
     }), this.logger);
   }
 

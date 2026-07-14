@@ -42,4 +42,9 @@ export interface IPortfolioService {
   syncCreate(name: string, parentId?: string): Promise<{ status: string; id?: string }>;
   syncUpdate(oldName: string, newName: string): Promise<{ status: string; id?: string }>;
   syncDelete(name: string): Promise<{ status: string; id?: string; movedProperties?: number }>;
+  syncUpsert(
+    parentId: string,
+    name: string,
+  ): Promise<{ action: 'created' | 'updated'; portfolio: Portfolio }>;
+  syncDeleteByParentId(parentId: string): Promise<{ message: string }>;
 }
