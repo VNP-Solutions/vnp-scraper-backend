@@ -29,3 +29,13 @@ export class SyncUpdatePortfolioDto {
 export class SyncDeletePortfolioDto {
   name: string;
 }
+
+export class SyncUpsertPortfolioDto {
+  @ApiProperty({ example: 'Main Portfolio', description: 'Portfolio name' })
+  name: string;
+}
+
+export class SyncDeleteByParentPortfolioDto {
+  @ApiProperty({ example: 'dbms-portfolio-123', description: 'DBMS portfolio id (delete key)' })
+  parent_id: string;
+}
