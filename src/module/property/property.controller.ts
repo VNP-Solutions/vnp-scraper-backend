@@ -772,7 +772,33 @@ export class PropertyController {
   @Post('/sync-bulk-upsert')
   @UseGuards(ExternalJwtGuard)
   @ApiOperation({ summary: 'Internal: bulk upsert properties synced from DBMS (parent_id keyed)' })
-  @ApiBody({ type: [SyncBulkUpsertPropertyItemDto] })
+  @ApiBody({ type: [SyncBulkUpsertPropertyItemDto],
+    examples: {
+      two_hotels: {
+        summary: 'Upsert test Hotel + test Hotel 2',
+        value: [
+          {
+            row: 1,
+            parent_id: 'test-hotel-1',
+            portfolio_parent_id: 'seed-portfolio-1',
+            name: 'test Hotel',
+            expedia_id: 991001,
+            booking_id: 991002,
+            agoda_id: 991003,
+          },
+          {
+            row: 2,
+            parent_id: 'test-hotel-2',
+            portfolio_parent_id: 'seed-portfolio-1',
+            name: 'test Hotel 2',
+            expedia_id: 991011,
+            booking_id: 991012,
+            agoda_id: 991013,
+          },
+        ],
+      },
+    },
+   })
   async syncBulkUpsert(
     @Body() items: SyncBulkUpsertPropertyItemDto[],
     @Res() response: Response,
