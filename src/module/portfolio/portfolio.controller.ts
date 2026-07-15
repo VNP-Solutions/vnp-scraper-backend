@@ -29,7 +29,16 @@ import { IPortfolioService } from './portfolio.interface';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { createPortfolioSchema } from './portfolio.validation';
 import { ServiceTokenGuard } from '../property/guards/service-token';
-import { CreatePortfolioDto, SyncCreatePortfolioDto, SyncDeleteByParentPortfolioDto, SyncDeletePortfolioDto, SyncUpdatePortfolioDto, SyncUpsertPortfolioDto, UpdatePortfolioDto } from './portfolio.dto';
+import {
+  CreatePortfolioDto,
+  SyncBulkUpsertPortfolioDto,
+  SyncCreatePortfolioDto,
+  SyncDeleteByParentPortfolioDto,
+  SyncDeletePortfolioDto,
+  SyncUpdatePortfolioDto,
+  SyncUpsertPortfolioDto,
+  UpdatePortfolioDto,
+} from './portfolio.dto';
 import { ExternalJwtGuard } from '../qa-panel/guards/external-jwt.guard';
 
 @ApiTags('Portfolios')
@@ -244,23 +253,54 @@ export class PortfolioController {
     );
   }
 
+  @Post('/sync-bulk-upsert')
+  @UseGuards(ExternalJwtGuard)
+  @ApiOperation({
+    summary:
+      'Internal: bulk upsert portfolios synced from DBMS (parent_id keyed)',
+  })
+  @ApiBody({ type: SyncBulkUpsertPortfolioDto })
+  async syncBulkUpsert(
+    @Body() dto: SyncBulkUpsertPortfolioDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => ({
+        statusCode: 200,
+        message: 'Sync bulk upsert processed',
+        data: await this.portfolioService.syncBulkUpsert(dto.items ?? []),
+      }),
+      this.logger,
+    );
+  }
+
   @Post('/sync-upsert/:parent_id')
   @UseGuards(ExternalJwtGuard)
-  @ApiOperation({ summary: 'Internal: upsert a portfolio synced from DBMS (parent_id keyed)' })
+  @ApiOperation({
+    summary: 'Internal: upsert a portfolio synced from DBMS (parent_id keyed)',
+  })
   @ApiBody({ type: SyncUpsertPortfolioDto })
   async syncUpsert(
     @Param('parent_id') parentId: string,
     @Body() dto: SyncUpsertPortfolioDto,
     @Res() response: Response,
   ) {
-    return ResponseHandler.handler(response, async () => {
-      const result = await this.portfolioService.syncUpsert(parentId, dto.name);
-      return {
-        statusCode: 200,
-        message: `Portfolio ${result.action} successfully`,
-        data: result.portfolio,
-      };
-    }, this.logger);
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result = await this.portfolioService.syncUpsert(
+          parentId,
+          dto.name,
+        );
+        return {
+          statusCode: 200,
+          message: `Portfolio ${result.action} successfully`,
+          data: result.portfolio,
+        };
+      },
+      this.logger,
+    );
   }
 
   @Delete('/:id')
@@ -303,48 +343,81 @@ export class PortfolioController {
 
   @Post('/sync-delete')
   @UseGuards(ServiceTokenGuard)
-  @ApiOperation({ summary: 'Internal: delete portfolio synced from DBMS (reassigns properties to Internal)' })
-  async syncDelete(@Body() dto: SyncDeletePortfolioDto, @Res() response: Response) {
-    return ResponseHandler.handler(response, async () => ({
-      statusCode: 200,
-      message: 'Sync delete processed',
-      data: await this.portfolioService.syncDelete(dto.name),
-    }), this.logger);
+  @ApiOperation({
+    summary:
+      'Internal: delete portfolio synced from DBMS (reassigns properties to Internal)',
+  })
+  async syncDelete(
+    @Body() dto: SyncDeletePortfolioDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => ({
+        statusCode: 200,
+        message: 'Sync delete processed',
+        data: await this.portfolioService.syncDelete(dto.name),
+      }),
+      this.logger,
+    );
   }
 
   @Post('/sync-delete/:parent_id')
   @UseGuards(ExternalJwtGuard)
-  @ApiOperation({ summary: 'Internal: delete a portfolio synced from DBMS (parent_id keyed, reassigns properties to Internal)' })
+  @ApiOperation({
+    summary:
+      'Internal: delete a portfolio synced from DBMS (parent_id keyed, reassigns properties to Internal)',
+  })
   async syncDeleteByParent(
     @Param('parent_id') parentId: string,
     @Res() response: Response,
   ) {
-    return ResponseHandler.handler(response, async () => ({
-      statusCode: 200,
-      message: 'Portfolio deleted successfully',
-      data: await this.portfolioService.syncDeleteByParentId(parentId),
-    }), this.logger);
+    return ResponseHandler.handler(
+      response,
+      async () => ({
+        statusCode: 200,
+        message: 'Portfolio deleted successfully',
+        data: await this.portfolioService.syncDeleteByParentId(parentId),
+      }),
+      this.logger,
+    );
   }
 
   @Post('/sync-create')
   @UseGuards(ServiceTokenGuard)
   @ApiOperation({ summary: 'Internal: create portfolio synced from DBMS' })
-  async syncCreate(@Body() dto: SyncCreatePortfolioDto, @Res() response: Response) {
-    return ResponseHandler.handler(response, async () => ({
-      statusCode: 201,  
-      message: 'Sync create processed',
-      data: await this.portfolioService.syncCreate(dto.name, dto._id),
-    }), this.logger);
+  async syncCreate(
+    @Body() dto: SyncCreatePortfolioDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => ({
+        statusCode: 201,
+        message: 'Sync create processed',
+        data: await this.portfolioService.syncCreate(dto.name, dto._id),
+      }),
+      this.logger,
+    );
   }
 
   @Post('/sync-update')
   @UseGuards(ServiceTokenGuard)
-  @ApiOperation({ summary: 'Internal: update (rename) portfolio synced from DBMS' })
-  async syncUpdate(@Body() dto: SyncUpdatePortfolioDto, @Res() response: Response) {
-    return ResponseHandler.handler(response, async () => ({
-      statusCode: 200,
-      message: 'Sync update processed',
-      data: await this.portfolioService.syncUpdate(dto.oldName, dto.newName),
-    }), this.logger);
+  @ApiOperation({
+    summary: 'Internal: update (rename) portfolio synced from DBMS',
+  })
+  async syncUpdate(
+    @Body() dto: SyncUpdatePortfolioDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => ({
+        statusCode: 200,
+        message: 'Sync update processed',
+        data: await this.portfolioService.syncUpdate(dto.oldName, dto.newName),
+      }),
+      this.logger,
+    );
   }
 }
