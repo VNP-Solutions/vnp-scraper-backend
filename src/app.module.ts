@@ -14,6 +14,7 @@ import { EncryptionModule } from './module/encryption/encryption.module';
 import { GoogleOAuthModule } from './module/google-oauth/google-oauth.module';
 import { JobModule } from './module/job/job.module';
 import { NotificationModule } from './module/notification/notification.module';
+import { OtaPostPreChargingModule } from './module/ota-post-pre-charging/ota-post-pre-charging.module';
 import { OtpLogModule } from './module/otp-log/otp-log.module';
 import { OtpStatusModule } from './module/otp-status/otp-status.module';
 import { PhoneNumberSlotModule } from './module/phone-number-slot/phone-number-slot.module';
@@ -50,6 +51,7 @@ import { UserModule } from './module/user/user.module';
     ServerModule,
     UploadModule,
     QaPanelModule,
+    OtaPostPreChargingModule,
     UserFeatureAccessPermissionModule,
     UserInvitationModule,
     ActivityLogModule,

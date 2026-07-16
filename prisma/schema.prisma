@@ -880,3 +880,30 @@ model QaPanel {
 
   @@map("qa_panels")
 }
+
+enum OtaPostPreChargingStatus {
+  Processing
+  Completed
+  Failed
+}
+
+enum OtaPostPreChargingDelivery {
+  Response
+  Email
+}
+
+model OtaPostPreCharging {
+  id                 String                     @id @default(auto()) @map("_id") @db.ObjectId
+  user_id            String                     @db.ObjectId
+  original_file_url  String
+  converted_file_url String?
+  file_name          String
+  row_count          Int
+  delivery           OtaPostPreChargingDelivery
+  status             OtaPostPreChargingStatus
+  error_message      String?
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+
+  @@map("ota_post_pre_chargings")
+}
