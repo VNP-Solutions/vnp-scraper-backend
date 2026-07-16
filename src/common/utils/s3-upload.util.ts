@@ -72,6 +72,31 @@ export class S3UploadService {
     }
   }
 
+  async uploadBuffer(
+    key: string,
+    buffer: Buffer,
+    contentType: string,
+  ): Promise<string> {
+    try {
+      await this.s3Client.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Body: buffer,
+          ContentType: contentType,
+        }),
+      );
+
+      const bucketUrl =
+        this.configService.get<string>('S3_BUCKET_URL')?.replace(/\/+$/, '') ??
+        '';
+
+      return `${bucketUrl}/${key}`;
+    } catch (error) {
+      throw new Error(`Failed to upload buffer to S3: ${error.message}`);
+    }
+  }
+
   /**
    * Upload an in-memory buffer (e.g. an XLSX or ZIP built by the export
    * pipeline) to the given S3 key, then return a short-lived presigned
@@ -253,11 +278,7 @@ export class S3UploadService {
 
   async deleteFile(url: string): Promise<void> {
     try {
-      // Extract the key from the URL
-      const key = url.replace(
-        `${this.configService.get<string>('S3_BUCKET_URL')}/`,
-        '',
-      );
+      const key = this.extractKeyFromUrl(url);
 
       const command = new DeleteObjectCommand({
         Bucket: this.bucket,
@@ -268,5 +289,52 @@ export class S3UploadService {
     } catch (error) {
       throw new Error(`Failed to delete file from S3: ${error.message}`);
     }
+  }
+
+  extractKeyFromUrl(url: string): string {
+    const bucketUrl = (this.configService.get<string>('S3_BUCKET_URL') ?? '')
+      .replace(/\/+$/, '');
+
+    if (bucketUrl && url.startsWith(bucketUrl)) {
+      return url.slice(bucketUrl.length + 1);
+    }
+
+    const marker = '.amazonaws.com/';
+    const markerIndex = url.indexOf(marker);
+    if (markerIndex >= 0) {
+      return url.slice(markerIndex + marker.length);
+    }
+
+    return url.replace(/^\//, '');
+  }
+
+  async getObjectStream(key: string): Promise<Readable> {
+    try {
+      const response = await this.s3Client.send(
+        new GetObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+        }),
+      );
+
+      if (!response.Body) {
+        throw new Error('S3 object body is empty');
+      }
+
+      return response.Body as Readable;
+    } catch (error) {
+      throw new Error(`Failed to download file from S3: ${error.message}`);
+    }
+  }
+
+  async downloadBuffer(key: string): Promise<Buffer> {
+    const stream = await this.getObjectStream(key);
+    const chunks: Buffer[] = [];
+
+    for await (const chunk of stream) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+
+    return Buffer.concat(chunks);
   }
 }
