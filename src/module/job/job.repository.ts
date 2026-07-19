@@ -132,6 +132,74 @@ function formatBytes(bytes: number): string {
   return `${bytes} B`;
 }
 
+/** Max jobs packed into one Mongo nested load (BSON safety + query time). */
+const MASTER_EXPORT_MAX_JOBS_PER_CHUNK = 10;
+
+/**
+ * Max job items per nested load. Expedia rows include cardActivity +
+ * authorizations — packing 3k+ items into one findMany routinely takes
+ * 40s+ on Atlas. Splitting by item budget keeps each query bounded.
+ */
+const MASTER_EXPORT_MAX_ITEMS_PER_CHUNK = 750;
+
+function buildMasterExportChunks(
+  jobIds: string[],
+  itemCountByJobId: Map<string, number>,
+): string[][] {
+  const chunks: string[][] = [];
+  let current: string[] = [];
+  let currentItems = 0;
+
+  for (const jobId of jobIds) {
+    const jobItems = itemCountByJobId.get(jobId) ?? 0;
+
+    // One very heavy job always gets its own chunk.
+    if (jobItems >= MASTER_EXPORT_MAX_ITEMS_PER_CHUNK) {
+      if (current.length > 0) {
+        chunks.push(current);
+        current = [];
+        currentItems = 0;
+      }
+      chunks.push([jobId]);
+      continue;
+    }
+
+    const wouldExceedItems =
+      currentItems + jobItems > MASTER_EXPORT_MAX_ITEMS_PER_CHUNK;
+    const wouldExceedJobs = current.length >= MASTER_EXPORT_MAX_JOBS_PER_CHUNK;
+
+    if (current.length > 0 && (wouldExceedItems || wouldExceedJobs)) {
+      chunks.push(current);
+      current = [];
+      currentItems = 0;
+    }
+
+    current.push(jobId);
+    currentItems += jobItems;
+  }
+
+  if (current.length > 0) {
+    chunks.push(current);
+  }
+
+  return chunks;
+}
+
+function summarizeChunkPlan(
+  chunks: string[][],
+  itemCountByJobId: Map<string, number>,
+): string {
+  return chunks
+    .map((chunk, idx) => {
+      const items = chunk.reduce(
+        (sum, id) => sum + (itemCountByJobId.get(id) ?? 0),
+        0,
+      );
+      return `${idx + 1}:${chunk.length}j/${items}i`;
+    })
+    .join(', ');
+}
+
 @Injectable()
 export class JobRepository implements IJobRepository {
   constructor(
@@ -1401,54 +1469,44 @@ export class JobRepository implements IJobRepository {
       const uniqueIds = Array.from(new Set(jobIds ?? [])).filter(Boolean);
       if (uniqueIds.length === 0) return [];
 
-      // ── Chunking ──────────────────────────────────────────────────────
-      // Each Prisma findMany must return < 16 MB BSON (Mongo's hard limit).
-      // With the `select` projection below, the per-jobItem payload is
-      // ~10× smaller than a full `include`, so 50 jobs/batch is safe with
-      // Chunk size = 10. Smaller chunks are safer against MongoDB's 16 MB
-      // BSON limit when the join payload (jobItem + nested cardActivity)
-      // is fat — large Expedia bookings with many items / authorizations
-      // can push a 50-job chunk well into the multi-MB range. Trade-off:
-      // more network round-trips, but with `CONCURRENCY = 6` (below)
-      // they run in parallel waves, so wall-clock cost is modest.
-      // (History: original = 25, briefly bumped to 50 after switching
-      // `include` → field-projecting `select`, then lowered to 10 to
-      // give comfortable headroom for the largest production tenants.)
-      const MASTER_EXPORT_JOB_CHUNK_SIZE = 10;
-
-      // ── Parallelism ───────────────────────────────────────────────────
-      // The previous implementation ran chunks sequentially via
-      // `for (…) await db.job.findMany(...)`, which is the wrong shape
-      // for an Atlas-backed app: every round-trip pays its full network
-      // RTT before the next one can even start. We now fire `CONCURRENCY`
-      // chunks at once with `Promise.all` and wait between waves, which
-      // empirically gives a 5–8× speedup on 1k-job exports.
-      //
-      // Why 6? It comfortably fits under the default Prisma connection
-      // pool (10) — important because other requests share that pool —
-      // and matches the practical sweet spot we've seen on M10-class
-      // Atlas clusters. Going higher (10+) doesn't speed things up much
-      // and risks starving the pool when concurrent exports overlap.
-      // The matching `connection_limit` in DATABASE_URL is what makes
-      // higher values usable if you ever want to tune it up.
       const CONCURRENCY = 6;
-
-      // Field projection shared with the cursor-based streaming loader.
-      // See `MASTER_EXPORT_SELECT` at the top of this file for the audited
-      // list of fields and the rationale for what we drop.
       const select = MASTER_EXPORT_SELECT;
 
-      // Split into chunks first so we can run waves of `CONCURRENCY`.
-      const chunks: string[][] = [];
-      for (let i = 0; i < uniqueIds.length; i += MASTER_EXPORT_JOB_CHUNK_SIZE) {
-        chunks.push(uniqueIds.slice(i, i + MASTER_EXPORT_JOB_CHUNK_SIZE));
-      }
+      const preflightStartedAt = Date.now();
+      const preflightAll = await this.db.job.findMany({
+        where: { id: { in: uniqueIds } },
+        select: {
+          id: true,
+          ota_provider: true,
+          _count: { select: { jobItem: true } },
+        },
+      });
+      const itemCountByJobId = new Map(
+        preflightAll.map((job) => [job.id, job._count.jobItem]),
+      );
+      const totalExpectedItems = preflightAll.reduce(
+        (sum, job) => sum + job._count.jobItem,
+        0,
+      );
+      const expediaJobCount = preflightAll.filter(
+        (job) => job.ota_provider === OTAProvider.Expedia,
+      ).length;
+
+      // Preserve caller order while chunking by item budget.
+      const chunks = buildMasterExportChunks(uniqueIds, itemCountByJobId);
       const totalWaves = Math.ceil(chunks.length / CONCURRENCY);
 
       const startedAt = Date.now();
       this.logger.log(
-        `[MasterExport] Loading ${uniqueIds.length} jobs in ${chunks.length} ` +
-          `chunks of ${MASTER_EXPORT_JOB_CHUNK_SIZE} (concurrency=${CONCURRENCY}, ${totalWaves} wave${totalWaves === 1 ? '' : 's'})`,
+        `[MasterExport] Preflight in ${Date.now() - preflightStartedAt}ms — ` +
+          `${preflightAll.length}/${uniqueIds.length} jobs, ` +
+          `${totalExpectedItems} job items expected, ${expediaJobCount} Expedia job(s)`,
+      );
+      this.logger.log(
+        `[MasterExport] Loading ${uniqueIds.length} jobs in ${chunks.length} chunk(s) ` +
+          `(max ${MASTER_EXPORT_MAX_ITEMS_PER_CHUNK} items / ${MASTER_EXPORT_MAX_JOBS_PER_CHUNK} jobs per chunk, ` +
+          `concurrency=${CONCURRENCY}, ${totalWaves} wave${totalWaves === 1 ? '' : 's'}) — ` +
+          `plan: [${summarizeChunkPlan(chunks, itemCountByJobId)}]`,
       );
 
       const all: any[] = [];
@@ -1468,32 +1526,19 @@ export class JobRepository implements IJobRepository {
           wave.map(async (chunk, chunkIndexInWave) => {
             const globalChunkIndex = i + chunkIndexInWave;
             const chunkStartedAt = Date.now();
+            const expectedItems = chunk.reduce(
+              (sum, id) => sum + (itemCountByJobId.get(id) ?? 0),
+              0,
+            );
+            const expediaInChunk = chunk.filter((id) => {
+              const job = preflightAll.find((row) => row.id === id);
+              return job?.ota_provider === OTAProvider.Expedia;
+            }).length;
 
             this.logger.log(
               `[MasterExport] Chunk ${globalChunkIndex + 1}/${chunks.length} query start — ` +
-                `${chunk.length} job ID(s): [${chunk.join(', ')}]`,
-            );
-
-            const preflightStartedAt = Date.now();
-            const preflight = await this.db.job.findMany({
-              where: { id: { in: chunk } },
-              select: {
-                id: true,
-                ota_provider: true,
-                _count: { select: { jobItem: true } },
-              },
-            });
-            const expectedItems = preflight.reduce(
-              (sum, job) => sum + job._count.jobItem,
-              0,
-            );
-            const expediaInChunk = preflight.filter(
-              (job) => job.ota_provider === OTAProvider.Expedia,
-            ).length;
-            this.logger.log(
-              `[MasterExport] Chunk ${globalChunkIndex + 1}/${chunks.length} preflight in ` +
-                `${Date.now() - preflightStartedAt}ms — ${preflight.length}/${chunk.length} jobs, ` +
-                `${expectedItems} job items expected, ${expediaInChunk} Expedia job(s)`,
+                `${chunk.length} job ID(s), ~${expectedItems} job items, ` +
+                `${expediaInChunk} Expedia job(s): [${chunk.join(', ')}]`,
             );
 
             const result = await withQueryHeartbeat(
@@ -1758,53 +1803,49 @@ export class JobRepository implements IJobRepository {
    */
   async *streamJobsForMasterExport(
     jobIds: string[],
-    batchSize = 20,
+    _batchSize = 20,
   ): AsyncGenerator<any, void, void> {
     const uniqueIds = Array.from(new Set(jobIds ?? [])).filter(Boolean);
     if (uniqueIds.length === 0) return;
 
-    // Deterministic batching: sort once, then slice.
     const sortedIds = [...uniqueIds].sort();
-    const totalBatches = Math.ceil(sortedIds.length / batchSize);
+    const preflightAll = await this.db.job.findMany({
+      where: { id: { in: sortedIds } },
+      select: {
+        id: true,
+        _count: { select: { jobItem: true } },
+      },
+    });
+    const itemCountByJobId = new Map(
+      preflightAll.map((job) => [job.id, job._count.jobItem]),
+    );
+    const chunks = buildMasterExportChunks(sortedIds, itemCountByJobId);
+    const totalBatches = chunks.length;
     const logEvery = Math.max(1, Math.floor(totalBatches / 8));
     const startedAt = Date.now();
 
     this.logger.log(
       `[MasterExport.cursor] Streaming ${sortedIds.length} jobs in ` +
-        `${totalBatches} batches of ${batchSize}`,
+        `${totalBatches} batch(es) — plan: [${summarizeChunkPlan(chunks, itemCountByJobId)}]`,
     );
 
     let yielded = 0;
-    for (let i = 0; i < sortedIds.length; i += batchSize) {
-      const chunk = sortedIds.slice(i, i + batchSize);
-      const batchIdx = Math.floor(i / batchSize) + 1;
+    for (let batchIdx = 0; batchIdx < chunks.length; batchIdx++) {
+      const chunk = chunks[batchIdx];
       const batchStartedAt = Date.now();
-
-      this.logger.log(
-        `[MasterExport.cursor] Batch ${batchIdx}/${totalBatches} query start — ` +
-          `${chunk.length} job ID(s): [${chunk.join(', ')}]`,
-      );
-
-      const preflight = await this.db.job.findMany({
-        where: { id: { in: chunk } },
-        select: {
-          id: true,
-          ota_provider: true,
-          _count: { select: { jobItem: true } },
-        },
-      });
-      const expectedItems = preflight.reduce(
-        (sum, job) => sum + job._count.jobItem,
+      const expectedItems = chunk.reduce(
+        (sum, id) => sum + (itemCountByJobId.get(id) ?? 0),
         0,
       );
+
       this.logger.log(
-        `[MasterExport.cursor] Batch ${batchIdx}/${totalBatches} preflight — ` +
-          `${preflight.length}/${chunk.length} jobs, ${expectedItems} job items expected`,
+        `[MasterExport.cursor] Batch ${batchIdx + 1}/${totalBatches} query start — ` +
+          `${chunk.length} job ID(s), ~${expectedItems} job items: [${chunk.join(', ')}]`,
       );
 
       const batch = await withQueryHeartbeat(
         this.logger,
-        `Batch ${batchIdx}/${totalBatches} nested load`,
+        `Batch ${batchIdx + 1}/${totalBatches} nested load`,
         this.db.job.findMany({
           where: { id: { in: chunk } },
           select: MASTER_EXPORT_SELECT,
@@ -1813,7 +1854,7 @@ export class JobRepository implements IJobRepository {
 
       const summary = summarizeLoadedExportJobs(batch);
       this.logger.log(
-        `[MasterExport.cursor] Batch ${batchIdx}/${totalBatches} query done in ` +
+        `[MasterExport.cursor] Batch ${batchIdx + 1}/${totalBatches} query done in ` +
           `${Date.now() - batchStartedAt}ms — ${summary.jobCount}/${chunk.length} jobs, ` +
           `${summary.itemCount} job items, ${summary.expediaJobCount} Expedia job(s)`,
       );
@@ -1822,14 +1863,12 @@ export class JobRepository implements IJobRepository {
         yield job;
         yielded += 1;
       }
-      // `batch` falls out of scope on the next loop iteration; once the
-      // consumer has finished processing the yielded jobs, V8 can reclaim
-      // every row object. Peak heap stays at ~one batch.
 
-      if (batchIdx % logEvery === 0 || batchIdx === totalBatches) {
+      const displayIdx = batchIdx + 1;
+      if (displayIdx % logEvery === 0 || displayIdx === totalBatches) {
         const pct = Math.round((yielded / sortedIds.length) * 100);
         this.logger.log(
-          `[MasterExport.cursor] Batch ${batchIdx}/${totalBatches} delivered — ` +
+          `[MasterExport.cursor] Batch ${displayIdx}/${totalBatches} delivered — ` +
             `${yielded}/${sortedIds.length} jobs (${pct}%, ${Date.now() - startedAt}ms elapsed)`,
         );
       }
