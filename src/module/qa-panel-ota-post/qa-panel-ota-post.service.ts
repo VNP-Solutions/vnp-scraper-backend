@@ -28,7 +28,7 @@ import {
 @Injectable()
 export class QaPanelOtaPostService implements IQaPanelOtaPostService {
   private readonly logger = new Logger(QaPanelOtaPostService.name);
-  private readonly proxyApiPath = '/api/external/bulk-audit-import';
+  private readonly proxyApiPath = '/api/external/bulk-audit-import/ota-post';
 
   constructor(
     private readonly repository: QaPanelOtaPostRepository,
