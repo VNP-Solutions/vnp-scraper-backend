@@ -1,14 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { QaPanelStatus } from '@prisma/client';
 import {
-  BulkDeleteQaPanelType,
-  CreateQaPanelType,
-  QaPanelFailedReasonType,
-  QaPanelImportCallbackType,
-  UpdateQaPanelType,
-} from './qa-panel.validation';
+  BulkDeleteQaPanelOtaPostType,
+  CreateQaPanelOtaPostType,
+  QaPanelOtaPostFailedReasonType,
+  QaPanelOtaPostImportCallbackType,
+  UpdateQaPanelOtaPostType,
+} from './qa-panel-ota-post.validation';
 
-export class QaPanelFailedReasonDto implements QaPanelFailedReasonType {
+export class QaPanelOtaPostFailedReasonDto implements QaPanelOtaPostFailedReasonType {
   @ApiProperty({ example: 5, description: 'Row number in the uploaded file' })
   row_number: number;
 
@@ -16,7 +16,7 @@ export class QaPanelFailedReasonDto implements QaPanelFailedReasonType {
   reason: string;
 }
 
-export class CreateQaPanelDto implements CreateQaPanelType {
+export class CreateQaPanelOtaPostDto implements CreateQaPanelOtaPostType {
   @ApiProperty({
     example: 'https://bucket.s3.amazonaws.com/uploads/123456-report.xlsx',
   })
@@ -29,13 +29,13 @@ export class CreateQaPanelDto implements CreateQaPanelType {
   status: QaPanelStatus;
 
   @ApiPropertyOptional({
-    type: [QaPanelFailedReasonDto],
+    type: [QaPanelOtaPostFailedReasonDto],
     example: [{ row_number: 5, reason: 'Invalid OTA value' }],
   })
-  failed_reasons?: QaPanelFailedReasonDto[];
+  failed_reasons?: QaPanelOtaPostFailedReasonDto[];
 }
 
-export class UpdateQaPanelDto implements UpdateQaPanelType {
+export class UpdateQaPanelOtaPostDto implements UpdateQaPanelOtaPostType {
   @ApiPropertyOptional({
     example: 'https://bucket.s3.amazonaws.com/uploads/123456-report.xlsx',
   })
@@ -48,13 +48,13 @@ export class UpdateQaPanelDto implements UpdateQaPanelType {
   status?: QaPanelStatus;
 
   @ApiPropertyOptional({
-    type: [QaPanelFailedReasonDto],
+    type: [QaPanelOtaPostFailedReasonDto],
     example: [{ row_number: 5, reason: 'Invalid OTA value' }],
   })
-  failed_reasons?: QaPanelFailedReasonDto[];
+  failed_reasons?: QaPanelOtaPostFailedReasonDto[];
 }
 
-export class BulkDeleteQaPanelDto implements BulkDeleteQaPanelType {
+export class BulkDeleteQaPanelOtaPostDto implements BulkDeleteQaPanelOtaPostType {
   @ApiProperty({
     type: [String],
     example: ['507f1f77bcf86cd799439011'],
@@ -62,7 +62,7 @@ export class BulkDeleteQaPanelDto implements BulkDeleteQaPanelType {
   ids: string[];
 }
 
-export class QaPanelResponseDto {
+export class QaPanelOtaPostResponseDto {
   @ApiProperty({ example: '507f1f77bcf86cd799439011' })
   id: string;
 
@@ -71,14 +71,6 @@ export class QaPanelResponseDto {
   })
   file_url: string;
 
-  @ApiPropertyOptional({
-    example:
-      'https://bucket.s3.amazonaws.com/uploads/qa-panel/dashboard/123456-dashboard-report.xlsx',
-    description:
-      'Dashboard-format XLSX converted from the original upload (POST /qa-panel/upload only)',
-  })
-  converted_file_url?: string | null;
-
   @ApiProperty({ example: 'report.xlsx' })
   file_name: string;
 
@@ -86,10 +78,10 @@ export class QaPanelResponseDto {
   status: QaPanelStatus;
 
   @ApiProperty({
-    type: [QaPanelFailedReasonDto],
+    type: [QaPanelOtaPostFailedReasonDto],
     example: [{ row_number: 5, reason: 'Invalid OTA value' }],
   })
-  failed_reasons: QaPanelFailedReasonDto[];
+  failed_reasons: QaPanelOtaPostFailedReasonDto[];
 
   @ApiProperty()
   createdAt: Date;
@@ -98,9 +90,9 @@ export class QaPanelResponseDto {
   updatedAt: Date;
 }
 
-export class QaPanelListResponseDto {
-  @ApiProperty({ type: [QaPanelResponseDto] })
-  data: QaPanelResponseDto[];
+export class QaPanelOtaPostListResponseDto {
+  @ApiProperty({ type: [QaPanelOtaPostResponseDto] })
+  data: QaPanelOtaPostResponseDto[];
 
   @ApiProperty({
     example: {
@@ -118,7 +110,7 @@ export class QaPanelListResponseDto {
   };
 }
 
-export class QaPanelProxyResponseDto {
+export class QaPanelOtaPostProxyResponseDto {
   @ApiProperty({
     example: true,
     description: 'Whether the dashboard proxy accepted the import',
@@ -132,7 +124,7 @@ export class QaPanelProxyResponseDto {
   message: string;
 }
 
-export class QaPanelUploadApiResponseDto {
+export class QaPanelOtaPostUploadApiResponseDto {
   @ApiProperty({ example: 200 })
   statusCode: number;
 
@@ -143,13 +135,13 @@ export class QaPanelUploadApiResponseDto {
   message: string;
 
   @ApiProperty({
-    type: QaPanelProxyResponseDto,
+    type: QaPanelOtaPostProxyResponseDto,
     description: 'Raw response from the dashboard bulk-audit-import API',
   })
-  data: QaPanelProxyResponseDto;
+  data: QaPanelOtaPostProxyResponseDto;
 }
 
-export class QaPanelImportCallbackReportDto {
+export class QaPanelOtaPostImportCallbackReportDto {
   @ApiProperty({ example: 30 })
   total: number;
 
@@ -160,7 +152,7 @@ export class QaPanelImportCallbackReportDto {
   failed: number;
 }
 
-export class QaPanelImportCallbackErrorDto {
+export class QaPanelOtaPostImportCallbackErrorDto {
   @ApiProperty({ example: 2 })
   row: number;
 
@@ -168,7 +160,7 @@ export class QaPanelImportCallbackErrorDto {
   failed_reason: string;
 }
 
-export class QaPanelImportCallbackDto implements QaPanelImportCallbackType {
+export class QaPanelOtaPostImportCallbackDto implements QaPanelOtaPostImportCallbackType {
   @ApiProperty({ example: '507f1f77bcf86cd799439011' })
   qa_panel_id: string;
 
@@ -182,11 +174,11 @@ export class QaPanelImportCallbackDto implements QaPanelImportCallbackType {
   })
   status: 'success' | 'failed';
 
-  @ApiProperty({ type: QaPanelImportCallbackReportDto })
-  report: QaPanelImportCallbackReportDto;
+  @ApiProperty({ type: QaPanelOtaPostImportCallbackReportDto })
+  report: QaPanelOtaPostImportCallbackReportDto;
 
   @ApiProperty({
-    type: [QaPanelImportCallbackErrorDto],
+    type: [QaPanelOtaPostImportCallbackErrorDto],
     example: [
       {
         row: 2,
@@ -194,10 +186,10 @@ export class QaPanelImportCallbackDto implements QaPanelImportCallbackType {
       },
     ],
   })
-  errors: QaPanelImportCallbackErrorDto[];
+  errors: QaPanelOtaPostImportCallbackErrorDto[];
 }
 
-export class GenerateCommunicationTokenResponseDto {
+export class GenerateCommunicationTokenOtaPostResponseDto {
   @ApiProperty({
     example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
     description: 'JWT signed with JWT_COMMUNICATION_SECRET',
@@ -208,13 +200,13 @@ export class GenerateCommunicationTokenResponseDto {
   expiresIn: string;
 }
 
-export class GenerateCommunicationTokenApiResponseDto {
+export class GenerateCommunicationTokenOtaPostApiResponseDto {
   @ApiProperty({ example: 200 })
   statusCode: number;
 
   @ApiProperty({ example: 'Communication token generated successfully' })
   message: string;
 
-  @ApiProperty({ type: GenerateCommunicationTokenResponseDto })
-  data: GenerateCommunicationTokenResponseDto;
+  @ApiProperty({ type: GenerateCommunicationTokenOtaPostResponseDto })
+  data: GenerateCommunicationTokenOtaPostResponseDto;
 }

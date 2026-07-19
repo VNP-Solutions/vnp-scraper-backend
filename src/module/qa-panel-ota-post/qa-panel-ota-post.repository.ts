@@ -1,17 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma, QaPanel, QaPanelStatus } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
-import { IQaPanelRepository } from './qa-panel.interface';
-import { QaPanelFailedReasonType } from './qa-panel.validation';
+import { IQaPanelOtaPostRepository } from './qa-panel-ota-post.interface';
+import { QaPanelOtaPostFailedReasonType } from './qa-panel-ota-post.validation';
 
 @Injectable()
-export class QaPanelRepository implements IQaPanelRepository {
-  private readonly logger = new Logger(QaPanelRepository.name);
+export class QaPanelOtaPostRepository implements IQaPanelOtaPostRepository {
+  private readonly logger = new Logger(QaPanelOtaPostRepository.name);
 
   constructor(private readonly db: DatabaseService) {}
 
   private toFailedReasons(
-    failedReasons?: QaPanelFailedReasonType[],
+    failedReasons?: QaPanelOtaPostFailedReasonType[],
   ): Prisma.QaPanelFailedReasonCreateInput[] {
     return (failedReasons ?? []).map(({ row_number, reason }) => ({
       row_number,
@@ -21,16 +21,14 @@ export class QaPanelRepository implements IQaPanelRepository {
 
   async create(data: {
     file_url: string;
-    converted_file_url?: string;
     file_name: string;
     status: QaPanelStatus;
-    failed_reasons?: QaPanelFailedReasonType[];
+    failed_reasons?: QaPanelOtaPostFailedReasonType[];
   }): Promise<QaPanel> {
     try {
       return await this.db.qaPanel.create({
         data: {
           file_url: data.file_url,
-          converted_file_url: data.converted_file_url,
           file_name: data.file_name,
           status: data.status,
           failed_reasons: this.toFailedReasons(data.failed_reasons),
@@ -123,18 +121,14 @@ export class QaPanelRepository implements IQaPanelRepository {
     id: string,
     data: {
       file_url?: string;
-      converted_file_url?: string;
       file_name?: string;
       status?: QaPanelStatus;
-      failed_reasons?: QaPanelFailedReasonType[];
+      failed_reasons?: QaPanelOtaPostFailedReasonType[];
     },
   ): Promise<QaPanel> {
     try {
       const updateData: Prisma.QaPanelUpdateInput = {
         ...(data.file_url !== undefined ? { file_url: data.file_url } : {}),
-        ...(data.converted_file_url !== undefined
-          ? { converted_file_url: data.converted_file_url }
-          : {}),
         ...(data.file_name !== undefined ? { file_name: data.file_name } : {}),
         ...(data.status !== undefined ? { status: data.status } : {}),
         ...(data.failed_reasons !== undefined
