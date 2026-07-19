@@ -30,6 +30,7 @@ import { Response } from 'express';
 import { ParseQuery } from '../../common/decorators/parse-query.decorator';
 import { ValidateBody } from '../../common/decorators/validate.decorator';
 import { ExcelFileInterceptor } from '../../common/interceptors/excel-file.interceptor';
+import { MongoObjectIdPipe } from '../../common/pipes/mongo-object-id.pipe';
 import { ResponseHandler } from '../../common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
@@ -334,7 +335,7 @@ export class QaPanelController {
     );
   }
 
-  @Get(':id')
+  @Get(':id([0-9a-fA-F]{24})')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Get a QA panel record by ID' })
@@ -345,7 +346,10 @@ export class QaPanelController {
     type: QaPanelResponseDto,
   })
   @ApiResponse({ status: 404, description: 'QA panel not found' })
-  async findById(@Param('id') id: string, @Res() response: Response) {
+  async findById(
+    @Param('id', MongoObjectIdPipe) id: string,
+    @Res() response: Response,
+  ) {
     return ResponseHandler.handler(
       response,
       async () => {
@@ -360,7 +364,7 @@ export class QaPanelController {
     );
   }
 
-  @Put(':id')
+  @Put(':id([0-9a-fA-F]{24})')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
   @ValidateBody(updateQaPanelSchema)
@@ -373,7 +377,7 @@ export class QaPanelController {
   })
   @ApiResponse({ status: 404, description: 'QA panel not found' })
   async update(
-    @Param('id') id: string,
+    @Param('id', MongoObjectIdPipe) id: string,
     @Body() body: UpdateQaPanelDto,
     @Res() response: Response,
   ) {
@@ -391,14 +395,17 @@ export class QaPanelController {
     );
   }
 
-  @Delete(':id')
+  @Delete(':id([0-9a-fA-F]{24})')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Delete a QA panel record' })
   @ApiParam({ name: 'id', description: 'QA panel ID' })
   @ApiResponse({ status: 200, description: 'QA panel deleted successfully' })
   @ApiResponse({ status: 404, description: 'QA panel not found' })
-  async delete(@Param('id') id: string, @Res() response: Response) {
+  async delete(
+    @Param('id', MongoObjectIdPipe) id: string,
+    @Res() response: Response,
+  ) {
     return ResponseHandler.handler(
       response,
       async () => {
