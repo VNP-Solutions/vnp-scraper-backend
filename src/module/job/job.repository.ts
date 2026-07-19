@@ -28,7 +28,7 @@ import { IJobRepository } from './job.interface';
  * the batch name lives on the related `Batch` row (see Prisma model);
  * adding it crashes with "Unknown field `batch_name` for select".
  */
-const MASTER_EXPORT_SELECT = {
+const MASTER_EXPORT_JOB_SHELL_SELECT = {
   id: true,
   ota_provider: true,
   posting_type: true,
@@ -47,26 +47,32 @@ const MASTER_EXPORT_SELECT = {
       agoda_id: true,
     },
   },
-  jobItem: {
-    orderBy: { createdAt: 'asc' as const },
+} satisfies Prisma.JobSelect;
+
+const MASTER_EXPORT_JOB_ITEM_SELECT = {
+  id: true,
+  createdAt: true,
+  reservation_id: true,
+  confirmation_number: true,
+  guest_name: true,
+  check_in_date: true,
+  check_out_date: true,
+  booking_amount: true,
+  payment_info: true,
+  card_info: true,
+  cardActivity: {
     select: {
       id: true,
-      createdAt: true,
-      reservation_id: true,
-      confirmation_number: true,
-      guest_name: true,
-      check_in_date: true,
-      check_out_date: true,
-      booking_amount: true,
-      payment_info: true,
-      card_info: true,
-      cardActivity: {
-        select: {
-          id: true,
-          authorizations: true,
-        },
-      },
+      authorizations: true,
     },
+  },
+} satisfies Prisma.JobItemSelect;
+
+const MASTER_EXPORT_SELECT = {
+  ...MASTER_EXPORT_JOB_SHELL_SELECT,
+  jobItem: {
+    orderBy: { createdAt: 'asc' as const },
+    select: MASTER_EXPORT_JOB_ITEM_SELECT,
   },
 } satisfies Prisma.JobSelect;
 
@@ -141,6 +147,12 @@ const MASTER_EXPORT_MAX_JOBS_PER_CHUNK = 10;
  * 40s+ on Atlas. Splitting by item budget keeps each query bounded.
  */
 const MASTER_EXPORT_MAX_ITEMS_PER_CHUNK = 750;
+
+/** Jobs above this item count use paginated JobItem loads (avoids slow nested Job findMany). */
+const MASTER_EXPORT_HEAVY_JOB_ITEM_THRESHOLD = 200;
+
+/** Page size when loading job items for a heavy job. */
+const MASTER_EXPORT_ITEMS_PAGE_SIZE = 200;
 
 function buildMasterExportChunks(
   jobIds: string[],
@@ -1464,13 +1476,116 @@ export class JobRepository implements IJobRepository {
    * time but multiplies peak Mongo load (an export of 500 jobs already
    * fans out to 4+ aggregations per chunk for the included relations).
    */
+  private async loadHeavyJobForMasterExport(
+    jobId: string,
+    expectedItems: number,
+    logLabel: string,
+  ): Promise<any | null> {
+    const job = await this.db.job.findUnique({
+      where: { id: jobId },
+      select: MASTER_EXPORT_JOB_SHELL_SELECT,
+    });
+    if (!job) return null;
+
+    const jobItems: any[] = [];
+    const totalPages = Math.max(
+      1,
+      Math.ceil(expectedItems / MASTER_EXPORT_ITEMS_PAGE_SIZE),
+    );
+    let skip = 0;
+    let pageNum = 0;
+
+    this.logger.log(
+      `[MasterExport] ${logLabel} paginated item load — ` +
+        `${expectedItems} item(s) in ~${totalPages} page(s) of ${MASTER_EXPORT_ITEMS_PAGE_SIZE}`,
+    );
+
+    while (true) {
+      pageNum += 1;
+      const pageStartedAt = Date.now();
+
+      const page = await withQueryHeartbeat(
+        this.logger,
+        `${logLabel} items page ${pageNum}/${totalPages}`,
+        this.db.jobItem.findMany({
+          where: { job_id: jobId },
+          orderBy: { createdAt: 'asc' },
+          skip,
+          take: MASTER_EXPORT_ITEMS_PAGE_SIZE,
+          select: MASTER_EXPORT_JOB_ITEM_SELECT,
+        }),
+        15_000,
+      );
+
+      if (page.length === 0) break;
+
+      jobItems.push(...page);
+      skip += page.length;
+
+      this.logger.log(
+        `[MasterExport] ${logLabel} items page ${pageNum}/${totalPages} done in ` +
+          `${Date.now() - pageStartedAt}ms — ${page.length} item(s), ` +
+          `${jobItems.length}/${expectedItems} loaded`,
+      );
+
+      if (page.length < MASTER_EXPORT_ITEMS_PAGE_SIZE) break;
+    }
+
+    return { ...job, jobItem: jobItems };
+  }
+
+  private async loadMasterExportChunk(
+    chunk: string[],
+    itemCountByJobId: Map<string, number>,
+    logPrefix: string,
+  ): Promise<any[]> {
+    const heavyJobIds = chunk.filter(
+      (id) =>
+        (itemCountByJobId.get(id) ?? 0) > MASTER_EXPORT_HEAVY_JOB_ITEM_THRESHOLD,
+    );
+    const lightJobIds = chunk.filter(
+      (id) =>
+        (itemCountByJobId.get(id) ?? 0) <= MASTER_EXPORT_HEAVY_JOB_ITEM_THRESHOLD,
+    );
+
+    const results: any[] = [];
+
+    if (lightJobIds.length > 0) {
+      const lightStartedAt = Date.now();
+      const lightJobs = await withQueryHeartbeat(
+        this.logger,
+        `${logPrefix} light nested load (${lightJobIds.length} job(s))`,
+        this.db.job.findMany({
+          where: { id: { in: lightJobIds } },
+          select: MASTER_EXPORT_SELECT,
+        }),
+      );
+      this.logger.log(
+        `[MasterExport] ${logPrefix} light nested load done in ` +
+          `${Date.now() - lightStartedAt}ms — ${lightJobs.length} job(s)`,
+      );
+      results.push(...lightJobs);
+    }
+
+    for (const jobId of heavyJobIds) {
+      const expectedItems = itemCountByJobId.get(jobId) ?? 0;
+      const job = await this.loadHeavyJobForMasterExport(
+        jobId,
+        expectedItems,
+        `${logPrefix} job ${jobId}`,
+      );
+      if (job) results.push(job);
+    }
+
+    return results;
+  }
+
   async findManyForMasterExport(jobIds: string[]): Promise<any[]> {
     try {
       const uniqueIds = Array.from(new Set(jobIds ?? [])).filter(Boolean);
       if (uniqueIds.length === 0) return [];
 
       const CONCURRENCY = 6;
-      const select = MASTER_EXPORT_SELECT;
 
       const preflightStartedAt = Date.now();
       const preflightAll = await this.db.job.findMany({
@@ -1541,13 +1656,11 @@ export class JobRepository implements IJobRepository {
                 `${expediaInChunk} Expedia job(s): [${chunk.join(', ')}]`,
             );
 
-            const result = await withQueryHeartbeat(
-              this.logger,
-              `Chunk ${globalChunkIndex + 1}/${chunks.length} nested load`,
-              this.db.job.findMany({
-                where: { id: { in: chunk } },
-                select,
-              }),
+            const logPrefix = `Chunk ${globalChunkIndex + 1}/${chunks.length}`;
+            const result = await this.loadMasterExportChunk(
+              chunk,
+              itemCountByJobId,
+              logPrefix,
             );
 
             const summary = summarizeLoadedExportJobs(result);
@@ -1843,13 +1956,11 @@ export class JobRepository implements IJobRepository {
           `${chunk.length} job ID(s), ~${expectedItems} job items: [${chunk.join(', ')}]`,
       );
 
-      const batch = await withQueryHeartbeat(
-        this.logger,
-        `Batch ${batchIdx + 1}/${totalBatches} nested load`,
-        this.db.job.findMany({
-          where: { id: { in: chunk } },
-          select: MASTER_EXPORT_SELECT,
-        }),
+      const logPrefix = `Batch ${batchIdx + 1}/${totalBatches}`;
+      const batch = await this.loadMasterExportChunk(
+        chunk,
+        itemCountByJobId,
+        logPrefix,
       );
 
       const summary = summarizeLoadedExportJobs(batch);
