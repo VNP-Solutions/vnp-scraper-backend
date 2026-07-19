@@ -119,4 +119,31 @@ export class OtaPostPreChargingRepository implements IOtaPostPreChargingReposito
       throw error;
     }
   }
+
+  async delete(id: string): Promise<OtaPostPreCharging> {
+    try {
+      return await this.db.otaPostPreCharging.delete({ where: { id } });
+    } catch (error) {
+      this.logger.error(
+        `Error deleting OTA post pre-charging record ${id}:`,
+        error,
+      );
+      throw error;
+    }
+  }
+
+  async bulkDelete(ids: string[]): Promise<number> {
+    try {
+      const result = await this.db.otaPostPreCharging.deleteMany({
+        where: { id: { in: ids } },
+      });
+      return result.count;
+    } catch (error) {
+      this.logger.error(
+        'Error bulk deleting OTA post pre-charging records:',
+        error,
+      );
+      throw error;
+    }
+  }
 }

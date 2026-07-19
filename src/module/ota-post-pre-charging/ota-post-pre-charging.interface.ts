@@ -37,6 +37,10 @@ export interface IOtaPostPreChargingRepository {
       error_message?: string | null;
     },
   ): Promise<OtaPostPreCharging>;
+
+  delete(id: string): Promise<OtaPostPreCharging>;
+
+  bulkDelete(ids: string[]): Promise<number>;
 }
 
 export interface IOtaPostPreChargingService {
@@ -67,4 +71,14 @@ export interface IOtaPostPreChargingService {
   }): ReturnType<IOtaPostPreChargingRepository['findAll']>;
 
   findRecordById(id: string): Promise<OtaPostPreCharging>;
+
+  deleteRecord(
+    id: string,
+    userId?: string,
+  ): Promise<{ deletedCount: number; deletedId: string }>;
+
+  bulkDeleteRecords(
+    ids: string[],
+    userId?: string,
+  ): Promise<{ deletedCount: number; deletedIds: string[] }>;
 }

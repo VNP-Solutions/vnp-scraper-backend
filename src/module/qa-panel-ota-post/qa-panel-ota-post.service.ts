@@ -8,7 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import type { SignOptions } from 'jsonwebtoken';
-import { QaPanel, QaPanelStatus } from '@prisma/client';
+import { QaPanelOtaPost, QaPanelStatus } from '@prisma/client';
 import FormData = require('form-data');
 import { basename } from 'path';
 import { firstValueFrom } from 'rxjs';
@@ -39,9 +39,11 @@ export class QaPanelOtaPostService implements IQaPanelOtaPostService {
     private readonly mailService: MailService,
   ) {}
 
-  async createQaPanel(data: CreateQaPanelOtaPostType): Promise<QaPanel> {
+  async createQaPanel(data: CreateQaPanelOtaPostType): Promise<QaPanelOtaPost> {
     const qaPanel = await this.repository.create(data);
-    this.logger.log(`QA panel created: ${qaPanel.file_name} (ID: ${qaPanel.id})`);
+    this.logger.log(
+      `QA panel OTA post created: ${qaPanel.file_name} (ID: ${qaPanel.id})`,
+    );
     return qaPanel;
   }
 
@@ -55,20 +57,23 @@ export class QaPanelOtaPostService implements IQaPanelOtaPostService {
     return this.repository.findAll(filters);
   }
 
-  async findQaPanelById(id: string): Promise<QaPanel> {
+  async findQaPanelById(id: string): Promise<QaPanelOtaPost> {
     const qaPanel = await this.repository.findById(id);
 
     if (!qaPanel) {
-      throw new NotFoundException(`QA panel with ID ${id} not found`);
+      throw new NotFoundException(`QA panel OTA post with ID ${id} not found`);
     }
 
     return qaPanel;
   }
 
-  async updateQaPanel(id: string, data: UpdateQaPanelOtaPostType): Promise<QaPanel> {
+  async updateQaPanel(
+    id: string,
+    data: UpdateQaPanelOtaPostType,
+  ): Promise<QaPanelOtaPost> {
     await this.findQaPanelById(id);
     const qaPanel = await this.repository.update(id, data);
-    this.logger.log(`QA panel updated: ${qaPanel.id}`);
+    this.logger.log(`QA panel OTA post updated: ${qaPanel.id}`);
     return qaPanel;
   }
 
@@ -77,8 +82,11 @@ export class QaPanelOtaPostService implements IQaPanelOtaPostService {
   ): Promise<{ deletedCount: number; deletedId: string }> {
     const qaPanel = await this.findQaPanelById(id);
     await this.tryDeleteS3File(qaPanel.file_url);
+    if (qaPanel.converted_file_url) {
+      await this.tryDeleteS3File(qaPanel.converted_file_url);
+    }
     await this.repository.delete(id);
-    this.logger.log(`QA panel deleted: ${id}`);
+    this.logger.log(`QA panel OTA post deleted: ${id}`);
     return { deletedCount: 1, deletedId: id };
   }
 
@@ -91,17 +99,27 @@ export class QaPanelOtaPostService implements IQaPanelOtaPostService {
     );
 
     const existingIds = qaPanels
-      .filter((qaPanel): qaPanel is QaPanel => qaPanel !== null)
+      .filter((qaPanel): qaPanel is QaPanelOtaPost => qaPanel !== null)
       .map((qaPanel) => qaPanel.id);
 
     if (existingIds.length === 0) {
-      throw new NotFoundException('No QA panel records found for the provided IDs');
+      throw new NotFoundException(
+        'No QA panel OTA post records found for the provided IDs',
+      );
     }
 
     await Promise.all(
       qaPanels
-        .filter((qaPanel): qaPanel is QaPanel => qaPanel !== null)
+        .filter((qaPanel): qaPanel is QaPanelOtaPost => qaPanel !== null)
         .map((qaPanel) => this.tryDeleteS3File(qaPanel.file_url)),
+    );
+    await Promise.all(
+      qaPanels
+        .filter((qaPanel): qaPanel is QaPanelOtaPost => qaPanel !== null)
+        .filter((qaPanel) => qaPanel.converted_file_url)
+        .map((qaPanel) =>
+          this.tryDeleteS3File(qaPanel.converted_file_url as string),
+        ),
     );
 
     const deletedCount = await this.repository.bulkDelete(existingIds);
@@ -146,7 +164,7 @@ export class QaPanelOtaPostService implements IQaPanelOtaPostService {
 
   async processImportCallback(
     data: QaPanelOtaPostImportCallbackType,
-  ): Promise<QaPanel> {
+  ): Promise<QaPanelOtaPost> {
     const qaPanel = await this.findQaPanelById(data.qa_panel_id);
 
     const failedReasons = (data.errors ?? []).map((error) => ({
@@ -170,7 +188,7 @@ export class QaPanelOtaPostService implements IQaPanelOtaPostService {
     });
 
     this.logger.log(
-      `QA panel import callback processed for ${data.qa_panel_id} (${data.status})`,
+      `QA panel OTA post import callback processed for ${data.qa_panel_id} (${data.status})`,
     );
 
     return updatedQaPanel;
@@ -199,7 +217,7 @@ export class QaPanelOtaPostService implements IQaPanelOtaPostService {
       await this.s3UploadService.deleteFile(fileUrl);
     } catch (error: any) {
       this.logger.warn(
-        `Failed to delete S3 file for QA panel (${fileUrl}): ${error.message}`,
+        `Failed to delete S3 file for QA panel OTA post (${fileUrl}): ${error.message}`,
       );
     }
   }
@@ -281,7 +299,7 @@ export class QaPanelOtaPostService implements IQaPanelOtaPostService {
       };
     } catch (error: any) {
       this.logger.error(
-        `QA panel proxy API request failed: ${error.message}`,
+        `QA panel OTA post proxy API request failed: ${error.message}`,
         error.stack,
       );
 

@@ -1,6 +1,8 @@
 import {
   BadRequestException,
+  Body,
   Controller,
+  Delete,
   Get,
   Inject,
   Logger,
@@ -24,16 +26,22 @@ import {
 } from '@nestjs/swagger';
 import { Response } from 'express';
 import { ParseQuery } from '../../common/decorators/parse-query.decorator';
+import { ValidateBody } from '../../common/decorators/validate.decorator';
 import { LargeExcelFileInterceptor } from '../../common/interceptors/excel-file.interceptor';
+import { MongoObjectIdPipe } from '../../common/pipes/mongo-object-id.pipe';
 import { ResponseHandler } from '../../common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
+  BulkDeleteOtaPostPreChargingDto,
   OtaPostPreChargingEmailQueuedResponseDto,
   OtaPostPreChargingListResponseDto,
   OtaPostPreChargingResponseDto,
 } from './ota-post-pre-charging.dto';
 import { IOtaPostPreChargingService } from './ota-post-pre-charging.interface';
-import { otaPostPreChargingListQuerySchema } from './ota-post-pre-charging.validation';
+import {
+  bulkDeleteOtaPostPreChargingSchema,
+  otaPostPreChargingListQuerySchema,
+} from './ota-post-pre-charging.validation';
 
 @ApiTags('OTA Post Pre-Charging')
 @Controller('ota-post-pre-charging')
@@ -206,7 +214,42 @@ export class OtaPostPreChargingController {
     );
   }
 
-  @Get(':id')
+  @Post('bulk-delete')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ValidateBody(bulkDeleteOtaPostPreChargingSchema)
+  @ApiOperation({ summary: 'Bulk delete OTA post pre-charging records' })
+  @ApiResponse({
+    status: 200,
+    description: 'OTA post pre-charging records deleted successfully',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'No OTA post pre-charging records found',
+  })
+  async bulkDelete(
+    @Req() req: { user?: { userId?: string } },
+    @Body() body: BulkDeleteOtaPostPreChargingDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result = await this.service.bulkDeleteRecords(
+          body.ids,
+          req.user?.userId,
+        );
+        return {
+          statusCode: 200,
+          message: `Successfully deleted ${result.deletedCount} OTA post pre-charging record(s)`,
+          data: result,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Get(':id([0-9a-fA-F]{24})')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Get an OTA post pre-charging conversion record by ID' })
@@ -216,7 +259,10 @@ export class OtaPostPreChargingController {
     description: 'Conversion record retrieved successfully',
     type: OtaPostPreChargingResponseDto,
   })
-  async findById(@Param('id') id: string, @Res() response: Response) {
+  async findById(
+    @Param('id', MongoObjectIdPipe) id: string,
+    @Res() response: Response,
+  ) {
     return ResponseHandler.handler(
       response,
       async () => {
@@ -225,6 +271,38 @@ export class OtaPostPreChargingController {
           statusCode: 200,
           message: 'OTA post pre-charging record retrieved successfully',
           data: record,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Delete(':id([0-9a-fA-F]{24})')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Delete an OTA post pre-charging record' })
+  @ApiParam({ name: 'id', description: 'Conversion record ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'OTA post pre-charging record deleted successfully',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'OTA post pre-charging record not found',
+  })
+  async delete(
+    @Req() req: { user?: { userId?: string } },
+    @Param('id', MongoObjectIdPipe) id: string,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result = await this.service.deleteRecord(id, req.user?.userId);
+        return {
+          statusCode: 200,
+          message: 'OTA post pre-charging record deleted successfully',
+          data: result,
         };
       },
       this.logger,

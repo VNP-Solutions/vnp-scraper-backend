@@ -211,4 +211,79 @@ export class OtaPostPreChargingService implements IOtaPostPreChargingService {
 
     return record;
   }
+
+  async deleteRecord(
+    id: string,
+    userId?: string,
+  ): Promise<{ deletedCount: number; deletedId: string }> {
+    const record = await this.findRecordById(id);
+
+    if (userId && record.user_id !== userId) {
+      throw new NotFoundException(
+        `OTA post pre-charging record with ID ${id} not found`,
+      );
+    }
+
+    await this.tryDeleteS3File(record.original_file_url);
+    if (record.converted_file_url) {
+      await this.tryDeleteS3File(record.converted_file_url);
+    }
+
+    await this.repository.delete(id);
+    this.logger.log(`OTA post pre-charging record deleted: ${id}`);
+
+    return { deletedCount: 1, deletedId: id };
+  }
+
+  async bulkDeleteRecords(
+    ids: string[],
+    userId?: string,
+  ): Promise<{ deletedCount: number; deletedIds: string[] }> {
+    const records = await Promise.all(
+      ids.map((id) => this.repository.findById(id)),
+    );
+
+    const existingRecords = records.filter(
+      (record): record is OtaPostPreCharging =>
+        record !== null && (!userId || record.user_id === userId),
+    );
+
+    if (existingRecords.length === 0) {
+      throw new NotFoundException(
+        'No OTA post pre-charging records found for the provided IDs',
+      );
+    }
+
+    const existingIds = existingRecords.map((record) => record.id);
+
+    await Promise.all(
+      existingRecords.map((record) =>
+        this.tryDeleteS3File(record.original_file_url),
+      ),
+    );
+    await Promise.all(
+      existingRecords
+        .filter((record) => record.converted_file_url)
+        .map((record) =>
+          this.tryDeleteS3File(record.converted_file_url as string),
+        ),
+    );
+
+    const deletedCount = await this.repository.bulkDelete(existingIds);
+
+    return {
+      deletedCount,
+      deletedIds: existingIds,
+    };
+  }
+
+  private async tryDeleteS3File(fileUrl: string): Promise<void> {
+    try {
+      await this.s3UploadService.deleteFile(fileUrl);
+    } catch (error: any) {
+      this.logger.warn(
+        `Failed to delete S3 file for OTA post pre-charging (${fileUrl}): ${error.message}`,
+      );
+    }
+  }
 }
