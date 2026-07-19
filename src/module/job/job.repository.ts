@@ -92,6 +92,46 @@ function summarizeLoadedExportJobs(jobs: any[]): {
   };
 }
 
+/** Logs every `intervalMs` while `query` is still in flight (Mongo can take minutes). */
+async function withQueryHeartbeat<T>(
+  logger: Logger,
+  label: string,
+  query: Promise<T>,
+  intervalMs = 10_000,
+): Promise<T> {
+  const startedAt = Date.now();
+  const timer = setInterval(() => {
+    const elapsedSec = Math.round((Date.now() - startedAt) / 1000);
+    logger.log(
+      `[MasterExport] ${label} still waiting on MongoDB — ${elapsedSec}s elapsed`,
+    );
+  }, intervalMs);
+
+  try {
+    return await query;
+  } finally {
+    clearInterval(timer);
+  }
+}
+
+function estimateLoadedJobsPayloadBytes(jobs: any[]): number {
+  try {
+    return Buffer.byteLength(JSON.stringify(jobs), 'utf8');
+  } catch {
+    return 0;
+  }
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  }
+  if (bytes >= 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+  return `${bytes} B`;
+}
+
 @Injectable()
 export class JobRepository implements IJobRepository {
   constructor(
@@ -1434,19 +1474,47 @@ export class JobRepository implements IJobRepository {
                 `${chunk.length} job ID(s): [${chunk.join(', ')}]`,
             );
 
-            const result = await this.db.job.findMany({
+            const preflightStartedAt = Date.now();
+            const preflight = await this.db.job.findMany({
               where: { id: { in: chunk } },
-              select,
+              select: {
+                id: true,
+                ota_provider: true,
+                _count: { select: { jobItem: true } },
+              },
             });
+            const expectedItems = preflight.reduce(
+              (sum, job) => sum + job._count.jobItem,
+              0,
+            );
+            const expediaInChunk = preflight.filter(
+              (job) => job.ota_provider === OTAProvider.Expedia,
+            ).length;
+            this.logger.log(
+              `[MasterExport] Chunk ${globalChunkIndex + 1}/${chunks.length} preflight in ` +
+                `${Date.now() - preflightStartedAt}ms — ${preflight.length}/${chunk.length} jobs, ` +
+                `${expectedItems} job items expected, ${expediaInChunk} Expedia job(s)`,
+            );
+
+            const result = await withQueryHeartbeat(
+              this.logger,
+              `Chunk ${globalChunkIndex + 1}/${chunks.length} nested load`,
+              this.db.job.findMany({
+                where: { id: { in: chunk } },
+                select,
+              }),
+            );
 
             const summary = summarizeLoadedExportJobs(result);
             const elapsedMs = Date.now() - chunkStartedAt;
+            const payloadBytes = estimateLoadedJobsPayloadBytes(result);
 
             this.logger.log(
               `[MasterExport] Chunk ${globalChunkIndex + 1}/${chunks.length} query done in ${elapsedMs}ms — ` +
                 `${summary.jobCount}/${chunk.length} jobs found, ` +
                 `${summary.itemCount} job items, ` +
-                `${summary.expediaJobCount} Expedia job(s)`,
+                `${summary.expediaJobCount} Expedia job(s), ` +
+                `payload ~${formatBytes(payloadBytes)}`,
             );
 
             if (summary.jobCount < chunk.length) {
@@ -1717,10 +1785,31 @@ export class JobRepository implements IJobRepository {
           `${chunk.length} job ID(s): [${chunk.join(', ')}]`,
       );
 
-      const batch = await this.db.job.findMany({
+      const preflight = await this.db.job.findMany({
         where: { id: { in: chunk } },
-        select: MASTER_EXPORT_SELECT,
+        select: {
+          id: true,
+          ota_provider: true,
+          _count: { select: { jobItem: true } },
+        },
       });
+      const expectedItems = preflight.reduce(
+        (sum, job) => sum + job._count.jobItem,
+        0,
+      );
+      this.logger.log(
+        `[MasterExport.cursor] Batch ${batchIdx}/${totalBatches} preflight — ` +
+          `${preflight.length}/${chunk.length} jobs, ${expectedItems} job items expected`,
+      );
+
+      const batch = await withQueryHeartbeat(
+        this.logger,
+        `Batch ${batchIdx}/${totalBatches} nested load`,
+        this.db.job.findMany({
+          where: { id: { in: chunk } },
+          select: MASTER_EXPORT_SELECT,
+        }),
+      );
 
       const summary = summarizeLoadedExportJobs(batch);
       this.logger.log(

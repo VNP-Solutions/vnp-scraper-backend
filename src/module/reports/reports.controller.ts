@@ -1411,8 +1411,19 @@ export class ReportsController {
       );
       if (went) return;
 
+      const jobIds = Array.from(new Set(body?.job_ids ?? [])).filter(Boolean);
+      const exportStartedAt = Date.now();
+      this.logger.log(
+        `[export-consolidated] Sync export started — ${jobIds.length} job ID(s) for user ${request.user?.email ?? request.user?.id ?? 'unknown'}`,
+      );
+
       const { buffer, fileName } =
         await this.reportsService.exportConsolidated(body);
+
+      this.logger.log(
+        `[export-consolidated] Sync export complete in ${Date.now() - exportStartedAt}ms — ` +
+          `${fileName} (${buffer.length} bytes)`,
+      );
 
       response.setHeader(
         'Content-Type',
