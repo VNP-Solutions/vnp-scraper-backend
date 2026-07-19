@@ -70,6 +70,28 @@ const MASTER_EXPORT_SELECT = {
   },
 } satisfies Prisma.JobSelect;
 
+function summarizeLoadedExportJobs(jobs: any[]): {
+  jobCount: number;
+  itemCount: number;
+  expediaJobCount: number;
+} {
+  let itemCount = 0;
+  let expediaJobCount = 0;
+
+  for (const job of jobs) {
+    itemCount += job?.jobItem?.length ?? 0;
+    if (job?.ota_provider === OTAProvider.Expedia) {
+      expediaJobCount += 1;
+    }
+  }
+
+  return {
+    jobCount: jobs.length,
+    itemCount,
+    expediaJobCount,
+  };
+}
+
 @Injectable()
 export class JobRepository implements IJobRepository {
   constructor(
@@ -1382,10 +1404,6 @@ export class JobRepository implements IJobRepository {
         chunks.push(uniqueIds.slice(i, i + MASTER_EXPORT_JOB_CHUNK_SIZE));
       }
       const totalWaves = Math.ceil(chunks.length / CONCURRENCY);
-      // For long exports we want progress visibility. For short ones we
-      // don't want spam. Log every ~8th of the run, with a minimum of
-      // every wave for small jobs.
-      const logEveryNWaves = Math.max(1, Math.ceil(totalWaves / 8));
 
       const startedAt = Date.now();
       this.logger.log(
@@ -1397,32 +1415,70 @@ export class JobRepository implements IJobRepository {
       let waveIndex = 0;
       for (let i = 0; i < chunks.length; i += CONCURRENCY) {
         const wave = chunks.slice(i, i + CONCURRENCY);
+        waveIndex += 1;
+        const waveStartedAt = Date.now();
+
+        this.logger.log(
+          `[MasterExport] Wave ${waveIndex}/${totalWaves} starting — ` +
+            `${wave.length} chunk(s) in parallel ` +
+            `(global chunks ${i + 1}-${i + wave.length} of ${chunks.length})`,
+        );
+
         const waveResults = await Promise.all(
-          wave.map((chunk) =>
-            this.db.job.findMany({
+          wave.map(async (chunk, chunkIndexInWave) => {
+            const globalChunkIndex = i + chunkIndexInWave;
+            const chunkStartedAt = Date.now();
+
+            this.logger.log(
+              `[MasterExport] Chunk ${globalChunkIndex + 1}/${chunks.length} query start — ` +
+                `${chunk.length} job ID(s): [${chunk.join(', ')}]`,
+            );
+
+            const result = await this.db.job.findMany({
               where: { id: { in: chunk } },
               select,
-            }),
-          ),
-        );
-        for (const r of waveResults) all.push(...r);
-        waveIndex += 1;
+            });
 
-        // Progress log: always print first + last wave, plus every Nth.
-        const isLast = waveIndex === totalWaves;
-        const isMilestone = waveIndex % logEveryNWaves === 0;
-        if (isLast || isMilestone) {
-          const chunksDone = Math.min(i + CONCURRENCY, chunks.length);
-          const pct = Math.round((chunksDone / chunks.length) * 100);
-          this.logger.log(
-            `[MasterExport] Wave ${waveIndex}/${totalWaves} done — ` +
-              `${chunksDone}/${chunks.length} chunks (${pct}%, ` +
-              `${all.length} jobs loaded so far)`,
-          );
+            const summary = summarizeLoadedExportJobs(result);
+            const elapsedMs = Date.now() - chunkStartedAt;
+
+            this.logger.log(
+              `[MasterExport] Chunk ${globalChunkIndex + 1}/${chunks.length} query done in ${elapsedMs}ms — ` +
+                `${summary.jobCount}/${chunk.length} jobs found, ` +
+                `${summary.itemCount} job items, ` +
+                `${summary.expediaJobCount} Expedia job(s)`,
+            );
+
+            if (summary.jobCount < chunk.length) {
+              const found = new Set(result.map((job) => job.id));
+              const missingInChunk = chunk.filter((id) => !found.has(id));
+              this.logger.warn(
+                `[MasterExport] Chunk ${globalChunkIndex + 1}/${chunks.length} missing ` +
+                  `${missingInChunk.length} job ID(s): [${missingInChunk.join(', ')}]`,
+              );
+            }
+
+            return result;
+          }),
+        );
+
+        for (const waveResult of waveResults) {
+          all.push(...waveResult);
         }
+
+        const waveSummary = summarizeLoadedExportJobs(all);
+        this.logger.log(
+          `[MasterExport] Wave ${waveIndex}/${totalWaves} complete in ` +
+            `${Date.now() - waveStartedAt}ms — cumulative ${waveSummary.jobCount} jobs, ` +
+            `${waveSummary.itemCount} job items loaded so far`,
+        );
       }
+
+      const totalSummary = summarizeLoadedExportJobs(all);
       this.logger.log(
-        `[MasterExport] DB load complete — ${all.length} jobs in ${Date.now() - startedAt}ms`,
+        `[MasterExport] DB load complete in ${Date.now() - startedAt}ms — ` +
+          `${totalSummary.jobCount} jobs, ${totalSummary.itemCount} job items, ` +
+          `${totalSummary.expediaJobCount} Expedia job(s) across ${chunks.length} chunk(s)`,
       );
       return all;
     } catch (error) {
@@ -1653,10 +1709,25 @@ export class JobRepository implements IJobRepository {
     let yielded = 0;
     for (let i = 0; i < sortedIds.length; i += batchSize) {
       const chunk = sortedIds.slice(i, i + batchSize);
+      const batchIdx = Math.floor(i / batchSize) + 1;
+      const batchStartedAt = Date.now();
+
+      this.logger.log(
+        `[MasterExport.cursor] Batch ${batchIdx}/${totalBatches} query start — ` +
+          `${chunk.length} job ID(s): [${chunk.join(', ')}]`,
+      );
+
       const batch = await this.db.job.findMany({
         where: { id: { in: chunk } },
         select: MASTER_EXPORT_SELECT,
       });
+
+      const summary = summarizeLoadedExportJobs(batch);
+      this.logger.log(
+        `[MasterExport.cursor] Batch ${batchIdx}/${totalBatches} query done in ` +
+          `${Date.now() - batchStartedAt}ms — ${summary.jobCount}/${chunk.length} jobs, ` +
+          `${summary.itemCount} job items, ${summary.expediaJobCount} Expedia job(s)`,
+      );
 
       for (const job of batch) {
         yield job;
@@ -1666,13 +1737,11 @@ export class JobRepository implements IJobRepository {
       // consumer has finished processing the yielded jobs, V8 can reclaim
       // every row object. Peak heap stays at ~one batch.
 
-      const batchIdx = Math.floor(i / batchSize) + 1;
       if (batchIdx % logEvery === 0 || batchIdx === totalBatches) {
         const pct = Math.round((yielded / sortedIds.length) * 100);
         this.logger.log(
-          `[MasterExport.cursor] Batch ${batchIdx}/${totalBatches} ` +
-            `delivered — ${yielded}/${sortedIds.length} jobs (${pct}%, ` +
-            `${Date.now() - startedAt}ms)`,
+          `[MasterExport.cursor] Batch ${batchIdx}/${totalBatches} delivered — ` +
+            `${yielded}/${sortedIds.length} jobs (${pct}%, ${Date.now() - startedAt}ms elapsed)`,
         );
       }
     }

@@ -1055,13 +1055,23 @@ export class JobService implements IJobService {
   async buildConsolidatedMasterXlsx(
     jobIds: string[],
   ): Promise<{ buffer: Buffer; fileName: string }> {
+    const startedAt = Date.now();
     try {
       const uniqueJobIds = Array.from(new Set(jobIds ?? [])).filter(Boolean);
       if (uniqueJobIds.length === 0) {
         throw new BadRequestException('At least one job ID is required');
       }
 
+      this.logger.log(
+        `[Consolidated XLSX] Sync build started for ${uniqueJobIds.length} job ID(s)`,
+      );
+
+      const dbLoadStartedAt = Date.now();
       const jobs = await this.repository.findManyForMasterExport(uniqueJobIds);
+      this.logger.log(
+        `[Consolidated XLSX] DB load finished in ${Date.now() - dbLoadStartedAt}ms`,
+      );
+
       if (!jobs || jobs.length === 0) {
         throw new NotFoundException(
           `No jobs found for the given IDs: ${uniqueJobIds.join(', ')}`,
@@ -1072,23 +1082,34 @@ export class JobService implements IJobService {
       const missingIds = uniqueJobIds.filter((id) => !foundIds.has(id));
       if (missingIds.length > 0) {
         this.logger.warn(
-          `Consolidated master XLSX: ${missingIds.length} job ID(s) not found and will be skipped: ${missingIds.join(', ')}`,
+          `[Consolidated XLSX] ${missingIds.length} job ID(s) not found and will be skipped: ${missingIds.join(', ')}`,
         );
       }
 
-      // Sanity-check that at least one row will be written. We re-use
-      // `buildMasterRows` for this so the empty-detection logic is in one
-      // place (a job with zero `jobItem[]` produces zero rows and is
-      // silently skipped by the underlying builder).
+      const rowsStartedAt = Date.now();
       const { rows } = buildMasterRows(jobs);
+      this.logger.log(
+        `[Consolidated XLSX] Row build finished in ${Date.now() - rowsStartedAt}ms — ` +
+          `${rows.length} export row(s) from ${jobs.length} job(s)`,
+      );
+
       if (rows.length === 0) {
         throw new NotFoundException(
           'No job items found for the provided job IDs to export',
         );
       }
 
+      const xlsxStartedAt = Date.now();
       const buffer = buildMasterXlsxBuffer(jobs);
+      this.logger.log(
+        `[Consolidated XLSX] XLSX buffer built in ${Date.now() - xlsxStartedAt}ms — ` +
+          `${buffer.length} bytes`,
+      );
+
       const fileName = `consolidated-report-${this.buildHumanReadableTimestamp()}.xlsx`;
+      this.logger.log(
+        `[Consolidated XLSX] Sync build complete in ${Date.now() - startedAt}ms — ${fileName}`,
+      );
       return { buffer, fileName };
     } catch (error) {
       this.logger.error(
