@@ -29,7 +29,7 @@ import {
 @Injectable()
 export class QaPanelService implements IQaPanelService {
   private readonly logger = new Logger(QaPanelService.name);
-  private readonly proxyApiPath = '/api/external/bulk-audit-import';
+  private readonly proxyApiPath = '/api/external/bulk-audit-import/ota';
 
   constructor(
     private readonly repository: QaPanelRepository,
