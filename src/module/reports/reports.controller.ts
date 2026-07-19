@@ -19,6 +19,7 @@ import { Response } from 'express';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
 import { ResponseHandler } from 'src/common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { IJobRepository } from '../job/job.interface';
 import {
   ExportReportsMasterRequestDto,
   ReportsStatisticsResponseDto,
@@ -48,6 +49,13 @@ import {
  */
 const ASYNC_EXPORT_THRESHOLD = 10;
 
+/**
+ * Total job-item rows above which sync export usually exceeds browser /
+ * proxy timeouts (nginx ALB default ~60s). Route to SQS + email link
+ * even when job count ≤ ASYNC_EXPORT_THRESHOLD.
+ */
+const ASYNC_EXPORT_ITEM_THRESHOLD = 500;
+
 @ApiTags('Reports')
 @ApiBearerAuth('JWT-auth')
 @Controller('/reports')
@@ -55,6 +63,8 @@ export class ReportsController {
   constructor(
     @Inject('IReportsService')
     private readonly reportsService: IReportsService,
+    @Inject('IJobRepository')
+    private readonly jobRepository: IJobRepository,
     private readonly logger: Logger,
   ) {}
 
@@ -65,7 +75,8 @@ export class ReportsController {
    * through to its existing synchronous path.
    *
    * The async path is taken when ALL of the following hold:
-   *   1. The request has more than `ASYNC_EXPORT_THRESHOLD` job_ids.
+   *   1. The request has more than `ASYNC_EXPORT_THRESHOLD` job_ids, OR
+   *      more than `ASYNC_EXPORT_ITEM_THRESHOLD` total job items.
    *   2. `REPORTS_EXPORT_QUEUE_URL` is configured.
    *   3. The JWT carries an email we can deliver the link to.
    *
@@ -74,21 +85,48 @@ export class ReportsController {
    * nginx's `proxy_read_timeout` on huge exports, but the request
    * never silently disappears.
    */
+  private async shouldUseAsyncExport(jobIds: string[]): Promise<{
+    useAsync: boolean;
+    reason: 'job_count' | 'item_count' | null;
+    jobIdsCount: number;
+    itemCount: number;
+  }> {
+    const uniqueJobIds = Array.from(new Set(jobIds ?? [])).filter(Boolean);
+    const jobIdsCount = uniqueJobIds.length;
+    if (jobIdsCount === 0) {
+      return { useAsync: false, reason: null, jobIdsCount: 0, itemCount: 0 };
+    }
+
+    const itemCount =
+      await this.jobRepository.countJobItemsByJobIds(uniqueJobIds);
+
+    if (jobIdsCount > ASYNC_EXPORT_THRESHOLD) {
+      return { useAsync: true, reason: 'job_count', jobIdsCount, itemCount };
+    }
+    if (itemCount > ASYNC_EXPORT_ITEM_THRESHOLD) {
+      return { useAsync: true, reason: 'item_count', jobIdsCount, itemCount };
+    }
+
+    return { useAsync: false, reason: null, jobIdsCount, itemCount };
+  }
+
   private async tryEnqueueAsyncExport(
     request: any,
     body: ExportReportsMasterType,
     exportType: ReportExportType,
     response: Response,
   ): Promise<boolean> {
-    const jobIdsCount = body.job_ids?.length ?? 0;
-    if (jobIdsCount <= ASYNC_EXPORT_THRESHOLD) return false;
+    const asyncDecision = await this.shouldUseAsyncExport(body.job_ids ?? []);
+    if (!asyncDecision.useAsync) return false;
+
+    const { jobIdsCount, itemCount, reason } = asyncDecision;
 
     const queueUrl = getReportsExportQueueUrl();
     if (!queueUrl) {
       this.logger.warn(
-        `Async export requested (${jobIdsCount} jobs, type=${exportType}) ` +
-          `but REPORTS_EXPORT_QUEUE_URL is not configured — falling back to ` +
-          `the synchronous path.`,
+        `Async export requested (${jobIdsCount} jobs, ${itemCount} items, ` +
+          `reason=${reason}, type=${exportType}) but REPORTS_EXPORT_QUEUE_URL ` +
+          `is not configured — falling back to the synchronous path.`,
       );
       return false;
     }
@@ -144,6 +182,10 @@ export class ReportsController {
 
     try {
       await enqueueReportExport(payload, this.logger);
+      this.logger.log(
+        `[export-${exportType}] Queued async export — ${jobIdsCount} job(s), ` +
+          `${itemCount} item(s), reason=${reason}, email=${user.email}`,
+      );
     } catch (err) {
       this.logger.error(
         `Failed to enqueue ${exportType} export: ${err?.message ?? err}`,
@@ -168,6 +210,8 @@ export class ReportsController {
         exportType,
         email: user.email,
         jobIdsCount,
+        itemCount,
+        asyncReason: reason,
       },
     });
     return true;
