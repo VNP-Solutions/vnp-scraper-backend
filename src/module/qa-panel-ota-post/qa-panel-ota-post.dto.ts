@@ -71,6 +71,13 @@ export class QaPanelOtaPostResponseDto {
   })
   file_url: string;
 
+  @ApiPropertyOptional({
+    example:
+      'https://bucket.s3.amazonaws.com/uploads/qa-panel-ota-post/dashboard/123456-dashboard-report.xlsx',
+    description: 'Optional converted dashboard-format file URL',
+  })
+  converted_file_url?: string | null;
+
   @ApiProperty({ example: 'report.xlsx' })
   file_name: string;
 

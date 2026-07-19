@@ -1,4 +1,4 @@
-import { QaPanel, QaPanelStatus } from '@prisma/client';
+import { QaPanelOtaPost, QaPanelStatus } from '@prisma/client';
 import {
   CreateQaPanelOtaPostType,
   QaPanelOtaPostFailedReasonType,
@@ -9,10 +9,11 @@ import {
 export interface IQaPanelOtaPostRepository {
   create(data: {
     file_url: string;
+    converted_file_url?: string;
     file_name: string;
     status: QaPanelStatus;
     failed_reasons?: QaPanelOtaPostFailedReasonType[];
-  }): Promise<QaPanel>;
+  }): Promise<QaPanelOtaPost>;
 
   findAll(filters?: {
     search?: string;
@@ -21,32 +22,33 @@ export interface IQaPanelOtaPostRepository {
     limit?: number;
     order?: 'asc' | 'desc';
   }): Promise<{
-    qaPanels: QaPanel[];
+    qaPanels: QaPanelOtaPost[];
     totalDocuments: number;
     currentPage: number;
     totalPage: number;
     limit: number;
   }>;
 
-  findById(id: string): Promise<QaPanel | null>;
+  findById(id: string): Promise<QaPanelOtaPost | null>;
 
   update(
     id: string,
     data: {
       file_url?: string;
+      converted_file_url?: string;
       file_name?: string;
       status?: QaPanelStatus;
       failed_reasons?: QaPanelOtaPostFailedReasonType[];
     },
-  ): Promise<QaPanel>;
+  ): Promise<QaPanelOtaPost>;
 
-  delete(id: string): Promise<QaPanel>;
+  delete(id: string): Promise<QaPanelOtaPost>;
 
   bulkDelete(ids: string[]): Promise<number>;
 }
 
 export interface IQaPanelOtaPostService {
-  createQaPanel(data: CreateQaPanelOtaPostType): Promise<QaPanel>;
+  createQaPanel(data: CreateQaPanelOtaPostType): Promise<QaPanelOtaPost>;
 
   findAllQaPanels(filters?: {
     search?: string;
@@ -55,18 +57,23 @@ export interface IQaPanelOtaPostService {
     limit?: number;
     order?: 'asc' | 'desc';
   }): Promise<{
-    qaPanels: QaPanel[];
+    qaPanels: QaPanelOtaPost[];
     totalDocuments: number;
     currentPage: number;
     totalPage: number;
     limit: number;
   }>;
 
-  findQaPanelById(id: string): Promise<QaPanel>;
+  findQaPanelById(id: string): Promise<QaPanelOtaPost>;
 
-  updateQaPanel(id: string, data: UpdateQaPanelOtaPostType): Promise<QaPanel>;
+  updateQaPanel(
+    id: string,
+    data: UpdateQaPanelOtaPostType,
+  ): Promise<QaPanelOtaPost>;
 
-  deleteQaPanel(id: string): Promise<{ deletedCount: number; deletedId: string }>;
+  deleteQaPanel(
+    id: string,
+  ): Promise<{ deletedCount: number; deletedId: string }>;
 
   bulkDeleteQaPanels(ids: string[]): Promise<{
     deletedCount: number;
@@ -75,7 +82,9 @@ export interface IQaPanelOtaPostService {
 
   uploadAndProcess(file: Express.Multer.File, email: string): Promise<unknown>;
 
-  processImportCallback(data: QaPanelOtaPostImportCallbackType): Promise<QaPanel>;
+  processImportCallback(
+    data: QaPanelOtaPostImportCallbackType,
+  ): Promise<QaPanelOtaPost>;
 
   generateCommunicationToken(): Promise<{
     token: string;

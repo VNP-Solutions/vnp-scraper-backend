@@ -3,6 +3,7 @@ import {
   OtaPostPreChargingDelivery,
   OtaPostPreChargingStatus,
 } from '@prisma/client';
+import { BulkDeleteOtaPostPreChargingType } from './ota-post-pre-charging.validation';
 
 export class OtaPostPreChargingResponseDto {
   @ApiProperty({ example: '507f1f77bcf86cd799439011' })
@@ -64,6 +65,14 @@ export class OtaPostPreChargingListResponseDto {
     totalPage: number;
     limit: number;
   };
+}
+
+export class BulkDeleteOtaPostPreChargingDto implements BulkDeleteOtaPostPreChargingType {
+  @ApiProperty({
+    type: [String],
+    example: ['507f1f77bcf86cd799439011'],
+  })
+  ids: string[];
 }
 
 export class OtaPostPreChargingEmailQueuedResponseDto {
