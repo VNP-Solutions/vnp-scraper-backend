@@ -1,18 +1,17 @@
 import { QaPanel, QaPanelStatus } from '@prisma/client';
 import {
-  CreateQaPanelType,
-  QaPanelFailedReasonType,
-  QaPanelImportCallbackType,
-  UpdateQaPanelType,
-} from './qa-panel.validation';
+  CreateQaPanelOtaPostType,
+  QaPanelOtaPostFailedReasonType,
+  QaPanelOtaPostImportCallbackType,
+  UpdateQaPanelOtaPostType,
+} from './qa-panel-ota-post.validation';
 
-export interface IQaPanelRepository {
+export interface IQaPanelOtaPostRepository {
   create(data: {
     file_url: string;
-    converted_file_url?: string;
     file_name: string;
     status: QaPanelStatus;
-    failed_reasons?: QaPanelFailedReasonType[];
+    failed_reasons?: QaPanelOtaPostFailedReasonType[];
   }): Promise<QaPanel>;
 
   findAll(filters?: {
@@ -35,10 +34,9 @@ export interface IQaPanelRepository {
     id: string,
     data: {
       file_url?: string;
-      converted_file_url?: string;
       file_name?: string;
       status?: QaPanelStatus;
-      failed_reasons?: QaPanelFailedReasonType[];
+      failed_reasons?: QaPanelOtaPostFailedReasonType[];
     },
   ): Promise<QaPanel>;
 
@@ -47,8 +45,8 @@ export interface IQaPanelRepository {
   bulkDelete(ids: string[]): Promise<number>;
 }
 
-export interface IQaPanelService {
-  createQaPanel(data: CreateQaPanelType): Promise<QaPanel>;
+export interface IQaPanelOtaPostService {
+  createQaPanel(data: CreateQaPanelOtaPostType): Promise<QaPanel>;
 
   findAllQaPanels(filters?: {
     search?: string;
@@ -66,7 +64,7 @@ export interface IQaPanelService {
 
   findQaPanelById(id: string): Promise<QaPanel>;
 
-  updateQaPanel(id: string, data: UpdateQaPanelType): Promise<QaPanel>;
+  updateQaPanel(id: string, data: UpdateQaPanelOtaPostType): Promise<QaPanel>;
 
   deleteQaPanel(id: string): Promise<{ deletedCount: number; deletedId: string }>;
 
@@ -77,7 +75,7 @@ export interface IQaPanelService {
 
   uploadAndProcess(file: Express.Multer.File, email: string): Promise<unknown>;
 
-  processImportCallback(data: QaPanelImportCallbackType): Promise<QaPanel>;
+  processImportCallback(data: QaPanelOtaPostImportCallbackType): Promise<QaPanel>;
 
   generateCommunicationToken(): Promise<{
     token: string;

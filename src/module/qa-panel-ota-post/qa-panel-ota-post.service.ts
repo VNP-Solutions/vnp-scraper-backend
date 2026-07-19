@@ -14,25 +14,24 @@ import { basename } from 'path';
 import { firstValueFrom } from 'rxjs';
 import { S3UploadService } from '../../common/utils/s3-upload.util';
 import { MailService } from '../../common/utils/mail.service';
-import { extractFailedReasonsFromProxyResponse } from './qa-panel-failed-reason.util';
-import { convertQaPanelMasterUploadToDashboard } from './qa-panel-dashboard-converter.util';
+import { extractOtaPostFailedReasonsFromProxyResponse } from './qa-panel-ota-post-failed-reason.util';
 import {
-  IQaPanelService,
-} from './qa-panel.interface';
-import { QaPanelRepository } from './qa-panel.repository';
+  IQaPanelOtaPostService,
+} from './qa-panel-ota-post.interface';
+import { QaPanelOtaPostRepository } from './qa-panel-ota-post.repository';
 import {
-  CreateQaPanelType,
-  QaPanelImportCallbackType,
-  UpdateQaPanelType,
-} from './qa-panel.validation';
+  CreateQaPanelOtaPostType,
+  QaPanelOtaPostImportCallbackType,
+  UpdateQaPanelOtaPostType,
+} from './qa-panel-ota-post.validation';
 
 @Injectable()
-export class QaPanelService implements IQaPanelService {
-  private readonly logger = new Logger(QaPanelService.name);
+export class QaPanelOtaPostService implements IQaPanelOtaPostService {
+  private readonly logger = new Logger(QaPanelOtaPostService.name);
   private readonly proxyApiPath = '/api/external/bulk-audit-import';
 
   constructor(
-    private readonly repository: QaPanelRepository,
+    private readonly repository: QaPanelOtaPostRepository,
     private readonly s3UploadService: S3UploadService,
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
@@ -40,7 +39,7 @@ export class QaPanelService implements IQaPanelService {
     private readonly mailService: MailService,
   ) {}
 
-  async createQaPanel(data: CreateQaPanelType): Promise<QaPanel> {
+  async createQaPanel(data: CreateQaPanelOtaPostType): Promise<QaPanel> {
     const qaPanel = await this.repository.create(data);
     this.logger.log(`QA panel created: ${qaPanel.file_name} (ID: ${qaPanel.id})`);
     return qaPanel;
@@ -66,7 +65,7 @@ export class QaPanelService implements IQaPanelService {
     return qaPanel;
   }
 
-  async updateQaPanel(id: string, data: UpdateQaPanelType): Promise<QaPanel> {
+  async updateQaPanel(id: string, data: UpdateQaPanelOtaPostType): Promise<QaPanel> {
     await this.findQaPanelById(id);
     const qaPanel = await this.repository.update(id, data);
     this.logger.log(`QA panel updated: ${qaPanel.id}`);
@@ -78,9 +77,6 @@ export class QaPanelService implements IQaPanelService {
   ): Promise<{ deletedCount: number; deletedId: string }> {
     const qaPanel = await this.findQaPanelById(id);
     await this.tryDeleteS3File(qaPanel.file_url);
-    if (qaPanel.converted_file_url) {
-      await this.tryDeleteS3File(qaPanel.converted_file_url);
-    }
     await this.repository.delete(id);
     this.logger.log(`QA panel deleted: ${id}`);
     return { deletedCount: 1, deletedId: id };
@@ -107,12 +103,6 @@ export class QaPanelService implements IQaPanelService {
         .filter((qaPanel): qaPanel is QaPanel => qaPanel !== null)
         .map((qaPanel) => this.tryDeleteS3File(qaPanel.file_url)),
     );
-    await Promise.all(
-      qaPanels
-        .filter((qaPanel): qaPanel is QaPanel => qaPanel !== null)
-        .filter((qaPanel) => qaPanel.converted_file_url)
-        .map((qaPanel) => this.tryDeleteS3File(qaPanel.converted_file_url as string)),
-    );
 
     const deletedCount = await this.repository.bulkDelete(existingIds);
 
@@ -127,56 +117,35 @@ export class QaPanelService implements IQaPanelService {
     email: string,
   ): Promise<unknown> {
     const fileName = basename(file.originalname);
-    const importRows = convertQaPanelMasterUploadToDashboard(file);
-    const originalFileUrl = await this.s3UploadService.uploadFile(file);
-    const convertedS3Key = `uploads/qa-panel/dashboard/${Date.now()}-${importRows.fileName}`;
-    const convertedFileUrl = await this.s3UploadService.uploadBuffer(
-      convertedS3Key,
-      importRows.buffer,
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    );
+    const fileUrl = await this.s3UploadService.uploadFile(file);
 
     const qaPanel = await this.repository.create({
-      file_url: originalFileUrl,
-      converted_file_url: convertedFileUrl,
+      file_url: fileUrl,
       file_name: fileName,
       status: QaPanelStatus.Processing,
       failed_reasons: [],
     });
 
-    const convertedFile: Express.Multer.File = {
-      ...file,
-      buffer: importRows.buffer,
-      originalname: importRows.fileName,
-      mimetype:
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      size: importRows.buffer.length,
-    };
-
     const proxyUrl = this.getProxyUrl();
     const { proxyResponse, status } = await this.forwardToProxyApi(
-      convertedFile,
+      file,
       proxyUrl,
       qaPanel.id,
       email,
     );
 
-    const failedReasons = extractFailedReasonsFromProxyResponse(proxyResponse);
+    const failedReasons = extractOtaPostFailedReasonsFromProxyResponse(proxyResponse);
 
     await this.repository.update(qaPanel.id, {
       status,
       failed_reasons: failedReasons,
     });
 
-    this.logger.log(
-      `QA panel upload converted ${importRows.rowCount} row(s) to dashboard format for ${qaPanel.id}`,
-    );
-
     return proxyResponse;
   }
 
   async processImportCallback(
-    data: QaPanelImportCallbackType,
+    data: QaPanelOtaPostImportCallbackType,
   ): Promise<QaPanel> {
     const qaPanel = await this.findQaPanelById(data.qa_panel_id);
 

@@ -33,34 +33,34 @@ import { ExcelFileInterceptor } from '../../common/interceptors/excel-file.inter
 import { ResponseHandler } from '../../common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
-  BulkDeleteQaPanelDto,
-  CreateQaPanelDto,
-  GenerateCommunicationTokenApiResponseDto,
-  QaPanelImportCallbackDto,
-  QaPanelListResponseDto,
-  QaPanelResponseDto,
-  QaPanelUploadApiResponseDto,
-  UpdateQaPanelDto,
-} from './qa-panel.dto';
+  BulkDeleteQaPanelOtaPostDto,
+  CreateQaPanelOtaPostDto,
+  GenerateCommunicationTokenOtaPostApiResponseDto,
+  QaPanelOtaPostImportCallbackDto,
+  QaPanelOtaPostListResponseDto,
+  QaPanelOtaPostResponseDto,
+  QaPanelOtaPostUploadApiResponseDto,
+  UpdateQaPanelOtaPostDto,
+} from './qa-panel-ota-post.dto';
 import { ExternalJwtGuard } from './guards/external-jwt.guard';
 import { ExternalRawSecretGuard } from './guards/external-raw-secret.guard';
-import { IQaPanelService } from './qa-panel.interface';
+import { IQaPanelOtaPostService } from './qa-panel-ota-post.interface';
 import {
-  bulkDeleteQaPanelSchema,
-  createQaPanelSchema,
-  qaPanelImportCallbackSchema,
-  qaPanelListQuerySchema,
-  updateQaPanelSchema,
-} from './qa-panel.validation';
+  bulkDeleteQaPanelOtaPostSchema,
+  createQaPanelOtaPostSchema,
+  qaPanelOtaPostImportCallbackSchema,
+  qaPanelOtaPostListQuerySchema,
+  updateQaPanelOtaPostSchema,
+} from './qa-panel-ota-post.validation';
 
-@ApiTags('QA Panel')
-@Controller('qa-panel')
-export class QaPanelController {
-  private readonly logger = new Logger(QaPanelController.name);
+@ApiTags('QA Panel OTA Post')
+@Controller('qa-panel/ota-post')
+export class QaPanelOtaPostController {
+  private readonly logger = new Logger(QaPanelOtaPostController.name);
 
   constructor(
-    @Inject('IQaPanelService')
-    private readonly qaPanelService: IQaPanelService,
+    @Inject('IQaPanelOtaPostService')
+    private readonly qaPanelOtaPostService: IQaPanelOtaPostService,
   ) {}
 
   @Post('generate-token')
@@ -74,14 +74,14 @@ export class QaPanelController {
   @ApiResponse({
     status: 200,
     description: 'Communication token generated successfully',
-    type: GenerateCommunicationTokenApiResponseDto,
+    type: GenerateCommunicationTokenOtaPostApiResponseDto,
   })
   @ApiResponse({ status: 401, description: 'Invalid communication secret' })
   async generateToken(@Res() response: Response) {
     return ResponseHandler.handler(
       response,
       async () => {
-        const result = await this.qaPanelService.generateCommunicationToken();
+        const result = await this.qaPanelOtaPostService.generateCommunicationToken();
         return {
           statusCode: 200,
           message: 'Communication token generated successfully',
@@ -95,7 +95,7 @@ export class QaPanelController {
   @Post('import-callback')
   @UseGuards(ExternalJwtGuard)
   @ApiBearerAuth('external-jwt')
-  @ValidateBody(qaPanelImportCallbackSchema)
+  @ValidateBody(qaPanelOtaPostImportCallbackSchema)
   @ApiOperation({
     summary: 'External import callback (dashboard proxy)',
     description:
@@ -104,18 +104,18 @@ export class QaPanelController {
   @ApiResponse({
     status: 200,
     description: 'QA panel updated and report email sent',
-    type: QaPanelResponseDto,
+    type: QaPanelOtaPostResponseDto,
   })
   @ApiResponse({ status: 401, description: 'Invalid communication token' })
   @ApiResponse({ status: 404, description: 'QA panel not found' })
   async importCallback(
-    @Body() body: QaPanelImportCallbackDto,
+    @Body() body: QaPanelOtaPostImportCallbackDto,
     @Res() response: Response,
   ) {
     return ResponseHandler.handler(
       response,
       async () => {
-        const qaPanel = await this.qaPanelService.processImportCallback(body);
+        const qaPanel = await this.qaPanelOtaPostService.processImportCallback(body);
         return {
           statusCode: 200,
           message: 'QA panel import callback processed successfully',
@@ -129,22 +129,22 @@ export class QaPanelController {
   @Post()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
-  @ValidateBody(createQaPanelSchema)
+  @ValidateBody(createQaPanelOtaPostSchema)
   @ApiOperation({ summary: 'Create a QA panel record' })
   @ApiResponse({
     status: 201,
     description: 'QA panel created successfully',
-    type: QaPanelResponseDto,
+    type: QaPanelOtaPostResponseDto,
   })
   @ApiResponse({ status: 400, description: 'Invalid request' })
   async create(
-    @Body() body: CreateQaPanelDto,
+    @Body() body: CreateQaPanelOtaPostDto,
     @Res() response: Response,
   ) {
     return ResponseHandler.handler(
       response,
       async () => {
-        const qaPanel = await this.qaPanelService.createQaPanel(body);
+        const qaPanel = await this.qaPanelOtaPostService.createQaPanel(body);
         return {
           statusCode: 201,
           message: 'QA panel created successfully',
@@ -172,7 +172,7 @@ export class QaPanelController {
   @ApiResponse({
     status: 200,
     description: 'QA panels retrieved successfully',
-    type: QaPanelListResponseDto,
+    type: QaPanelOtaPostListResponseDto,
   })
   async findAll(
     @ParseQuery() query: Record<string, any>,
@@ -181,7 +181,7 @@ export class QaPanelController {
     return ResponseHandler.handler(
       response,
       async () => {
-        const parsedQuery = qaPanelListQuerySchema.safeParse(query);
+        const parsedQuery = qaPanelOtaPostListQuerySchema.safeParse(query);
 
         if (!parsedQuery.success) {
           const formattedErrors = parsedQuery.error.errors.map((err) => ({
@@ -205,7 +205,7 @@ export class QaPanelController {
         if (limit) filters.limit = limit;
         if (order) filters.order = order;
 
-        const result = await this.qaPanelService.findAllQaPanels(filters as any);
+        const result = await this.qaPanelOtaPostService.findAllQaPanels(filters as any);
 
         return {
           statusCode: 200,
@@ -226,18 +226,18 @@ export class QaPanelController {
   @Post('bulk-delete')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
-  @ValidateBody(bulkDeleteQaPanelSchema)
+  @ValidateBody(bulkDeleteQaPanelOtaPostSchema)
   @ApiOperation({ summary: 'Bulk delete QA panel records' })
   @ApiResponse({ status: 200, description: 'QA panels deleted successfully' })
   @ApiResponse({ status: 404, description: 'No QA panel records found' })
   async bulkDelete(
-    @Body() body: BulkDeleteQaPanelDto,
+    @Body() body: BulkDeleteQaPanelOtaPostDto,
     @Res() response: Response,
   ) {
     return ResponseHandler.handler(
       response,
       async () => {
-        const result = await this.qaPanelService.bulkDeleteQaPanels(body.ids);
+        const result = await this.qaPanelOtaPostService.bulkDeleteQaPanels(body.ids);
         return {
           statusCode: 200,
           message: `Successfully deleted ${result.deletedCount} QA panel record(s)`,
@@ -256,7 +256,7 @@ export class QaPanelController {
   @ApiOperation({
     summary: 'Upload a CSV/XLSX file for QA panel processing',
     description:
-      'Accepts a master-format sheet (OTA, OTA ID, Portfolio, Property Name, Reservation ID, Currency, Amount to Charge, etc.), converts it to the dashboard export layout used by POST /reports/export-dashboard, stores both the original and converted XLSX in S3, creates a QA panel record, forwards the converted file with qa_panel_id and the authenticated user email to the dashboard proxy API, then returns the proxy response in data.',
+      'Uploads the file to S3, creates a QA panel record, forwards the file, qa_panel_id, and the authenticated user email to the dashboard proxy API, then returns the proxy response in data.',
   })
   @ApiBody({
     schema: {
@@ -274,7 +274,7 @@ export class QaPanelController {
   @ApiResponse({
     status: 200,
     description: 'Dashboard proxy response returned in the data field',
-    type: QaPanelUploadApiResponseDto,
+    type: QaPanelOtaPostUploadApiResponseDto,
     schema: {
       example: {
         statusCode: 200,
@@ -312,7 +312,7 @@ export class QaPanelController {
           };
         }
 
-        const proxyResponse = await this.qaPanelService.uploadAndProcess(
+        const proxyResponse = await this.qaPanelOtaPostService.uploadAndProcess(
           file,
           email,
         );
@@ -342,14 +342,14 @@ export class QaPanelController {
   @ApiResponse({
     status: 200,
     description: 'QA panel retrieved successfully',
-    type: QaPanelResponseDto,
+    type: QaPanelOtaPostResponseDto,
   })
   @ApiResponse({ status: 404, description: 'QA panel not found' })
   async findById(@Param('id') id: string, @Res() response: Response) {
     return ResponseHandler.handler(
       response,
       async () => {
-        const qaPanel = await this.qaPanelService.findQaPanelById(id);
+        const qaPanel = await this.qaPanelOtaPostService.findQaPanelById(id);
         return {
           statusCode: 200,
           message: 'QA panel retrieved successfully',
@@ -363,24 +363,24 @@ export class QaPanelController {
   @Put(':id')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
-  @ValidateBody(updateQaPanelSchema)
+  @ValidateBody(updateQaPanelOtaPostSchema)
   @ApiOperation({ summary: 'Update a QA panel record' })
   @ApiParam({ name: 'id', description: 'QA panel ID' })
   @ApiResponse({
     status: 200,
     description: 'QA panel updated successfully',
-    type: QaPanelResponseDto,
+    type: QaPanelOtaPostResponseDto,
   })
   @ApiResponse({ status: 404, description: 'QA panel not found' })
   async update(
     @Param('id') id: string,
-    @Body() body: UpdateQaPanelDto,
+    @Body() body: UpdateQaPanelOtaPostDto,
     @Res() response: Response,
   ) {
     return ResponseHandler.handler(
       response,
       async () => {
-        const qaPanel = await this.qaPanelService.updateQaPanel(id, body);
+        const qaPanel = await this.qaPanelOtaPostService.updateQaPanel(id, body);
         return {
           statusCode: 200,
           message: 'QA panel updated successfully',
@@ -402,7 +402,7 @@ export class QaPanelController {
     return ResponseHandler.handler(
       response,
       async () => {
-        const result = await this.qaPanelService.deleteQaPanel(id);
+        const result = await this.qaPanelOtaPostService.deleteQaPanel(id);
         return {
           statusCode: 200,
           message: 'QA panel deleted successfully',
