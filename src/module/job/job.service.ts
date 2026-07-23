@@ -5,8 +5,17 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { IPropertyService } from '../property/property.interface';
-import { Batch, Job, OTAProvider, PostingType } from '@prisma/client';
+import {
+  IPropertyRepository,
+  IPropertyService,
+} from '../property/property.interface';
+import {
+  Batch,
+  Job,
+  JobStatus,
+  OTAProvider,
+  PostingType,
+} from '@prisma/client';
 import { PassThrough, Writable } from 'stream';
 import * as XLSX from 'xlsx';
 import {
@@ -17,6 +26,8 @@ import { IRecurringJobService } from '../recurring-job/recurring-job.interface';
 import { IScheduledJobService } from '../scraper/scheduled-job.interface';
 import { IServerService } from '../server/server.interface';
 import {
+  BulkCreateJobFromDbmsItemDto,
+  BulkCreateJobFromDbmsResultDto,
   CreateBatchDto,
   CreateJobDto,
   JobStatisticsResponseDto,
@@ -55,6 +66,8 @@ export class JobService implements IJobService {
     private readonly serverService: IServerService,
     @Inject('IPropertyService')
     private readonly propertyService: IPropertyService,
+    @Inject('IPropertyRepository')
+    private readonly propertyRepository: IPropertyRepository,
     private readonly logger: Logger,
   ) {}
 
@@ -97,6 +110,91 @@ export class JobService implements IJobService {
     } catch (error) {
       this.logger.error(`Error creating job: ${error.message}`, error.stack);
       throw error;
+    }
+  }
+
+  /**
+   * DBMS→scraper sync receiver. Resolves each property by parent_id and
+   * creates a job with system defaults. Per-row reporting: one failing row
+   * does not abort the batch. Jobs are always created (no dedup).
+   */
+  async bulkCreateFromDbms(
+    items: BulkCreateJobFromDbmsItemDto[],
+  ): Promise<BulkCreateJobFromDbmsResultDto> {
+    if (!Array.isArray(items) || !items.length) {
+      throw new BadRequestException('No jobs provided');
+    }
+
+    const result: BulkCreateJobFromDbmsResultDto = {
+      totalCount: items.length,
+      createdCount: 0,
+      failureCount: 0,
+      errors: [],
+      created: [],
+    };
+
+    // Jobs require a user_id (FK to User); DBMS sync has no user, so reuse
+    // the shared "DBMS Section" system user resolved once for the batch.
+    const userId = await this.recurringJobService.resolveDbmsSystemUser();
+
+    for (const item of items) {
+      const parentId =
+        typeof item.parent_id === 'string' ? item.parent_id.trim() : '';
+      try {
+        if (!parentId) throw new Error('parent_id is required');
+
+        const property = await this.propertyRepository.findByParentId(parentId);
+        if (!property) {
+          throw new Error(`Property not found with parent_id: ${parentId}`);
+        }
+
+        const job = await this.repository.create({
+          user_id: userId,
+          property_id: property.id,
+          property_name: property.name,
+          posting_type: PostingType.OTA,
+          ota_provider: this.mapOtaType(item.ota_type),
+          billing_type: (item.billing_type ?? '').trim() || undefined,
+          start_date: item.start_date,
+          end_date: item.end_date,
+          execution_type: 'scheduled',
+          remaining_direct_billed: 0,
+          total_collectable: 0,
+          total_amount_confirmed: 0,
+          job_backoff_length_loading: 50000,
+          job_backoff_length_selector: 40000,
+          max_retries: 3,
+          retry_delay_ms: 5000,
+          priority: 0,
+          queue_name: 'default',
+          job_status: JobStatus.Pending,
+        } as CreateJobDto);
+
+        result.createdCount++;
+        result.created.push({ parent_id: parentId, job_id: job.id });
+      } catch (error) {
+        result.errors.push({
+          parent_id: parentId || 'Unknown',
+          error:
+            error instanceof Error ? error.message : 'Unknown error occurred',
+        });
+        result.failureCount++;
+      }
+    }
+
+    return result;
+  }
+
+  private mapOtaType(otaType: string): OTAProvider {
+    switch ((otaType ?? '').trim().toLowerCase()) {
+      case 'expedia':
+        return OTAProvider.Expedia;
+      case 'booking':
+        return OTAProvider.Booking;
+      case 'agoda':
+        return OTAProvider.Agoda;
+      default:
+        throw new Error(`Unsupported ota_type: ${otaType}`);
     }
   }
 

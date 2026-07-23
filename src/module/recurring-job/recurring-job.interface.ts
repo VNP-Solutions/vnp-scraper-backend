@@ -114,4 +114,5 @@ export interface IRecurringJobService {
     recurringJobs: Array<{ id: string; name: string; jobCount: number }>;
   }>;
   dbmsIngest(dto: DbmsIngestDto): Promise<{ message: string } | { message: string; errors: { expedia_ids: number[]; descriptions: Array<{ name: string; error_message: string }> } }>;
+  resolveDbmsSystemUser(): Promise<string>;
 }

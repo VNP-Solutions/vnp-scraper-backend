@@ -31,6 +31,7 @@ import { ValidateBody } from 'src/common/decorators/validate.decorator';
 import { ExcelFileInterceptor } from 'src/common/interceptors/excel-file.interceptor';
 import { ResponseHandler } from 'src/common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { ExternalJwtGuard } from '../qa-panel/guards/external-jwt.guard';
 import {
   RevealOtaCredentialsDto,
   RevealOtaCredentialsResponseDto,
@@ -40,6 +41,7 @@ import {
 import {
   BatchResponseDto,
   BulkArchiveJobsDto,
+  BulkCreateJobFromDbmsDto,
   BulkArchiveJobsResponseDto,
   BulkBatchUpdateDto,
   BulkBatchUpdateResponseDto,
@@ -119,6 +121,62 @@ export class JobController {
           data: job,
         };
       },
+      this.logger,
+    );
+  }
+
+  @Post('/bulk-create-from-dbms')
+  @UseGuards(ExternalJwtGuard)
+  @ApiOperation({
+    summary: 'Internal: bulk create jobs synced from DBMS (parent_id keyed)',
+    description:
+      'Receiver for DBMS→scraper sync. Resolves each property by parent_id and creates a job with system defaults. Per-row reporting: one failing row does not abort the batch.',
+  })
+  @ApiBody({
+    type: BulkCreateJobFromDbmsDto,
+    examples: {
+      two_jobs: {
+        summary: 'Create two jobs',
+        value: {
+          jobs: [
+            {
+              parent_id: 'dbms-property-id',
+              ota_type: 'expedia',
+              start_date: '2025-07-01',
+              end_date: '2025-10-01',
+              billing_type: 'VCC',
+            },
+            {
+              parent_id: 'dbms-property-id',
+              ota_type: 'booking',
+              start_date: '2025-07-01',
+              end_date: '2026-10-01',
+              billing_type: 'OTA',
+            },
+          ],
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Batch processed; see per-row counts and errors',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Missing or invalid communication token',
+  })
+  async bulkCreateFromDbms(
+    @Body() dto: BulkCreateJobFromDbmsDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => ({
+        statusCode: 200,
+        message: 'Sync bulk create processed',
+        data: await this.jobService.bulkCreateFromDbms(dto.jobs ?? []),
+      }),
       this.logger,
     );
   }
