@@ -1,6 +1,8 @@
 import { Batch, DbEntry, Job } from '@prisma/client';
 import { Writable } from 'stream';
 import {
+  BulkCreateJobFromDbmsItemDto,
+  BulkCreateJobFromDbmsResultDto,
   CreateBatchDto,
   CreateJobDto,
   JobStatisticsResponseDto,
@@ -125,6 +127,9 @@ export interface IJobRepository {
 
 export interface IJobService {
   createJob(data: CreateJobDto): Promise<Job>;
+  bulkCreateFromDbms(
+    items: BulkCreateJobFromDbmsItemDto[],
+  ): Promise<BulkCreateJobFromDbmsResultDto>;
   getAllJobs(
     query: Record<string, any>,
   ): Promise<{ data: JobListItem[]; metadata: any }>;
