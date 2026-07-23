@@ -1549,7 +1549,7 @@ export class RecurringJobService implements IRecurringJobService {
    * Resolve (or lazily create) the "DBMS Section" system user.
    * The user is looked up by name on every call; creation only happens once in practice.
    */
-  private async resolveDbmsSystemUser(): Promise<string> {
+  async resolveDbmsSystemUser(): Promise<string> {
     const existing = await this.db.user.findFirst({
       where: { name: 'DBMS Section' },
       select: { id: true },
