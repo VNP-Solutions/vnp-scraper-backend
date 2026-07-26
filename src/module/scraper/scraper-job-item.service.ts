@@ -398,13 +398,40 @@ export class ScraperJobItemService implements IScraperJobItemService {
     propertyId: string,
     file: Express.Multer.File,
   ): Promise<JobItemUploadResult> {
-    const parseResult = this.parseImportFile(file);
-    const rows = parseResult.rows;
+    const fileLabel = file.originalname ?? 'upload';
+    this.logger.log(
+      `Starting single job-items import — file="${fileLabel}", ` +
+        `size=${file.size ?? file.buffer?.length ?? 0} bytes, ` +
+        `job_id=${jobId}, property_id=${propertyId}`,
+    );
+
+    let rows: Record<string, string>[];
+    try {
+      const parseResult = this.parseImportFile(file);
+      rows = parseResult.rows;
+    } catch (err: any) {
+      this.logger.error(
+        `Single job-items import failed while parsing "${fileLabel}": ${err.message}`,
+        err.stack,
+      );
+      throw err;
+    }
+
+    this.logParsedImportFileSummary(fileLabel, rows);
 
     const job = await this.db.job.findUnique({ where: { id: jobId } });
     if (!job) {
+      this.logger.error(
+        `Single job-items import: job with id '${jobId}' not found`,
+      );
       throw new NotFoundException(`Job with id '${jobId}' not found`);
     }
+
+    this.logger.log(
+      `Target job ${job.id} — OTA=${job.ota_provider}, ` +
+        `end_date=${job.end_date ?? ''}, property_name="${job.property_name}", ` +
+        `job.property_id=${job.property_id ?? '(none)'}`,
+    );
 
     const property = await this.resolvePropertyFromImportRows(
       rows,
@@ -412,12 +439,56 @@ export class ScraperJobItemService implements IScraperJobItemService {
       propertyId,
     );
 
+    this.logger.log(
+      `Resolved property ${property.id} ("${property.name}") — ` +
+        `expedia_id=${property.expedia_id ?? '(none)'}, ` +
+        `booking_id=${property.booking_id ?? '(none)'}, ` +
+        `agoda_id=${property.agoda_id ?? '(none)'}`,
+    );
+
+    for (let i = 0; i < rows.length; i++) {
+      const rowNum = i + 2;
+      const row = rows[i];
+      this.logger.log(
+        `Row ${rowNum}: validating — OTA=${row[COL.OTA] ?? ''}, ` +
+          `OTA ID=${row[COL.OTA_ID] ?? ''}, ` +
+          `Reservation ID=${row[COL.RESERVATION_ID] ?? ''}, ` +
+          `Guest=${row[COL.GUEST_NAME] ?? ''}`,
+      );
+    }
+
     const errors = this.validateRowsForJob(rows, job.ota_provider, property);
     if (errors.length > 0) {
+      for (const err of errors) {
+        this.logger.warn(`Row ${err.row}: validation failed — ${err.message}`);
+      }
+      this.logger.warn(
+        `Single job-items import validation failed — file="${fileLabel}", ` +
+          `job_id=${jobId}, errors=${errors.length}`,
+      );
       throw new BadRequestException({ message: 'Validation failed', errors });
     }
 
-    return this.persistRows(rows, jobId, property.id);
+    this.logger.log(
+      `Processing job ${jobId} — ${rows.length} row(s), property ${property.id}`,
+    );
+
+    try {
+      const result = await this.persistRows(rows, jobId, property.id);
+      this.logger.log(
+        `Single job-items import finished — file="${fileLabel}", job_id=${jobId}, ` +
+          `status=success, totalRows=${rows.length}, created=${result.created}, ` +
+          `updated=${result.updated}`,
+      );
+      return result;
+    } catch (err: any) {
+      this.logger.error(
+        `Single job-items import failed during persistence — file="${fileLabel}", ` +
+          `job_id=${jobId}: ${err.message}`,
+        err.stack,
+      );
+      throw err;
+    }
   }
 
   /**
@@ -441,16 +512,7 @@ export class ScraperJobItemService implements IScraperJobItemService {
 
     const parseResult = this.parseImportFile(file);
     const rows = parseResult.rows;
-    this.logger.log(`Parsed ${rows.length} data row(s) from "${fileLabel}"`);
-    if (rows.length > 0) {
-      const sample = rows[0];
-      this.logger.log(
-        `Sample row job-match fields — OTA ID='${sample[COL.OTA_ID] ?? ''}', ` +
-          `Batch='${sample[JOB_MATCH_COL.BATCH] ?? ''}', ` +
-          `Review Collection Date='${sample[JOB_MATCH_COL.REVIEW_COLLECTION_DATE] ?? ''}', ` +
-          `Property Name='${sample[JOB_MATCH_COL.PROPERTY_NAME] ?? ''}'`,
-      );
-    }
+    this.logParsedImportFileSummary(fileLabel, rows);
 
     const allErrors: Array<{ row: number; message: string }> = [];
     const groups = new Map<
@@ -707,6 +769,24 @@ export class ScraperJobItemService implements IScraperJobItemService {
     return { ok: false, message, logDetail };
   }
 
+  /** Shared post-parse logging for single and bulk job-item imports. */
+  private logParsedImportFileSummary(
+    fileLabel: string,
+    rows: Record<string, string>[],
+  ): void {
+    this.logger.log(`Parsed ${rows.length} data row(s) from "${fileLabel}"`);
+    if (rows.length === 0) return;
+
+    const sample = rows[0];
+    this.logger.log(
+      `Sample row — OTA='${sample[COL.OTA] ?? ''}', OTA ID='${sample[COL.OTA_ID] ?? ''}', ` +
+        `Batch='${sample[JOB_MATCH_COL.BATCH] ?? ''}', ` +
+        `Review Collection Date='${sample[JOB_MATCH_COL.REVIEW_COLLECTION_DATE] ?? ''}', ` +
+        `Property Name='${sample[JOB_MATCH_COL.PROPERTY_NAME] ?? ''}', ` +
+        `Reservation ID='${sample[COL.RESERVATION_ID] ?? ''}'`,
+    );
+  }
+
   private readonly jobCandidateSelect = {
     id: true,
     end_date: true,
@@ -769,9 +849,18 @@ export class ScraperJobItemService implements IScraperJobItemService {
               `Single import: using property ${fromSheet.id} from sheet OTA ID ${numericOtaId} ` +
                 `instead of UI property_id ${fallbackPropertyId}`,
             );
+          } else {
+            this.logger.log(
+              `Single import: resolved property ${fromSheet.id} from sheet ` +
+                `OTA=${lookupOta}, OTA ID=${numericOtaId}`,
+            );
           }
           return fromSheet;
         }
+        this.logger.warn(
+          `Single import: no property found for sheet OTA=${lookupOta}, ` +
+            `OTA ID=${numericOtaId}; falling back to UI property_id ${fallbackPropertyId}`,
+        );
       }
     }
 
@@ -779,10 +868,16 @@ export class ScraperJobItemService implements IScraperJobItemService {
       where: { id: fallbackPropertyId },
     });
     if (!fallback) {
+      this.logger.error(
+        `Single import: fallback property_id '${fallbackPropertyId}' not found`,
+      );
       throw new NotFoundException(
         `Property with id '${fallbackPropertyId}' not found`,
       );
     }
+    this.logger.log(
+      `Single import: using fallback property ${fallback.id} from UI property_id`,
+    );
     return fallback;
   }
 
@@ -1151,7 +1246,8 @@ export class ScraperJobItemService implements IScraperJobItemService {
         }
       } catch (err: any) {
         this.logger.error(
-          `Failed to upsert job item for reservation '${jobItemData.reservation_id}': ${err.message}`,
+          `Failed to upsert job item for job ${jobId}, reservation ` +
+            `'${jobItemData.reservation_id}': ${err.message}`,
           err.stack,
         );
         throw err;
@@ -1164,7 +1260,8 @@ export class ScraperJobItemService implements IScraperJobItemService {
     });
 
     this.logger.log(
-      `Job item upload complete for job ${jobId}: ${created} created, ${updated} updated. Job status set to Completed.`,
+      `Job ${jobId}: persisted — ${created} created, ${updated} updated. ` +
+        `Job status set to Completed.`,
     );
 
     return { uploaded: items.length, created, updated, items };
