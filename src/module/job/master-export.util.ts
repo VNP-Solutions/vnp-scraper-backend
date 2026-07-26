@@ -1,7 +1,9 @@
 import { OTAProvider, PostingType } from '@prisma/client';
 import * as XLSX from 'xlsx';
+import { formatImportCompatibleDate } from '../../common/utils/import-compatible-date.util';
 import { applyExcelTextColumnFormat } from '../../common/utils/excel-text-column.util';
 import { computeDerivedJobItemFields } from './job-item-derived.util';
+import { resolveOtaPropertyIdForJob } from './ota-property-id.util';
 
 /**
  * Exact column order for the Master export CSV.
@@ -122,40 +124,12 @@ function formatPostingType(type: PostingType | null | undefined): string {
 }
 
 /**
- * Returns the OTA provider's property ID (Expedia/Booking/Agoda) from the
- * related property record, based on the job's ota_provider.
+ * Wraps a date as MM/DD/YYYY Excel text so re-import / bulk upload keeps the
+ * same calendar day (avoids Excel auto-date UTC off-by-one).
  */
-function getOtaIdForJob(job: any): string | number {
-  const property = job?.property;
-  if (!property) return '';
-  switch (job?.ota_provider) {
-    case OTAProvider.Expedia:
-      return property.expedia_id ?? '';
-    case OTAProvider.Booking:
-      return property.booking_id ?? '';
-    case OTAProvider.Agoda:
-      return property.agoda_id ?? '';
-    default:
-      return '';
-  }
-}
-
-/**
- * Formats a date-like input as "MMM dd, yyyy" (e.g. "Feb 28, 2026")
- * to match the exported samples.
- */
-function formatDisplayDate(value: Date | string | null | undefined): string {
-  if (!value) return '';
-  const d = value instanceof Date ? value : new Date(value);
-  if (isNaN(d.getTime())) {
-    // If it isn't a parseable date, return the original string unchanged.
-    return typeof value === 'string' ? value : '';
-  }
-  return d.toLocaleDateString('en-US', {
-    month: 'short',
-    day: '2-digit',
-    year: 'numeric',
-  });
+function asImportDateCell(value: Date | string | null | undefined): string {
+  const formatted = formatImportCompatibleDate(value);
+  return formatted ? asExcelText(formatted) : '';
 }
 
 /**
@@ -217,9 +191,12 @@ export function buildMasterRow(
   // each cell. If you rename a header, also rename its key here.
   row[MASTER_EXPORT_HEADER[0]] = ota ?? ''; // OTA
   row[MASTER_EXPORT_HEADER[1]] = formatPostingType(job?.posting_type); // OTA Posting Type*
-  row[MASTER_EXPORT_HEADER[2]] = getOtaIdForJob(job) || ''; // OTA ID
+  const otaPropertyId = resolveOtaPropertyIdForJob(job);
+  row[MASTER_EXPORT_HEADER[2]] = otaPropertyId
+    ? asExcelText(String(otaPropertyId))
+    : ''; // OTA ID
   row[MASTER_EXPORT_HEADER[3]] = job?.batch?.name ?? ''; // Batch
-  row[MASTER_EXPORT_HEADER[4]] = formatDisplayDate(job?.end_date); // Review Collection Date*
+  row[MASTER_EXPORT_HEADER[4]] = asImportDateCell(job?.end_date); // Review Collection Date*
   row[MASTER_EXPORT_HEADER[5]] =
     job?.portfolio_name ?? job?.portfolio?.name ?? ''; // Portfolio
   row[MASTER_EXPORT_HEADER[6]] = job?.property_name ?? ''; // Property Name*
@@ -232,10 +209,10 @@ export function buildMasterRow(
   // cells are always "N/A" for that OTA (matches the spec for Booking rows).
   row[MASTER_EXPORT_HEADER[10]] = isBooking
     ? NA
-    : formatDisplayDate(item?.check_in_date); // Check In
+    : asImportDateCell(item?.check_in_date); // Check In
   row[MASTER_EXPORT_HEADER[11]] = isBooking
     ? NA
-    : formatDisplayDate(item?.check_out_date); // Check Out
+    : asImportDateCell(item?.check_out_date); // Check Out
 
   // Over 160 / Number of days since chargeback date
   // Computed off `check_out_date` (= the chargeback anchor for the row).
@@ -549,6 +526,10 @@ export function buildMasterXlsxBuffer(jobs: any[]): Buffer {
   const worksheet = XLSX.utils.json_to_sheet(xlsxRows, { header: headers });
   // Force the card-related columns to text so Excel doesn't reformat them.
   // Header strings here MUST match the labels in MASTER_EXPORT_HEADER.
+  applyExcelTextColumnFormat(worksheet, xlsxRows, 'OTA ID');
+  applyExcelTextColumnFormat(worksheet, xlsxRows, 'Review Collection Date');
+  applyExcelTextColumnFormat(worksheet, xlsxRows, 'Check In');
+  applyExcelTextColumnFormat(worksheet, xlsxRows, 'Check Out');
   applyExcelTextColumnFormat(worksheet, xlsxRows, 'Card Number');
   applyExcelTextColumnFormat(worksheet, xlsxRows, 'Expiry date');
   applyExcelTextColumnFormat(worksheet, xlsxRows, 'CVV');
