@@ -36,12 +36,13 @@ export class MailService {
       port: smtpPort,
       secure: smtpSecure,
       ...(smtpHost === 'smtp.gmail.com' && { service: 'gmail' }),
-      ...(smtpUser && smtpPass && {
-        auth: {
-          user: smtpUser,
-          pass: smtpPass,
-        },
-      }),
+      ...(smtpUser &&
+        smtpPass && {
+          auth: {
+            user: smtpUser,
+            pass: smtpPass,
+          },
+        }),
       tls: {
         rejectUnauthorized: smtpSecure,
       },
@@ -215,7 +216,11 @@ export class MailService {
     if (!opts.to.length) return;
 
     const subject = `VNP Daily Job Statistics — ${opts.date}`;
-    const html = this.buildStatisticsHtml(opts.stats, opts.date, !!opts.failedJobsCsv);
+    const html = this.buildStatisticsHtml(
+      opts.stats,
+      opts.date,
+      !!opts.failedJobsCsv,
+    );
     const text = this.buildStatisticsText(opts.stats, opts.date);
 
     const attachments: nodemailer.SendMailOptions['attachments'] = [];
@@ -259,7 +264,8 @@ export class MailService {
         : `QA Panel import finished with errors — ${opts.fileName}`;
 
     const statusColor = opts.status === 'success' ? '#16a34a' : '#b91c1c';
-    const statusLabel = opts.status === 'success' ? 'Completed' : 'Completed with failures';
+    const statusLabel =
+      opts.status === 'success' ? 'Completed' : 'Completed with failures';
     const hasFailures = opts.report.failed > 0;
 
     const successRowHtml = hasFailures
@@ -313,27 +319,149 @@ export class MailService {
     );
   }
 
+  /**
+   * Send a completion report after a bulk job-items import.
+   */
+  async sendBulkJobItemsImportReportEmail(opts: {
+    to: string;
+    userName?: string | null;
+    status: 'success' | 'partial' | 'failed';
+    fileName: string;
+    totalRows: number;
+    processedJobs: number;
+    created: number;
+    updated: number;
+    errors: Array<{ row: number; message: string }>;
+    failureReason?: string;
+  }): Promise<void> {
+    const safeName = (opts.userName || 'there').trim();
+    const statusLabel =
+      opts.status === 'success'
+        ? 'Completed successfully'
+        : opts.status === 'partial'
+          ? 'Completed with errors'
+          : 'Failed';
+    const statusColor =
+      opts.status === 'success'
+        ? '#16a34a'
+        : opts.status === 'partial'
+          ? '#d97706'
+          : '#b91c1c';
+    const hasFailures = opts.errors.length > 0;
+
+    let errorsHtml = '';
+    if (hasFailures) {
+      const rows = opts.errors
+        .slice(0, 50)
+        .map(
+          (e) =>
+            `<tr><td style="padding:4px 0;color:#666;font-size:14px;">Row ${e.row}</td><td style="padding:4px 0;font-size:14px;">${this.escape(e.message)}</td></tr>`,
+        )
+        .join('');
+      const overflow =
+        opts.errors.length > 50
+          ? `<tr><td colspan="2" style="padding:8px 0;color:#666;font-size:13px;font-style:italic;">… and ${opts.errors.length - 50} more error(s)</td></tr>`
+          : '';
+      errorsHtml = `
+        <h3 style="margin:24px 0 8px 0;color:#b91c1c;font-size:16px;">Errors (${opts.errors.length})</h3>
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#fff6f6;border-radius:6px;padding:12px;">
+          ${rows}${overflow}
+        </table>`;
+    }
+
+    const failureBlock = opts.failureReason
+      ? `<p style="font-size:13px;color:#666;background:#fff6f6;padding:12px 16px;border-radius:6px;border-left:3px solid #b91c1c;"><strong>Reason:</strong> ${this.escape(opts.failureReason)}</p>`
+      : '';
+
+    const subject = `Bulk job-items import ${opts.status === 'success' ? 'completed' : 'report'} — ${opts.fileName}`;
+    const html = `<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background-color:#f4f4f4;color:#333;line-height:1.6;">
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.05);">
+    <tr>
+      <td style="padding:30px 20px;text-align:center;background:#ffffff;border-bottom:1px solid #eee;">
+        <img src="https://qp-console.dashboardvnps.com/assets/logo.svg" alt="VNP Solutions" style="max-width:200px;height:auto;">
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:30px 24px;">
+        <h2 style="margin:0 0 16px 0;color:${statusColor};">Bulk Job-Items Import ${this.escape(statusLabel)}</h2>
+        <p>Hi ${this.escape(safeName)},</p>
+        <p>Your file <strong>${this.escape(opts.fileName)}</strong> has been processed.</p>
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:20px 0;background:#f9fafb;border-radius:6px;padding:16px;width:100%;">
+          <tr><td style="padding:4px 0;color:#666;font-size:14px;">Total rows</td><td style="padding:4px 0;font-weight:600;text-align:right;">${opts.totalRows}</td></tr>
+          <tr><td style="padding:4px 0;color:#666;font-size:14px;">Jobs processed</td><td style="padding:4px 0;font-weight:600;text-align:right;">${opts.processedJobs}</td></tr>
+          <tr><td style="padding:4px 0;color:#666;font-size:14px;">Created</td><td style="padding:4px 0;font-weight:600;text-align:right;color:#16a34a;">${opts.created}</td></tr>
+          <tr><td style="padding:4px 0;color:#666;font-size:14px;">Updated</td><td style="padding:4px 0;font-weight:600;text-align:right;color:#1d4ed8;">${opts.updated}</td></tr>
+          <tr><td style="padding:4px 0;color:#666;font-size:14px;">Errors</td><td style="padding:4px 0;font-weight:600;text-align:right;color:${hasFailures ? '#b91c1c' : '#16a34a'};">${opts.errors.length}</td></tr>
+        </table>
+        ${failureBlock}
+        ${errorsHtml}
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:16px 24px;text-align:center;background:#fafafa;color:#999;font-size:12px;border-top:1px solid #eee;">
+        VNP Job Management · automated email, please do not reply
+      </td>
+    </tr>
+  </table>
+</body>`;
+
+    const text =
+      `Bulk Job-Items Import ${statusLabel}\n\n` +
+      `File: ${opts.fileName}\n` +
+      `Total rows: ${opts.totalRows}\n` +
+      `Jobs processed: ${opts.processedJobs}\n` +
+      `Created: ${opts.created}\n` +
+      `Updated: ${opts.updated}\n` +
+      `Errors: ${opts.errors.length}\n\n` +
+      (opts.failureReason ? `Reason: ${opts.failureReason}\n\n` : '') +
+      (opts.errors.length > 0
+        ? `Errors:\n${opts.errors
+            .slice(0, 20)
+            .map((e) => `Row ${e.row}: ${e.message}`)
+            .join('\n')}\n\n`
+        : '') +
+      `— VNP Job Management`;
+
+    await this.transporter.sendMail({
+      from: this.fromAddress,
+      to: opts.to,
+      subject,
+      html,
+      text,
+    });
+
+    this.logger.log(
+      `Sent bulk job-items import report email to ${opts.to} (${opts.fileName}, ${opts.status})`,
+    );
+  }
+
   // ---------- private templates -------------------------------------------
 
-  private buildStatisticsHtml(stats: ReportsCurrentCounts, date: string, hasCsv = false): string {
+  private buildStatisticsHtml(
+    stats: ReportsCurrentCounts,
+    date: string,
+    hasCsv = false,
+  ): string {
     const rows = [
-      { label: 'Pending',          key: 'pending'         },
-      { label: 'Running',          key: 'running'         },
-      { label: 'Completed',        key: 'completed'       },
-      { label: 'Failed',           key: 'failed'          },
-      { label: 'Stopped',          key: 'stopped'         },
-      { label: 'Nothing to Report',key: 'nothingToReport' },
-      { label: 'Manual',           key: 'manual'          },
+      { label: 'Pending', key: 'pending' },
+      { label: 'Running', key: 'running' },
+      { label: 'Completed', key: 'completed' },
+      { label: 'Failed', key: 'failed' },
+      { label: 'Stopped', key: 'stopped' },
+      { label: 'Nothing to Report', key: 'nothingToReport' },
+      { label: 'Manual', key: 'manual' },
     ] as const;
 
-    const rowsHtml = rows.map((r) => {
-      const item = stats[r.key];
-      return `<tr>
+    const rowsHtml = rows
+      .map((r) => {
+        const item = stats[r.key];
+        return `<tr>
         <td style="padding:8px 12px;border-bottom:1px solid #eee;font-size:14px;">${r.label}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #eee;font-size:14px;text-align:right;font-weight:600;">${item.count}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #eee;font-size:14px;text-align:right;color:#666;">${item.percentage}%</td>
       </tr>`;
-    }).join('');
+      })
+      .join('');
 
     return `<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background-color:#f4f4f4;color:#333;line-height:1.6;">
   <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.05);">
@@ -363,9 +491,13 @@ export class MailService {
             </tr>
           </tbody>
         </table>
-        ${hasCsv ? `<p style="margin-top:20px;font-size:13px;color:#1d4ed8;background:#eff6ff;border-left:3px solid #1d4ed8;padding:10px 14px;border-radius:4px;">
+        ${
+          hasCsv
+            ? `<p style="margin-top:20px;font-size:13px;color:#1d4ed8;background:#eff6ff;border-left:3px solid #1d4ed8;padding:10px 14px;border-radius:4px;">
           &#x1F4CE; A full job list for today (<strong>${stats.total} job${stats.total === 1 ? '' : 's'}</strong>) is attached as a CSV file.
-        </p>` : ''}
+        </p>`
+            : ''
+        }
       </td>
     </tr>
     <tr>
@@ -377,7 +509,10 @@ export class MailService {
 </body>`;
   }
 
-  private buildStatisticsText(stats: ReportsCurrentCounts, date: string): string {
+  private buildStatisticsText(
+    stats: ReportsCurrentCounts,
+    date: string,
+  ): string {
     return (
       `VNP Daily Job Statistics — ${date}\n` +
       `All OTA providers & job types\n\n` +
@@ -393,7 +528,6 @@ export class MailService {
       `— VNP Reports`
     );
   }
-
 
   private buildReadyHtml(o: {
     safeName: string;

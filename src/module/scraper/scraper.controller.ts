@@ -1,32 +1,35 @@
 import { HttpService } from '@nestjs/axios';
 import {
-    Body,
-    Controller,
-    Delete,
-    Get,
-    HttpStatus,
-    Inject,
-    Logger,
-    Param,
-    Post,
-    Query,
-    Req,
-    Res,
-    UploadedFile,
-    UseGuards,
-    UseInterceptors,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpStatus,
+  Inject,
+  Logger,
+  Param,
+  Post,
+  Query,
+  Req,
+  Res,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ApiConsumes } from '@nestjs/swagger';
-import { ExcelFileInterceptor } from '../../common/interceptors/excel-file.interceptor';
+import {
+  ExcelFileInterceptor,
+  LargeExcelFileInterceptor,
+} from '../../common/interceptors/excel-file.interceptor';
 import { ConfigService } from '@nestjs/config';
 import {
-    ApiBearerAuth,
-    ApiBody,
-    ApiOperation,
-    ApiParam,
-    ApiQuery,
-    ApiResponse,
-    ApiTags,
+  ApiBearerAuth,
+  ApiBody,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
 } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { firstValueFrom } from 'rxjs';
@@ -48,44 +51,52 @@ import {
 } from './dbms-lookup.util';
 import { IScheduledJobService } from './scheduled-job.interface';
 import {
-    createScheduledJobSchema,
-    getJobsByScheduleDateAndStatusSchema,
-    removeJobIdsFromAllScheduledJobsSchema,
-    removeJobsFromScheduledJobSchema,
+  createScheduledJobSchema,
+  getJobsByScheduleDateAndStatusSchema,
+  removeJobIdsFromAllScheduledJobsSchema,
+  removeJobsFromScheduledJobSchema,
 } from './scheduled-job.validation';
 import { IScraperJobItemService } from './scraper-job-item.interface';
 import { pushJobsToQueue } from '../../helpers/sqsHelper';
 import { triggerLambda } from '../../helpers/lambdaHelper';
 import {
-    AllJobItemsResponseDto,
-    BatchPropertyRunJobRequestDto,
-    BatchPropertyRunJobResponseDto,
-    BatchRetrievalRunJobRequestDto,
-    BatchRetrievalRunJobResponseDto,
-    CreateScheduledJobDto,
-    CreateScheduledJobResponseDto,
-    ErrorResponseDto,
-    GetJobsByScheduleDateAndStatusQueryDto,
-    HealthResponseDto,
-    JobsWithScheduledJobResponseDto,
-    PauseResumeStopResponseDto,
-    PropertyRunJobRequestDto,
-    PropertyRunJobResponseDto,
-    RemoveJobIdsFromAllScheduledJobsDto,
-    RemoveJobIdsFromAllScheduledJobsResponseDto,
-    RemoveJobsFromScheduledJobDto,
-    RemoveJobsFromScheduledJobResponseDto,
-    RerunFailedJobRequestDto,
-    RerunFailedJobResponseDto,
-    ReservationRunJobRequestDto,
-    ReservationRunJobResponseDto,
-    ResumeScrapingRequestDto,
-    RetrievalRunJobRequestDto,
-    ScheduledJobResponseDto,
-    ScrapingStatusResponseDto,
-    StopScrapingRequestDto,
-    UploadJobItemsResponseDto,
+  AllJobItemsResponseDto,
+  BatchPropertyRunJobRequestDto,
+  BatchPropertyRunJobResponseDto,
+  BatchRetrievalRunJobRequestDto,
+  BatchRetrievalRunJobResponseDto,
+  BulkUploadJobItemsAcceptedDto,
+  BulkUploadJobItemsSyncResultDto,
+  CreateScheduledJobDto,
+  CreateScheduledJobResponseDto,
+  ErrorResponseDto,
+  GetJobsByScheduleDateAndStatusQueryDto,
+  HealthResponseDto,
+  JobsWithScheduledJobResponseDto,
+  PauseResumeStopResponseDto,
+  PropertyRunJobRequestDto,
+  PropertyRunJobResponseDto,
+  RemoveJobIdsFromAllScheduledJobsDto,
+  RemoveJobIdsFromAllScheduledJobsResponseDto,
+  RemoveJobsFromScheduledJobDto,
+  RemoveJobsFromScheduledJobResponseDto,
+  RerunFailedJobRequestDto,
+  RerunFailedJobResponseDto,
+  ReservationRunJobRequestDto,
+  ReservationRunJobResponseDto,
+  ResumeScrapingRequestDto,
+  RetrievalRunJobRequestDto,
+  ScheduledJobResponseDto,
+  ScrapingStatusResponseDto,
+  StopScrapingRequestDto,
+  UploadJobItemsResponseDto,
 } from './scraper.dto';
+import {
+  enqueueBulkJobItemsImport,
+  getBulkJobItemsImportQueueUrl,
+} from './bulk-job-items-import-sqs.util';
+import { S3UploadService } from '../../common/utils/s3-upload.util';
+import { MailService } from '../../common/utils/mail.service';
 
 @ApiTags('Unified Scraper')
 @ApiBearerAuth('JWT-auth')
@@ -107,6 +118,8 @@ export class ScraperController {
     @Inject('IScheduledJobService')
     private readonly scheduledJobService: IScheduledJobService,
     private readonly bookingBulkDispatchService: BookingBulkDispatchService,
+    private readonly s3UploadService: S3UploadService,
+    private readonly mailService: MailService,
   ) {
     // No need for base URL anymore - using OTA-specific URLs
   }
@@ -334,7 +347,9 @@ export class ScraperController {
     if (!hasOtaIdForDbmsLookup(body?.ota_id)) {
       return;
     }
-    const baseUrl = this.configService.get<string>('DBMS_LOOKUP_BASE_URL')?.trim?.();
+    const baseUrl = this.configService
+      .get<string>('DBMS_LOOKUP_BASE_URL')
+      ?.trim?.();
     const token = this.configService.get<string>('DBMS_JWT_TOKEN')?.trim?.();
 
     if (!baseUrl || !token) {
@@ -1229,13 +1244,15 @@ export class ScraperController {
 
     try {
       try {
-        console.log(`${tag} Extra step: maybeSyncPropertyCredentialsFromDbms(body)`);
+        console.log(
+          `${tag} Extra step: maybeSyncPropertyCredentialsFromDbms(body)`,
+        );
         await this.maybeSyncPropertyCredentialsFromDbms(body);
       } catch (syncError) {
         console.error(`${tag} property credential from dbms sync failed`);
       }
       console.log(`${tag} step 1: OK`);
-      
+
       console.log(`${tag} step 2: jobService.getJobById(${body?.jobId})`);
       const job = await this.jobService.getJobById(body.jobId);
       console.log(
@@ -1334,9 +1351,7 @@ export class ScraperController {
             },
           ),
         );
-        console.log(
-          `${tag} step 4c: OK - upstream status=${response.status}`,
-        );
+        console.log(`${tag} step 4c: OK - upstream status=${response.status}`);
 
         console.log(`${tag} <<< ${response.status} (Expedia DB path)`);
         return res.status(response.status).json(response.data);
@@ -1410,9 +1425,7 @@ export class ScraperController {
           timeout: 300000,
         }),
       );
-      console.log(
-        `${tag} step 5b: OK - upstream status=${response.status}`,
-      );
+      console.log(`${tag} step 5b: OK - upstream status=${response.status}`);
 
       console.log(`${tag} <<< ${response.status} (regular path)`);
       return res.status(response.status).json(response.data);
@@ -1432,10 +1445,7 @@ export class ScraperController {
           ? error.response.data.slice(0, 1000)
           : JSON.stringify(error?.response?.data),
       );
-      console.error(
-        `${tag} error.config?.url:`,
-        error?.config?.url,
-      );
+      console.error(`${tag} error.config?.url:`, error?.config?.url);
       console.error(`${tag} error.stack:`, error?.stack);
 
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
@@ -1536,7 +1546,7 @@ export class ScraperController {
         otaProvider: string;
         propertyId?: string | null;
       }> = [];
-      
+
       // Collect Expedia jobs for SQS push
       const expediaJobsForSqs = [];
 
@@ -1582,35 +1592,35 @@ export class ScraperController {
             status: HttpStatus.BAD_REQUEST,
             message: `Job with ID ${jobRequest.jobId} not found`,
             success: false,
-          error: 'Invalid job_id',
-        });
+            error: 'Invalid job_id',
+          });
+        }
       }
-    }
 
-    // Push only Expedia jobs to AWS SQS queue
-    await pushJobsToQueue(expediaJobsForSqs);
+      // Push only Expedia jobs to AWS SQS queue
+      await pushJobsToQueue(expediaJobsForSqs);
 
-    // Update job statuses from Pending to InQueue for all Expedia jobs
-    for (const job of expediaJobsForSqs) {
-      await this.jobService.updateJob(job.id, { job_status: 'InQueue' });
-    }
+      // Update job statuses from Pending to InQueue for all Expedia jobs
+      for (const job of expediaJobsForSqs) {
+        await this.jobService.updateJob(job.id, { job_status: 'InQueue' });
+      }
 
-    // Wait for SQS messages to become visible before triggering Lambda
-    if (expediaJobsForSqs.length > 0) {
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-      
-      // Trigger Lambda function after pushing Expedia jobs to queue (lowercase platform name)
-      await triggerLambda('expedia');
-    }
+      // Wait for SQS messages to become visible before triggering Lambda
+      if (expediaJobsForSqs.length > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
 
-    // Process Expedia DB jobs using bulk API
-    if (expediaDbJobs.length > 0) {
+        // Trigger Lambda function after pushing Expedia jobs to queue (lowercase platform name)
+        await triggerLambda('expedia');
+      }
+
+      // Process Expedia DB jobs using bulk API
+      if (expediaDbJobs.length > 0) {
         try {
           const dbUrl = this.getExpediaDbUrl();
 
           if (!dbUrl) {
-             for (const job of expediaDbJobs) {
-               processedResults.push({
+            for (const job of expediaDbJobs) {
+              processedResults.push({
                 jobId: job.jobId,
                 otaProvider: 'Expedia',
                 billingType: 'DB',
@@ -1618,11 +1628,11 @@ export class ScraperController {
                 message: 'No Expedia DB server URL configured',
                 success: false,
                 error: 'Expedia DB server URL not configured',
-               });
-             }
+              });
+            }
           } else {
             const bulkRequestBody = {
-               job_ids: expediaDbJobs.map(j => j.jobId),
+              job_ids: expediaDbJobs.map((j) => j.jobId),
             };
 
             const response = await firstValueFrom(
@@ -1630,33 +1640,44 @@ export class ScraperController {
                 `${dbUrl}/api/expedia/bulk-db-run-job`,
                 bulkRequestBody,
                 {
-                  headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                  },
                   timeout: 300000,
                 },
               ),
             );
 
             // Process response
-            if (response.data?.results && Array.isArray(response.data.results)) {
-               processedResults.push(...response.data.results);
+            if (
+              response.data?.results &&
+              Array.isArray(response.data.results)
+            ) {
+              processedResults.push(...response.data.results);
             } else {
-               // Fallback if no detailed results
-               for (const job of expediaDbJobs) {
-                 processedResults.push({
-                   jobId: job.jobId,
-                   otaProvider: 'Expedia',
-                   billingType: 'DB',
-                   status: response.status,
-                   message: response.data?.message || 'Bulk DB job run successfully',
-                   success: response.data?.success !== false,
-                   data: response.data
-                 });
-               }
+              // Fallback if no detailed results
+              for (const job of expediaDbJobs) {
+                processedResults.push({
+                  jobId: job.jobId,
+                  otaProvider: 'Expedia',
+                  billingType: 'DB',
+                  status: response.status,
+                  message:
+                    response.data?.message || 'Bulk DB job run successfully',
+                  success: response.data?.success !== false,
+                  data: response.data,
+                });
+              }
             }
           }
         } catch (error: any) {
-          const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
-          const errorMessage = error.response?.data?.message || error.message || 'Unknown error occurred';
+          const status =
+            error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
+          const errorMessage =
+            error.response?.data?.message ||
+            error.message ||
+            'Unknown error occurred';
           for (const job of expediaDbJobs) {
             processedResults.push({
               jobId: job.jobId,
@@ -1673,19 +1694,19 @@ export class ScraperController {
 
       // Process Expedia Property jobs - jobs already pushed to queue, just return success
       if (expediaJobs.length > 0) {
-         // Jobs already pushed to SQS queue above, just return success for each
-         for (const job of expediaJobs) {
-           processedResults.push({
-             jobId: job.jobId,
-             otaProvider: 'Expedia',
-             status: HttpStatus.OK,
-             message: 'Job successfully queued for processing',
-             success: true,
-             data: {
-               status: 'queued',
-             },
-           });
-         }
+        // Jobs already pushed to SQS queue above, just return success for each
+        for (const job of expediaJobs) {
+          processedResults.push({
+            jobId: job.jobId,
+            otaProvider: 'Expedia',
+            status: HttpStatus.OK,
+            message: 'Job successfully queued for processing',
+            success: true,
+            data: {
+              status: 'queued',
+            },
+          });
+        }
       }
 
       // Process Agoda Jobs
@@ -1693,27 +1714,61 @@ export class ScraperController {
         try {
           const agodaUrl = this.getUrlByOtaProvider('Agoda');
           if (!agodaUrl) {
-             for (const job of agodaJobs) processedResults.push({ jobId: job.jobId, otaProvider: 'Agoda', status: HttpStatus.SERVICE_UNAVAILABLE, success: false, message: 'Agoda URL invalid' });
+            for (const job of agodaJobs)
+              processedResults.push({
+                jobId: job.jobId,
+                otaProvider: 'Agoda',
+                status: HttpStatus.SERVICE_UNAVAILABLE,
+                success: false,
+                message: 'Agoda URL invalid',
+              });
           } else {
-             // Update URLs
-             for (const job of agodaJobs) this.jobItemService.updateJobCurrentUrl(job.jobId, agodaUrl).catch(e => console.error(e));
+            // Update URLs
+            for (const job of agodaJobs)
+              this.jobItemService
+                .updateJobCurrentUrl(job.jobId, agodaUrl)
+                .catch((e) => console.error(e));
 
-             const bulkRequestBody = { job_ids: agodaJobs.map(j => j.jobId) };
-             const response = await firstValueFrom(
-               this.httpService.post(`${agodaUrl}/api/agoda/bulk-property-run-job`, bulkRequestBody, {
-                 headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-                 timeout: 300000
-               })
-             );
-             if (response.data?.results && Array.isArray(response.data.results)) {
-                processedResults.push(...response.data.results);
-             } else {
-                for (const job of agodaJobs) processedResults.push({ jobId: job.jobId, otaProvider: 'Agoda', status: response.status, success: true, message: 'Bulk Agoda run success' });
-             }
+            const bulkRequestBody = { job_ids: agodaJobs.map((j) => j.jobId) };
+            const response = await firstValueFrom(
+              this.httpService.post(
+                `${agodaUrl}/api/agoda/bulk-property-run-job`,
+                bulkRequestBody,
+                {
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                  },
+                  timeout: 300000,
+                },
+              ),
+            );
+            if (
+              response.data?.results &&
+              Array.isArray(response.data.results)
+            ) {
+              processedResults.push(...response.data.results);
+            } else {
+              for (const job of agodaJobs)
+                processedResults.push({
+                  jobId: job.jobId,
+                  otaProvider: 'Agoda',
+                  status: response.status,
+                  success: true,
+                  message: 'Bulk Agoda run success',
+                });
+            }
           }
         } catch (error: any) {
-           const status = error.response?.status || 500;
-           for (const job of agodaJobs) processedResults.push({ jobId: job.jobId, otaProvider: 'Agoda', status, success: false, message: error.message });
+          const status = error.response?.status || 500;
+          for (const job of agodaJobs)
+            processedResults.push({
+              jobId: job.jobId,
+              otaProvider: 'Agoda',
+              status,
+              success: false,
+              message: error.message,
+            });
         }
       }
 
@@ -2920,15 +2975,15 @@ export class ScraperController {
               endDate,
             );
         } else {
-          scheduledJobs =
-            await this.scheduledJobService.getAllScheduledJobs();
+          scheduledJobs = await this.scheduledJobService.getAllScheduledJobs();
         }
 
         return {
           statusCode: 200,
-          message: startDate && endDate
-            ? `Scheduled jobs retrieved successfully for date range ${startDate} to ${endDate}`
-            : 'Scheduled jobs retrieved successfully',
+          message:
+            startDate && endDate
+              ? `Scheduled jobs retrieved successfully for date range ${startDate} to ${endDate}`
+              : 'Scheduled jobs retrieved successfully',
           data: scheduledJobs,
         };
       },
@@ -2966,17 +3021,19 @@ export class ScraperController {
             ? `${result.removedCount} job(s) removed, ${result.notFoundCount} job(s) not found.`
             : '';
         const retrievalMessage =
-          result.removedRetrievalCount > 0 ||
-          result.notFoundRetrievalCount > 0
+          result.removedRetrievalCount > 0 || result.notFoundRetrievalCount > 0
             ? `${result.removedRetrievalCount} retrieval(s) removed, ${result.notFoundRetrievalCount} retrieval(s) not found.`
             : '';
 
         const scheduledJobDeleted =
-          result.scheduledJob === null ? ' Scheduled job deleted as it became empty.' : '';
+          result.scheduledJob === null
+            ? ' Scheduled job deleted as it became empty.'
+            : '';
 
         return {
           statusCode: 200,
-          message: `Jobs removed from scheduled job successfully. ${jobMessage}${retrievalMessage}${scheduledJobDeleted}`.trim(),
+          message:
+            `Jobs removed from scheduled job successfully. ${jobMessage}${retrievalMessage}${scheduledJobDeleted}`.trim(),
           data: result,
         };
       },
@@ -3010,15 +3067,16 @@ export class ScraperController {
             removeJobsDto.job_ids,
           );
 
-        const message = `Successfully removed ${result.totalRemovedCount} job(s) from scheduled jobs. ${
-          result.notFoundCount > 0
-            ? `${result.notFoundCount} job ID(s) were not found in any scheduled job.`
-            : ''
-        }${
-          result.deletedScheduledJobsCount > 0
-            ? ` ${result.deletedScheduledJobsCount} scheduled job(s) were deleted as they became empty.`
-            : ''
-        }`.trim();
+        const message =
+          `Successfully removed ${result.totalRemovedCount} job(s) from scheduled jobs. ${
+            result.notFoundCount > 0
+              ? `${result.notFoundCount} job ID(s) were not found in any scheduled job.`
+              : ''
+          }${
+            result.deletedScheduledJobsCount > 0
+              ? ` ${result.deletedScheduledJobsCount} scheduled job(s) were deleted as they became empty.`
+              : ''
+          }`.trim();
 
         return {
           statusCode: 200,
@@ -3034,7 +3092,8 @@ export class ScraperController {
   @UseGuards(JwtAuthGuard)
   @ValidateBody(getJobsByScheduleDateAndStatusSchema)
   @ApiOperation({
-    summary: 'Get jobs by schedule date and status, and create scheduled job record',
+    summary:
+      'Get jobs by schedule date and status, and create scheduled job record',
     description:
       'Creates a ScheduledJob record in the database for the provided schedule date (or returns the existing one), then returns all Job records whose schedule_date and job_status match the given values.',
   })
@@ -3053,25 +3112,33 @@ export class ScraperController {
       response,
       async () => {
         // 1. Query jobs by schedule_date + status first
-        const jobs = await this.scheduledJobService.getJobsByScheduleDateAndStatus(
-          body.schedule_date,
-          body.status,
-        );
+        const jobs =
+          await this.scheduledJobService.getJobsByScheduleDateAndStatus(
+            body.schedule_date,
+            body.status,
+          );
         const jobIds = jobs.map((j) => j.id);
 
         // 2. Create (or update) ScheduledJob with creating_date, seeding it with the found job IDs
-        const existingBefore = await this.scheduledJobService.getScheduledJobByDate(
-          body.creating_date,
-        );
-        const scheduledJob = await this.scheduledJobService.createScheduledJobByDate(
-          body.creating_date,
-          jobIds,
-        );
+        const existingBefore =
+          await this.scheduledJobService.getScheduledJobByDate(
+            body.creating_date,
+          );
+        const scheduledJob =
+          await this.scheduledJobService.createScheduledJobByDate(
+            body.creating_date,
+            jobIds,
+          );
 
         return {
           statusCode: 200,
           message: `${existingBefore ? 'Existing' : 'New'} scheduled job for ${body.creating_date}. Found ${jobs.length} job(s) with schedule date ${body.schedule_date} and status ${body.status}.`,
-          data: { scheduledJob, created: !existingBefore, jobs, total: jobs.length },
+          data: {
+            scheduledJob,
+            created: !existingBefore,
+            jobs,
+            total: jobs.length,
+          },
         };
       },
       this.logger,
@@ -3087,7 +3154,7 @@ export class ScraperController {
   @ApiOperation({
     summary: 'Bulk-upload job items from a CSV / XLSX file',
     description:
-      'Parses the uploaded file, validates every row against the job\'s OTA provider and the property\'s OTA ID, then creates or updates the corresponding JobItem records. ' +
+      "Parses the uploaded file, validates every row against the job's OTA provider and the property's OTA ID, then creates or updates the corresponding JobItem records. " +
       'The file must contain these columns: OTA, OTA ID, Reservation ID, Hotel Confirmation Code (Expedia), Guest name, Check In (MM/DD/YYYY) (Expedia, Agoda), Check Out (MM/DD/YYYY) (Expedia, Agoda), Charge Before (Booking), Currency, Booking Amount (Expedia), Amount to Charge, Card Status (Expedia), Card Number, Expiry date, CVV. ' +
       'Check In and Check Out dates must be in MM/DD/YYYY format (e.g. 06/15/2026). Any other format is rejected. ' +
       'If any row fails validation the entire upload is rejected and all errors are returned.',
@@ -3115,7 +3182,8 @@ export class ScraperController {
   })
   @ApiResponse({
     status: 400,
-    description: 'Validation failed — missing columns, OTA mismatch, or invalid cell values',
+    description:
+      'Validation failed — missing columns, OTA mismatch, or invalid cell values',
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Job or property not found' })
@@ -3141,7 +3209,11 @@ export class ScraperController {
         }
 
         if (!propertyId) {
-          return { statusCode: 400, message: 'property_id is required', data: null };
+          return {
+            statusCode: 400,
+            message: 'property_id is required',
+            data: null,
+          };
         }
 
         let result;
@@ -3176,5 +3248,181 @@ export class ScraperController {
       },
       this.logger,
     );
+  }
+
+  // ─── Bulk job-item upload (multi-job file) ────────────────────────────────
+
+  @Post('/job-items/bulk-upload')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(LargeExcelFileInterceptor)
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary:
+      'Bulk-upload job items for multiple jobs from a single CSV / XLSX file',
+    description:
+      'Parses the uploaded file, groups rows by resolved job, validates each group, then creates or updates the corresponding JobItem records. ' +
+      'The response is returned immediately (HTTP 202) and a completion report is emailed to the authenticated user. ' +
+      'The file must contain these columns: OTA, OTA ID, Reservation ID, Hotel Confirmation Code (Expedia), Guest name, Check In (MM/DD/YYYY) (Expedia, Agoda), Check Out (MM/DD/YYYY) (Expedia, Agoda), Charge Before (Booking), Currency, Booking Amount (Expedia), Amount to Charge, Card Status (Expedia), Card Number, Expiry date, CVV. ' +
+      'To identify jobs, the import also reads Batch, Review Collection Date, and Property Name from the master export layout. ' +
+      'Check In and Check Out dates must be in MM/DD/YYYY format. ' +
+      'Any columns after CVV are ignored. ' +
+      'If the async SQS queue is not configured, the import is processed in the background of the same request and the email is still sent.',
+  })
+  @ApiBody({
+    description: 'Multipart form with the file',
+    schema: {
+      type: 'object',
+      required: ['file'],
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Excel (.xlsx) or CSV file',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 202,
+    description:
+      'Import accepted — processing asynchronously and email will be sent',
+    type: BulkUploadJobItemsAcceptedDto,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Import completed synchronously (SQS queue not configured)',
+    type: BulkUploadJobItemsSyncResultDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation failed — missing columns or invalid file',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async bulkUploadJobItems(
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        if (!file) {
+          return {
+            statusCode: 400,
+            message: 'A CSV or XLSX file is required',
+            data: null,
+          };
+        }
+
+        const user = (req as any).user;
+        if (!user?.email) {
+          return {
+            statusCode: 400,
+            message: 'User email is required to send the import report',
+            data: null,
+          };
+        }
+
+        const s3Url = await this.s3UploadService.uploadFile(file);
+        const s3Key = this.s3UploadService.extractKeyFromUrl(s3Url);
+        const enqueuedAt = new Date().toISOString();
+
+        const queueUrl = getBulkJobItemsImportQueueUrl();
+        if (queueUrl) {
+          await enqueueBulkJobItemsImport(
+            {
+              s3Key,
+              originalName: file.originalname,
+              user: {
+                userId: user.userId,
+                email: user.email,
+                name: user.name,
+              },
+              requestedAt: enqueuedAt,
+            },
+            this.logger,
+          );
+
+          return {
+            statusCode: 202,
+            message:
+              'Bulk job-items import accepted and is being processed. You will receive an email report when it completes.',
+            data: {
+              fileName: file.originalname,
+              enqueuedAt,
+            },
+          };
+        }
+
+        // SQS not configured — process in the background of the same request
+        // so the HTTP response is still immediate and the email is still sent.
+        void this.processBulkUploadInBackground(file, s3Key, user, enqueuedAt);
+
+        return {
+          statusCode: 202,
+          message:
+            'Bulk job-items import accepted and is being processed. You will receive an email report when it completes.',
+          data: {
+            fileName: file.originalname,
+            enqueuedAt,
+          },
+        };
+      },
+      this.logger,
+    );
+  }
+
+  private async processBulkUploadInBackground(
+    file: Express.Multer.File,
+    s3Key: string,
+    user: { userId: string; email: string; name?: string | null },
+    enqueuedAt: string,
+  ): Promise<void> {
+    try {
+      this.logger.warn(
+        'BULK_JOB_ITEMS_IMPORT_QUEUE_URL is not configured — processing import in the background of the request.',
+      );
+      const fileBuffer = await this.s3UploadService.downloadBuffer(s3Key);
+      const fakeFile: Express.Multer.File = {
+        buffer: fileBuffer,
+        originalname: file.originalname,
+        mimetype: file.mimetype,
+        size: fileBuffer.length,
+        fieldname: 'file',
+        encoding: '7bit',
+      } as Express.Multer.File;
+
+      const report =
+        await this.jobItemService.bulkUploadJobItemsFromFile(fakeFile);
+
+      await this.mailService.sendBulkJobItemsImportReportEmail({
+        to: user.email,
+        userName: user.name,
+        status: report.status,
+        fileName: file.originalname,
+        totalRows: report.totalRows,
+        processedJobs: report.processedJobs,
+        created: report.created,
+        updated: report.updated,
+        errors: report.errors,
+      });
+    } catch (err: any) {
+      this.logger.error(
+        `Background bulk import failed: ${err?.message ?? err}`,
+        err?.stack,
+      );
+      await this.mailService.sendBulkJobItemsImportReportEmail({
+        to: user.email,
+        userName: user.name,
+        status: 'failed',
+        fileName: file.originalname,
+        totalRows: 0,
+        processedJobs: 0,
+        created: 0,
+        updated: 0,
+        errors: [],
+        failureReason: err?.message ?? 'Unknown error',
+      });
+    }
   }
 }

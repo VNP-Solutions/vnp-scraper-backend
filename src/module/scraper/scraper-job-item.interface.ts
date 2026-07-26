@@ -61,7 +61,9 @@ export interface IScraperJobItemRepository {
    * able to dirty Booking/Agoda rows).
    */
   bulkRefreshDerivedFields(updates: DerivedFieldsUpdate[]): Promise<void>;
-  upsertJobItem(row: JobItemUploadRow): Promise<{ item: JobItem; wasCreated: boolean }>;
+  upsertJobItem(
+    row: JobItemUploadRow,
+  ): Promise<{ item: JobItem; wasCreated: boolean }>;
 }
 
 export interface IScraperJobItemService {
@@ -76,4 +78,13 @@ export interface IScraperJobItemService {
     propertyId: string,
     file: Express.Multer.File,
   ): Promise<JobItemUploadResult>;
+
+  bulkUploadJobItemsFromFile(file: Express.Multer.File): Promise<{
+    status: 'success' | 'partial' | 'failed';
+    totalRows: number;
+    processedJobs: number;
+    created: number;
+    updated: number;
+    errors: Array<{ row: number; message: string }>;
+  }>;
 }
