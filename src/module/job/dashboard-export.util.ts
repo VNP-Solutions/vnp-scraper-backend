@@ -1,6 +1,7 @@
 import { OTAProvider } from '@prisma/client';
 import * as XLSX from 'xlsx';
 import { applyExcelTextColumnFormat } from '../../common/utils/excel-text-column.util';
+import { resolveOtaPropertyIdForJob } from './ota-property-id.util';
 
 /**
  * Dashboard export (POST /reports/export-dashboard) — Excel layout.
@@ -43,26 +44,6 @@ const NA = 'N/A';
 /** Round to 4 decimal places. Used for the Due To Property / VNP splits. */
 function round4(n: number): number {
   return Math.round(n * 10000) / 10000;
-}
-
-/**
- * Returns the OTA-specific property ID (Expedia / Booking / Agoda) for
- * the job's OTA provider. Mirrors the helper used by the master export
- * so Hotel ID stays consistent across both reports.
- */
-function getHotelIdForJob(job: any): string | number {
-  const property = job?.property;
-  if (!property) return '';
-  switch (job?.ota_provider) {
-    case OTAProvider.Expedia:
-      return property.expedia_id ?? '';
-    case OTAProvider.Booking:
-      return property.booking_id ?? '';
-    case OTAProvider.Agoda:
-      return property.agoda_id ?? '';
-    default:
-      return '';
-  }
 }
 
 /**
@@ -114,10 +95,9 @@ export function buildDashboardRow(
 
   const row: Record<string, string | number> = {};
   row[DASHBOARD_EXPORT_HEADER[0]] = ota ?? ''; // OTA
-  row[DASHBOARD_EXPORT_HEADER[1]] = getHotelIdForJob(job) || ''; // Hotel ID
+  row[DASHBOARD_EXPORT_HEADER[1]] = resolveOtaPropertyIdForJob(job) || ''; // Hotel ID
   // Batch: prefer the related batch.name, fall back to denormalized batch_name.
-  row[DASHBOARD_EXPORT_HEADER[2]] =
-    job?.batch?.name ?? job?.batch_name ?? ''; // Batch
+  row[DASHBOARD_EXPORT_HEADER[2]] = job?.batch?.name ?? job?.batch_name ?? ''; // Batch
   row[DASHBOARD_EXPORT_HEADER[3]] = formatDisplayDate(job?.end_date); // Review/Collection Date
   row[DASHBOARD_EXPORT_HEADER[4]] =
     job?.portfolio_name ?? job?.portfolio?.name ?? ''; // Portfolio

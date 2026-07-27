@@ -53,7 +53,15 @@ export async function writeMasterXlsxToStream(
 
   // The three columns we force to Text format. Header strings MUST
   // match `MASTER_EXPORT_HEADER` exactly (no trailing whitespace).
-  const TEXT_COLUMNS = new Set(['Card Number', 'Expiry date', 'CVV']);
+  const TEXT_COLUMNS = new Set([
+    'OTA ID',
+    'Review Collection Date',
+    'Check In',
+    'Check Out',
+    'Card Number',
+    'Expiry date',
+    'CVV',
+  ]);
 
   const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
     stream: writable,
@@ -168,7 +176,15 @@ export async function writePerJobXlsxToWritable(
   job: any,
   writable: Writable,
 ): Promise<number> {
-  const TEXT_COLUMNS = new Set(['Card Number', 'Expiry date', 'CVV']);
+  const TEXT_COLUMNS = new Set([
+    'OTA ID',
+    'Review Collection Date',
+    'Check In',
+    'Check Out',
+    'Card Number',
+    'Expiry date',
+    'CVV',
+  ]);
 
   // computeMasterExportContext for a single job is instant: one pass
   // over one job's items, no DB round-trips.
