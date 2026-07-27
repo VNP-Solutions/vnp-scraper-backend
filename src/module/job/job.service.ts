@@ -114,8 +114,11 @@ export class JobService implements IJobService {
     items: BulkCreateJobFromDbmsItemDto[],
   ): Promise<BulkCreateJobFromDbmsResultDto> {
     if (!Array.isArray(items) || !items.length) {
+      this.logger.warn('DBMS bulk create: rejected empty jobs payload');
       throw new BadRequestException('No jobs provided');
     }
+
+    this.logger.log(`DBMS bulk create: received ${items.length} job(s)`);
 
     const result: BulkCreateJobFromDbmsResultDto = {
       totalCount: items.length,
@@ -128,6 +131,7 @@ export class JobService implements IJobService {
     // Jobs require a user_id (FK to User); DBMS sync has no user, so reuse
     // the shared "DBMS Section" system user resolved once for the batch.
     const userId = await this.recurringJobService.resolveDbmsSystemUser();
+    this.logger.log(`DBMS bulk create: using system user_id=${userId}`);
 
     for (const item of items) {
       const parentId =
@@ -140,13 +144,16 @@ export class JobService implements IJobService {
           throw new Error(`Property not found with parent_id: ${parentId}`);
         }
 
+        const otaProvider = this.mapOtaType(item.ota_type);
+        const billingType = this.mapBillingTypeFromOtaType(item.ota_type);
+
         const job = await this.repository.create({
           user_id: userId,
           property_id: property.id,
           property_name: property.name,
           posting_type: PostingType.OTA,
-          ota_provider: this.mapOtaType(item.ota_type),
-          billing_type: (item.billing_type ?? '').trim() || undefined,
+          ota_provider: otaProvider,
+          billing_type: billingType,
           start_date: item.start_date,
           end_date: item.end_date,
           execution_type: 'scheduled',
@@ -164,15 +171,26 @@ export class JobService implements IJobService {
 
         result.createdCount++;
         result.created.push({ parent_id: parentId, job_id: job.id });
+        this.logger.log(
+          `DBMS bulk create: created job_id=${job.id} for parent_id=${parentId} (property_id=${property.id}, ota_type=${item.ota_type}, billing_type=${billingType}, start_date=${item.start_date}, end_date=${item.end_date})`,
+        );
       } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : 'Unknown error occurred';
         result.errors.push({
           parent_id: parentId || 'Unknown',
-          error:
-            error instanceof Error ? error.message : 'Unknown error occurred',
+          error: errorMessage,
         });
         result.failureCount++;
+        this.logger.error(
+          `DBMS bulk create: failed for parent_id=${parentId || 'Unknown'} (ota_type=${item.ota_type ?? 'n/a'}) — ${errorMessage}`,
+        );
       }
     }
+
+    this.logger.log(
+      `DBMS bulk create: complete — total=${result.totalCount}, created=${result.createdCount}, failed=${result.failureCount}`,
+    );
 
     return result;
   }
@@ -180,11 +198,25 @@ export class JobService implements IJobService {
   private mapOtaType(otaType: string): OTAProvider {
     switch ((otaType ?? '').trim().toLowerCase()) {
       case 'expedia':
+      case 'expedia_db':
         return OTAProvider.Expedia;
       case 'booking':
         return OTAProvider.Booking;
       case 'agoda':
         return OTAProvider.Agoda;
+      default:
+        throw new Error(`Unsupported ota_type: ${otaType}`);
+    }
+  }
+
+  private mapBillingTypeFromOtaType(otaType: string): string {
+    switch ((otaType ?? '').trim().toLowerCase()) {
+      case 'expedia':
+      case 'agoda':
+      case 'booking':
+        return 'VCC';
+      case 'expedia_db':
+        return 'DB';
       default:
         throw new Error(`Unsupported ota_type: ${otaType}`);
     }

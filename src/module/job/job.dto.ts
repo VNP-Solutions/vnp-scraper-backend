@@ -130,7 +130,8 @@ export class BulkCreateJobFromDbmsItemDto {
 
   @ApiProperty({
     example: 'expedia',
-    description: 'OTA type: expedia | booking | agoda',
+    description:
+      'OTA type: expedia | booking | agoda | expedia_db. Billing type is derived automatically (VCC for expedia/booking/agoda, DB for expedia_db).',
   })
   ota_type: string;
 
@@ -143,7 +144,9 @@ export class BulkCreateJobFromDbmsItemDto {
   @ApiProperty({
     example: 'VCC',
     required: false,
-    description: 'Billing type, e.g. VCC or OTA',
+    deprecated: true,
+    description:
+      'Ignored — billing type is derived from ota_type (VCC or DB).',
   })
   billing_type?: string;
 }
