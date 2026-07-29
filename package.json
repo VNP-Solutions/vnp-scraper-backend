@@ -19,7 +19,9 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "decrypt-password": "ts-node scripts/decrypt-password.ts",
-    "migrate:add-is-archived": "ts-node migrations/add-is-archived-field.ts"
+    "migrate:add-is-archived": "ts-node migrations/add-is-archived-field.ts",
+    "backup:full": "ts-node scripts/backup-full-ejson.ts",
+    "backup:restore": "ts-node scripts/dump-and-restore-backup.ts"
   },
   "dependencies": {
     "@aws-sdk/client-lambda": "^3.1043.0",
@@ -66,6 +68,7 @@
     "@types/supertest": "^6.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
+    "dotenv": "^17.4.1",
     "eslint": "^8.0.0",
     "eslint-config-prettier": "^9.0.0",
     "eslint-plugin-prettier": "^5.0.0",
