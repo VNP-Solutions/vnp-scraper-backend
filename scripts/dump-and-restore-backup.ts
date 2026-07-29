@@ -6,12 +6,14 @@
  *   npm run backup:restore -- --apply                      # dump current DB, then restore
  *   npm run backup:restore -- --apply --skip-dump           # restore only
  *   npm run backup:restore -- --apply --backup=./backups/full-backup-...
+ *   npm run backup:restore -- --apply --keep-indexes        # slower, but never drops indexes
  */
 import { config } from 'dotenv';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as readline from 'readline';
 import { PrismaClient } from '@prisma/client';
 import backupFullDatabaseEjson, {
   FULL_BACKUP_COLLECTION_ORDER,
@@ -23,9 +25,11 @@ const execAsync = promisify(exec);
 const prisma = new PrismaClient();
 
 type BackupType = 'full-ejson' | 'mongodump';
+type DocumentFormat = 'ndjson' | 'json-array';
 
 interface BackupManifest {
   backupType?: string;
+  documentFormat?: string;
   collections?: Array<{
     name: string;
     file: string;
@@ -44,6 +48,7 @@ interface CliOptions {
   apply: boolean;
   skipDump: boolean;
   backupPath?: string;
+  keepIndexes: boolean;
 }
 
 function parseArgs(): CliOptions {
@@ -53,6 +58,7 @@ function parseArgs(): CliOptions {
   return {
     apply: args.includes('--apply'),
     skipDump: args.includes('--skip-dump'),
+    keepIndexes: args.includes('--keep-indexes'),
     backupPath: backupArg
       ? path.resolve(process.cwd(), backupArg.slice('--backup='.length))
       : undefined,
@@ -223,6 +229,14 @@ function listFullEjsonCollections(source: BackupSource): string[] {
   return [...ordered, ...extras];
 }
 
+function getDocumentFormat(source: BackupSource): DocumentFormat {
+  // Backups written before the NDJSON streaming format was introduced have
+  // no `documentFormat` field and store each collection as one big JSON
+  // array. New backups (see backup-full-ejson.ts) set `documentFormat:
+  // 'ndjson'`. Both are supported here so old backups keep working.
+  return source.manifest?.documentFormat === 'ndjson' ? 'ndjson' : 'json-array';
+}
+
 async function isMongodumpAvailable(): Promise<boolean> {
   try {
     await execAsync('mongodump --version', { maxBuffer: 1024 * 1024 });
@@ -282,37 +296,270 @@ async function restoreFromMongodump(
   console.log('MongoDB restore completed.');
 }
 
-async function clearCollection(collectionName: string): Promise<void> {
-  await prisma.$runCommandRaw({
-    delete: collectionName,
-    deletes: [{ q: {}, limit: 0 }],
-  });
-}
-
-async function insertEjsonDocuments(
+// --- Fast collection clearing ------------------------------------------
+//
+// `deleteMany({})` on a multi-million-document collection has to visit
+// every document and update every index on it one at a time - for a
+// collection like job_items (1M+ records, several indexes each), this can
+// take a very long time. `drop` removes the collection (and its indexes)
+// in one near-instant metadata operation; MongoDB recreates it implicitly
+// on the next insert. The tradeoff is that the collection's indexes
+// (unique constraints, @@index) are gone until rebuilt - so by default we
+// drop for speed and rebuild every index afterwards in one pass via
+// `prisma db push` (bulk-load-then-index is the standard fast pattern for
+// large restores; building an index once at the end is much cheaper than
+// maintaining it incrementally during a huge insert). Pass --keep-indexes
+// to fall back to the slower delete-based clearing if that tradeoff isn't
+// wanted (e.g. you can't run `prisma db push` in this environment).
+async function clearCollection(
   collectionName: string,
-  documents: unknown[],
+  keepIndexes: boolean,
 ): Promise<void> {
-  if (documents.length === 0) {
+  if (keepIndexes) {
+    await prisma.$runCommandRaw({
+      delete: collectionName,
+      deletes: [{ q: {}, limit: 0 }],
+    });
     return;
   }
 
-  await prisma.$runCommandRaw({
-    insert: collectionName,
-    documents: documents as never,
-    ordered: false,
-  });
+  try {
+    await prisma.$runCommandRaw({ drop: collectionName });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // Collection doesn't exist yet on a fresh target database - fine, insert
+    // will create it.
+    if (!/ns not found/i.test(message)) {
+      throw error;
+    }
+  }
 }
 
-async function restoreFromFullEjson(source: BackupSource): Promise<void> {
+async function rebuildIndexes(): Promise<void> {
+  console.log(
+    '\nRebuilding indexes from prisma/schema.prisma (npx prisma db push)...',
+  );
+  try {
+    const { stdout, stderr } = await execAsync(
+      'npx prisma db push --skip-generate --accept-data-loss',
+      { cwd: process.cwd(), maxBuffer: 1024 * 1024 * 10 },
+    );
+    if (stdout) console.log(stdout);
+    if (stderr) console.log(stderr);
+    console.log('Indexes rebuilt successfully.');
+  } catch (error) {
+    console.error(
+      '\n⚠ WARNING: Failed to rebuild indexes automatically after restore.',
+    );
+    console.error(
+      'Data was restored, but collections were dropped and recreated WITHOUT their indexes',
+    );
+    console.error(
+      '(unique constraints will not be enforced and queries will be slow until fixed).',
+    );
+    console.error('Run this manually now: npx prisma db push');
+    console.error(error instanceof Error ? error.message : error);
+  }
+}
+
+// --- Chunked, concurrent inserts ---------------------------------------
+//
+// MongoDB enforces a hard ~16MB limit on the *entire* raw `insert` command
+// document (all `documents` combined into one BSON message), not per
+// document. This is what broke the original single-shot insert: high-volume
+// collections like job_items (1M+ records in production) blow past that
+// ceiling even though each individual record is small (job_items averaged
+// ~850 bytes/record). Documents are therefore streamed through in batches.
+//
+// Sizing rationale (from prisma/schema.prisma, not an arbitrary number):
+//   - Mongo's real limit reported by the driver was 16,809,984 bytes
+//     (~16.03MB). We budget well under that to leave room for the command
+//     envelope ("insert"/"documents"/"ordered" wrapper) and for the fact
+//     that BSON wire overhead per document (type tags, length prefixes)
+//     isn't reflected in our JSON.stringify-based size estimate.
+//   - Most models are flat/small (ActivityLog, DbEntry, ScheduledJob, etc.)
+//     or have small bounded embedded objects (JobItem/RetrievalItem's
+//     card_info + payment_info). For those, the 1000-doc cap below is what
+//     actually limits batch size in practice.
+//   - A few models embed genuinely unbounded arrays that can make a single
+//     document large on their own: Retrieval.reservations (one entry per
+//     reservation scraped by a job - the biggest per-document risk in the
+//     schema), QaPanel/QaPanelOtaPost.failed_reasons (one entry per failed
+//     row in a bulk upload), and CardActivity.authorizations (one entry per
+//     charge/decline attempt). A 6MB batch budget leaves >10MB of headroom
+//     under Mongo's real limit, so even a batch containing one unusually
+//     large Retrieval/QaPanel document alongside others has room to spare.
+const MAX_INSERT_BATCH_BYTES = 6 * 1024 * 1024;
+const MAX_INSERT_BATCH_DOCS = 1000;
+
+// MongoDB also enforces a hard 16MB limit on a single document, independent
+// of batching - no amount of chunking can split one oversized document. Given
+// the unbounded fields above (esp. Retrieval.reservations), fail fast with a
+// clear message instead of letting a cryptic BSONObjectTooLarge error surface
+// from the driver.
+const MAX_SINGLE_DOCUMENT_BYTES = 15 * 1024 * 1024;
+
+// How many insert batches can be in flight at once for a single collection.
+// This overlaps network round-trip latency to Atlas across batches instead
+// of paying it serially for every batch - important for collections with
+// hundreds/thousands of batches (e.g. 1M job_items / ~1000 docs per batch =
+// ~1000 batches). Kept modest to stay well within Prisma's/the Mongo
+// driver's connection pool and avoid overwhelming the target cluster.
+const INSERT_CONCURRENCY = 4;
+
+// Streams documents (from either format) through size/count-aware batching
+// with bounded insert concurrency, without ever holding the whole
+// collection in memory - required for multi-GB, million-plus-document
+// collections like job_items in production.
+class BatchInserter {
+  private currentBatch: unknown[] = [];
+  private currentBatchBytes = 0;
+  private readonly inFlight = new Set<Promise<void>>();
+  private firstError: unknown = null;
+  private totalDocs = 0;
+  private totalBatches = 0;
+
+  constructor(private readonly collectionName: string) {}
+
+  async add(doc: unknown): Promise<void> {
+    if (this.firstError) {
+      throw this.firstError;
+    }
+
+    const docBytes = Buffer.byteLength(JSON.stringify(doc), 'utf8');
+
+    if (docBytes > MAX_SINGLE_DOCUMENT_BYTES) {
+      const id = (doc as { _id?: unknown })?._id;
+      throw new Error(
+        `Document in ${this.collectionName} (_id: ${JSON.stringify(id)}) is ~${(docBytes / (1024 * 1024)).toFixed(1)}MB, ` +
+          `which exceeds MongoDB's single-document limit. This cannot be fixed by batching - ` +
+          `check for an unbounded embedded array (e.g. reservations, failed_reasons, authorizations) on this record.`,
+      );
+    }
+
+    if (
+      this.currentBatch.length > 0 &&
+      (this.currentBatch.length >= MAX_INSERT_BATCH_DOCS ||
+        this.currentBatchBytes + docBytes > MAX_INSERT_BATCH_BYTES)
+    ) {
+      await this.dispatchCurrentBatch();
+    }
+
+    this.currentBatch.push(doc);
+    this.currentBatchBytes += docBytes;
+    this.totalDocs++;
+  }
+
+  private async dispatchCurrentBatch(): Promise<void> {
+    if (this.currentBatch.length === 0) {
+      return;
+    }
+
+    const batch = this.currentBatch;
+    this.currentBatch = [];
+    this.currentBatchBytes = 0;
+    this.totalBatches++;
+
+    if (this.inFlight.size >= INSERT_CONCURRENCY) {
+      await Promise.race(this.inFlight);
+      if (this.firstError) {
+        throw this.firstError;
+      }
+    }
+
+    const promise: Promise<void> = prisma
+      .$runCommandRaw({
+        insert: this.collectionName,
+        documents: batch as never,
+        ordered: false,
+      })
+      .then(() => undefined)
+      .catch((error) => {
+        if (!this.firstError) {
+          this.firstError = error;
+        }
+      })
+      .finally(() => {
+        this.inFlight.delete(promise);
+      });
+
+    this.inFlight.add(promise);
+  }
+
+  async finish(): Promise<{ totalDocs: number; totalBatches: number }> {
+    await this.dispatchCurrentBatch();
+    await Promise.all(this.inFlight);
+
+    if (this.firstError) {
+      throw this.firstError;
+    }
+
+    return { totalDocs: this.totalDocs, totalBatches: this.totalBatches };
+  }
+}
+
+async function* readNdjsonDocuments(filePath: string): AsyncGenerator<unknown> {
+  const rl = readline.createInterface({
+    input: fs.createReadStream(filePath, { encoding: 'utf8' }),
+    crlfDelay: Infinity,
+  });
+
+  for await (const line of rl) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    yield JSON.parse(trimmed);
+  }
+}
+
+// Kept only for backward compatibility with backups made before the NDJSON
+// streaming format existed. Loads the whole file/array into memory, same as
+// before - acceptable for the smaller legacy backups this applies to, but
+// new backups always use the NDJSON path above.
+async function* readLegacyJsonArrayDocuments(
+  filePath: string,
+): AsyncGenerator<unknown> {
+  const documents = JSON.parse(fs.readFileSync(filePath, 'utf8')) as unknown[];
+  for (const doc of documents) {
+    yield doc;
+  }
+}
+
+async function restoreCollectionDocuments(
+  collectionName: string,
+  filePath: string,
+  format: DocumentFormat,
+): Promise<{ totalDocs: number; totalBatches: number }> {
+  const inserter = new BatchInserter(collectionName);
+  const documents =
+    format === 'ndjson'
+      ? readNdjsonDocuments(filePath)
+      : readLegacyJsonArrayDocuments(filePath);
+
+  for await (const doc of documents) {
+    await inserter.add(doc);
+  }
+
+  return inserter.finish();
+}
+
+async function restoreFromFullEjson(
+  source: BackupSource,
+  keepIndexes: boolean,
+): Promise<void> {
   const collections = listFullEjsonCollections(source);
   if (collections.length === 0) {
     throw new Error(`No .ejson files found in ${source.restorePath}`);
   }
 
+  const format = getDocumentFormat(source);
+
   console.log('\nRestoring full EJSON backup via Prisma...');
   console.log(`Source: ${source.dir}`);
+  console.log(`Format: ${format}`);
   console.log(`Collections: ${collections.length}`);
+  console.log(
+    `Clearing strategy: ${keepIndexes ? 'delete-all (indexes kept)' : 'drop + rebuild indexes at the end (faster for large collections)'}`,
+  );
 
   for (const collectionName of [...collections].reverse()) {
     const fileName =
@@ -320,22 +567,26 @@ async function restoreFromFullEjson(source: BackupSource): Promise<void> {
         (collection) => collection.name === collectionName,
       )?.file ?? `${collectionName}.ejson`;
     const filePath = path.join(source.restorePath, fileName);
-    const documents = JSON.parse(
-      fs.readFileSync(filePath, 'utf8'),
-    ) as unknown[];
 
     console.log(`  Clearing ${collectionName}...`);
-    await clearCollection(collectionName);
+    await clearCollection(collectionName, keepIndexes);
 
-    if (documents.length === 0) {
+    const startedAt = Date.now();
+    const { totalDocs, totalBatches } = await restoreCollectionDocuments(
+      collectionName,
+      filePath,
+      format,
+    );
+    const elapsedSec = ((Date.now() - startedAt) / 1000).toFixed(1);
+
+    if (totalDocs === 0) {
       console.log(`  ${collectionName}: 0 records`);
       continue;
     }
 
     console.log(
-      `  Inserting ${documents.length} record(s) into ${collectionName}...`,
+      `  ${collectionName}: ${totalDocs} record(s) restored across ${totalBatches} batch(es) (${elapsedSec}s)`,
     );
-    await insertEjsonDocuments(collectionName, documents);
   }
 
   console.log('Full EJSON restore completed.');
@@ -423,6 +674,7 @@ async function main() {
     console.log('\nExamples:');
     console.log('  npm run backup:restore -- --apply');
     console.log('  npm run backup:restore -- --apply --skip-dump');
+    console.log('  npm run backup:restore -- --apply --keep-indexes');
     console.log(
       '  npm run backup:restore -- --apply --backup=./backups/full-backup-2026-07-29T06-41-25-715Z',
     );
@@ -440,7 +692,11 @@ async function main() {
   if (source.type === 'mongodump') {
     await restoreFromMongodump(source.restorePath, dbUrl);
   } else {
-    await restoreFromFullEjson(source);
+    await restoreFromFullEjson(source, options.keepIndexes);
+
+    if (!options.keepIndexes) {
+      await rebuildIndexes();
+    }
   }
 
   await verifyRestore(source);
