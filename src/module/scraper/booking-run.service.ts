@@ -58,33 +58,28 @@ export class BookingRunService {
       scraperUrl: bookingUrl,
     };
 
-    setTimeout(() => {
-      this.jobItemService
-        .updateJobCurrentUrl(body.jobId, bookingUrl)
-        .catch((e) =>
-          this.logger.warn(
-            `updateJobCurrentUrl failed for ${body.jobId}: ${e?.message}`,
-          ),
-        );
-    }, 1000);
+    this.jobItemService
+      .updateJobCurrentUrl(body.jobId, bookingUrl)
+      .catch((e) =>
+        this.logger.warn(
+          `updateJobCurrentUrl failed for ${body.jobId}: ${e?.message}`,
+        ),
+      );
 
-    const response = await firstValueFrom(
-      this.httpService.post(
-        `${bookingUrl}/api/booking/property-run-job`,
-        enhancedBody,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-          },
-          timeout: 300000,
-        },
-      ),
-    );
+    this.dispatchPropertyJobToScraper(bookingUrl, enhancedBody, body.jobId);
 
     return {
-      status: response.status,
-      data: response.data,
+      status: HttpStatus.OK,
+      data: {
+        success: true,
+        message: 'Job successfully queued for processing',
+        data: {
+          jobId: body.jobId,
+          status: 'Running',
+          otaProvider: 'Booking',
+          bookingUrl,
+        },
+      },
       bookingUrl,
     };
   }
@@ -133,14 +128,21 @@ export class BookingRunService {
     }
 
     if (bookingJobs.length > 0) {
-      const bookingRows =
-        await this.bookingBulkDispatchService.dispatchGroupedBulkRuns(
-          bookingJobs,
-          bookingUrl,
-          (jobId, url) => this.jobItemService.updateJobCurrentUrl(jobId, url),
-          { scheduledJobId: body.scheduled_job_id },
-        );
-      processedResults.push(...bookingRows);
+      for (const { jobId } of bookingJobs) {
+        processedResults.push({
+          jobId,
+          otaProvider: 'Booking',
+          status: HttpStatus.OK,
+          success: true,
+          message: 'Job queued for processing',
+        });
+      }
+
+      this.dispatchGroupedBulkToScraper(
+        bookingJobs,
+        bookingUrl,
+        body.scheduled_job_id,
+      );
     }
 
     const successfulJobs = processedResults.filter((r) => r.success).length;
@@ -148,12 +150,83 @@ export class BookingRunService {
 
     return {
       status: HttpStatus.OK,
-      message: `Booking batch completed: ${successfulJobs} successful, ${failedJobs} failed`,
+      message: `Booking batch queued: ${successfulJobs} accepted, ${failedJobs} failed validation`,
       results: processedResults,
       totalJobs: body.job_ids.length,
       successfulJobs,
       failedJobs,
       bookingUrl,
     };
+  }
+
+  private dispatchPropertyJobToScraper(
+    bookingUrl: string,
+    body: {
+      jobId: string;
+      startDate: string;
+      endDate: string;
+      scraperUrl: string;
+    },
+    jobId: string,
+  ): void {
+    firstValueFrom(
+      this.httpService.post(
+        `${bookingUrl}/api/booking/property-run-job`,
+        body,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          timeout: 300000,
+        },
+      ),
+    )
+      .then((response) => {
+        this.logger.log(
+          `Booking property-run-job dispatched for ${jobId}: HTTP ${response.status}`,
+        );
+      })
+      .catch((error: unknown) => {
+        const err = error as {
+          message?: string;
+          response?: { status?: number; data?: unknown };
+        };
+        this.logger.error(
+          `Booking property-run-job failed for ${jobId}: ${err.message ?? error}${
+            err.response?.status != null ? ` (HTTP ${err.response.status})` : ''
+          }`,
+        );
+      });
+  }
+
+  private dispatchGroupedBulkToScraper(
+    bookingJobs: Array<{
+      jobId: string;
+      propertyId: string | null | undefined;
+    }>,
+    bookingUrl: string,
+    scheduledJobId?: string,
+  ): void {
+    void this.bookingBulkDispatchService
+      .dispatchGroupedBulkRuns(
+        bookingJobs,
+        bookingUrl,
+        (jobId, url) => this.jobItemService.updateJobCurrentUrl(jobId, url),
+        { scheduledJobId },
+      )
+      .then((rows) => {
+        const failed = rows.filter((r) => !r.success).length;
+        this.logger.log(
+          `Booking grouped bulk dispatched for ${bookingJobs.length} job(s): ${rows.length - failed} ok, ${failed} failed (async)`,
+        );
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(
+          `Booking grouped bulk dispatch failed: ${message}`,
+          error instanceof Error ? error.stack : undefined,
+        );
+      });
   }
 }
