@@ -120,12 +120,24 @@ async function withQueryHeartbeat<T>(
   }
 }
 
+/** Rough byte estimate for logging — avoids JSON.stringify on the hot path. */
 function estimateLoadedJobsPayloadBytes(jobs: any[]): number {
-  try {
-    return Buffer.byteLength(JSON.stringify(jobs), 'utf8');
-  } catch {
-    return 0;
+  let bytes = 0;
+  for (const job of jobs) {
+    bytes += 2048;
+    const items = job?.jobItem ?? [];
+    for (const item of items) {
+      bytes += 512;
+      const auths = item?.cardActivity?.authorizations;
+      if (Array.isArray(auths)) bytes += auths.length * 256;
+    }
   }
+  return bytes;
+}
+
+function formatChunkJobIds(chunk: string[]): string {
+  if (chunk.length <= 3) return chunk.join(', ');
+  return `${chunk.slice(0, 3).join(', ')} … +${chunk.length - 3} more`;
 }
 
 function formatBytes(bytes: number): string {
@@ -153,6 +165,13 @@ const MASTER_EXPORT_HEAVY_JOB_ITEM_THRESHOLD = 200;
 
 /** Page size when loading job items for a heavy job. */
 const MASTER_EXPORT_ITEMS_PAGE_SIZE = 200;
+
+/**
+ * Small exports skip chunking / heavy-job pagination and use a single
+ * nested findMany — same shape as the original fast path from Apr 2026.
+ */
+const MASTER_EXPORT_FAST_PATH_MAX_JOBS = 20;
+const MASTER_EXPORT_FAST_PATH_MAX_ITEMS = 2000;
 
 function buildMasterExportChunks(
   jobIds: string[],
@@ -1607,6 +1626,37 @@ export class JobRepository implements IJobRepository {
         (job) => job.ota_provider === OTAProvider.Expedia,
       ).length;
 
+      const noHeavyJobs = preflightAll.every(
+        (job) => job._count.jobItem <= MASTER_EXPORT_HEAVY_JOB_ITEM_THRESHOLD,
+      );
+      const useFastPath =
+        uniqueIds.length <= MASTER_EXPORT_FAST_PATH_MAX_JOBS &&
+        totalExpectedItems < MASTER_EXPORT_FAST_PATH_MAX_ITEMS &&
+        noHeavyJobs;
+
+      if (useFastPath) {
+        const fastStartedAt = Date.now();
+        this.logger.log(
+          `[MasterExport] Preflight in ${Date.now() - preflightStartedAt}ms — ` +
+            `${preflightAll.length}/${uniqueIds.length} jobs, ` +
+            `${totalExpectedItems} job items expected, ${expediaJobCount} Expedia job(s) — ` +
+            `fast path (single query)`,
+        );
+        const jobs = await this.db.job.findMany({
+          where: { id: { in: uniqueIds } },
+          select: MASTER_EXPORT_SELECT,
+        });
+        const byId = new Map(jobs.map((job) => [job.id, job]));
+        const ordered = uniqueIds
+          .map((id) => byId.get(id))
+          .filter((job): job is (typeof jobs)[number] => job != null);
+        this.logger.log(
+          `[MasterExport] Fast path complete in ${Date.now() - fastStartedAt}ms — ` +
+            `${ordered.length} job(s), ${totalExpectedItems} job items`,
+        );
+        return ordered;
+      }
+
       // Preserve caller order while chunking by item budget.
       const chunks = buildMasterExportChunks(uniqueIds, itemCountByJobId);
       const totalWaves = Math.ceil(chunks.length / CONCURRENCY);
@@ -1653,7 +1703,7 @@ export class JobRepository implements IJobRepository {
             this.logger.log(
               `[MasterExport] Chunk ${globalChunkIndex + 1}/${chunks.length} query start — ` +
                 `${chunk.length} job ID(s), ~${expectedItems} job items, ` +
-                `${expediaInChunk} Expedia job(s): [${chunk.join(', ')}]`,
+                `${expediaInChunk} Expedia job(s): [${formatChunkJobIds(chunk)}]`,
             );
 
             const logPrefix = `Chunk ${globalChunkIndex + 1}/${chunks.length}`;
