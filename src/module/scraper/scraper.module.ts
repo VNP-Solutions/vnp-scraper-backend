@@ -8,7 +8,10 @@ import { PropertyCredentialsModule } from '../property-credentials/property-cred
 import { RecurringJobModule } from '../recurring-job/recurring-job.module';
 import { RetrievalModule } from '../retrieval/retrieval.module';
 import { ServerModule } from '../server/server.module';
+import { BookingScraperUrlModule } from '../booking-scraper-url/booking-scraper-url.module';
 import { BookingBulkDispatchService } from './booking-bulk-dispatch.service';
+import { BookingRunController } from './booking-run.controller';
+import { BookingRunService } from './booking-run.service';
 import { BulkJobItemsImportConsumer } from './bulk-job-items-import.consumer';
 import { LambdaTriggerSchedulerService } from './lambda-trigger-scheduler.service';
 import { ScheduledJobSchedulerService } from './scheduled-job-scheduler.service';
@@ -41,10 +44,11 @@ import { S3UploadService } from '../../common/utils/s3-upload.util';
     forwardRef(() => JobModule),
     forwardRef(() => RecurringJobModule),
     ServerModule,
+    BookingScraperUrlModule,
     RetrievalModule,
     PropertyCredentialsModule,
   ],
-  controllers: [ScraperController],
+  controllers: [ScraperController, BookingRunController],
   providers: [
     {
       provide: 'IScraperJobItemService',
@@ -67,6 +71,7 @@ import { S3UploadService } from '../../common/utils/s3-upload.util';
     ScheduledJobSchedulerService,
     LambdaTriggerSchedulerService,
     BookingBulkDispatchService,
+    BookingRunService,
     MailService,
     S3UploadService,
     BulkJobItemsImportConsumer,

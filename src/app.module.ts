@@ -8,6 +8,7 @@ import { ActivityLogExportModule } from './module/activity-log-export/activity-l
 import { ActivityLogModule } from './module/activity-log/activity-log.module';
 import { AgodaModule } from './module/agoda/agoda.module';
 import { AuthModule } from './module/auth/auth.module';
+import { BookingScraperUrlModule } from './module/booking-scraper-url/booking-scraper-url.module';
 import { DatabaseModule } from './module/database/database.module';
 import { DbDataModule } from './module/db-data/db-data.module';
 import { EncryptionModule } from './module/encryption/encryption.module';
@@ -42,6 +43,7 @@ import { UserModule } from './module/user/user.module';
     ScheduleModule.forRoot(),
     DatabaseModule,
     AuthModule,
+    BookingScraperUrlModule,
     UserModule,
     PortfolioModule,
     PropertyCredentialsModule,

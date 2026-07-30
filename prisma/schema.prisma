@@ -921,3 +921,12 @@ model OtaPostPreCharging {
 
   @@map("ota_post_pre_chargings")
 }
+
+model BookingScraperUrl {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  url       String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("booking_scraper_urls")
+}
