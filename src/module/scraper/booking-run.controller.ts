@@ -29,7 +29,6 @@ import {
 import {
   BatchPropertyRunJobResponseDto,
   ErrorResponseDto,
-  PropertyRunJobResponseDto,
 } from './scraper.dto';
 
 @ApiTags('Booking Scraper Runs')
@@ -45,13 +44,12 @@ export class BookingRunController {
   @ApiOperation({
     summary: 'Start a Booking property scraping job on a selected scraper URL',
     description:
-      'Requires only booking_scraper_url_id and jobId. startDate, endDate, and property are loaded from the job record.',
+      'Requires only booking_scraper_url_id and jobId. Validates the job, then queues the scraper call and returns immediately without waiting for the scraper to finish.',
   })
   @ApiBody({ type: BookingPropertyRunJobRequestDto })
   @ApiResponse({
     status: 200,
-    description: 'Booking property scraping job completed',
-    type: PropertyRunJobResponseDto,
+    description: 'Booking property scraping job queued (scraper runs in background)',
   })
   @ApiResponse({
     status: 400,
@@ -95,12 +93,12 @@ export class BookingRunController {
     summary:
       'Start grouped bulk Booking property jobs on a selected scraper URL',
     description:
-      'Requires booking_scraper_url_id and job_ids. Each job is loaded from the database for property/credentials grouping. Uses BOOKING_GROUPED_BULK_API_PATH on the remote host (default /api/booking/bulk-property-run-job).',
+      'Requires booking_scraper_url_id and job_ids. Validates jobs, queues grouped scraper dispatch, and returns immediately without waiting for the scraper to finish.',
   })
   @ApiBody({ type: BookingBulkPropertyRunJobGroupedRequestDto })
   @ApiResponse({
     status: 200,
-    description: 'Grouped bulk Booking jobs processed',
+    description: 'Grouped bulk Booking jobs queued (scraper runs in background)',
     type: BatchPropertyRunJobResponseDto,
   })
   @ApiResponse({
