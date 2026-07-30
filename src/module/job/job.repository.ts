@@ -2,6 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Batch, DbEntry, Job, OTAProvider, Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import {
+  jobNeedsOtaPropertyIdEnrichment,
+  resolveOtaPropertyIdForJob,
+} from './ota-property-id.util';
+import {
   CreateBatchDto,
   CreateJobDto,
   JobStatisticsResponseDto,
@@ -30,6 +34,8 @@ import { IJobRepository } from './job.interface';
  */
 const MASTER_EXPORT_JOB_SHELL_SELECT = {
   id: true,
+  property_id: true,
+  recurring_id: true,
   ota_provider: true,
   posting_type: true,
   end_date: true,
@@ -47,10 +53,16 @@ const MASTER_EXPORT_JOB_SHELL_SELECT = {
       agoda_id: true,
     },
   },
+  recurringJob: {
+    select: {
+      hotel_id: true,
+    },
+  },
 } satisfies Prisma.JobSelect;
 
 const MASTER_EXPORT_JOB_ITEM_SELECT = {
   id: true,
+  property_id: true,
   createdAt: true,
   reservation_id: true,
   confirmation_number: true,
@@ -295,11 +307,13 @@ export class JobRepository implements IJobRepository {
           ? { recurringJob: { connect: { id: recurring_id } } }
           : {}),
         ...(recurring_report_bucket_id
-          ? { recurringReportBucket: { connect: { id: recurring_report_bucket_id } } }
+          ? {
+              recurringReportBucket: {
+                connect: { id: recurring_report_bucket_id },
+              },
+            }
           : {}),
-        ...(server_id
-          ? { server: { connect: { id: server_id } } }
-          : {}),
+        ...(server_id ? { server: { connect: { id: server_id } } } : {}),
       };
 
       const job = await this.db.job.create({
@@ -478,7 +492,8 @@ export class JobRepository implements IJobRepository {
 
       // Filter by recurring_report_bucket_id
       if (recurring_report_bucket_id) {
-        allFilters.recurring_report_bucket_id = recurring_report_bucket_id.toString();
+        allFilters.recurring_report_bucket_id =
+          recurring_report_bucket_id.toString();
       }
 
       // Filter by portfolio_id
@@ -1054,7 +1069,10 @@ export class JobRepository implements IJobRepository {
         },
         nothingToReport: {
           count: monthData.nothingToReport,
-          percentage: calculatePercentage(monthData.nothingToReport, monthData.total),
+          percentage: calculatePercentage(
+            monthData.nothingToReport,
+            monthData.total,
+          ),
         },
         manual: {
           count: monthData.manual,
@@ -1553,6 +1571,72 @@ export class JobRepository implements IJobRepository {
     return { ...job, jobItem: jobItems };
   }
 
+  /**
+   * Ensures master-export jobs can resolve OTA ID even when the nested
+   * Property relation is missing or lacks OTA IDs. Falls back to a direct
+   * Property lookup (job.property_id / first job item) and RecurringJob.hotel_id.
+   */
+  private async enrichMasterExportJobsWithOtaIds(jobs: any[]): Promise<void> {
+    if (!jobs.length) return;
+
+    const propertyIds = new Set<string>();
+    const recurringIds = new Set<string>();
+
+    for (const job of jobs) {
+      if (!jobNeedsOtaPropertyIdEnrichment(job)) continue;
+
+      if (job.property_id) propertyIds.add(job.property_id);
+      const firstItem = Array.isArray(job.jobItem) ? job.jobItem[0] : null;
+      if (firstItem?.property_id) propertyIds.add(firstItem.property_id);
+
+      if (!job.recurringJob && job.recurring_id) {
+        recurringIds.add(job.recurring_id);
+      }
+    }
+
+    const [properties, recurringJobs] = await Promise.all([
+      propertyIds.size > 0
+        ? this.db.property.findMany({
+            where: { id: { in: [...propertyIds] } },
+            select: {
+              id: true,
+              expedia_id: true,
+              booking_id: true,
+              agoda_id: true,
+            },
+          })
+        : Promise.resolve([]),
+      recurringIds.size > 0
+        ? this.db.recurringJob.findMany({
+            where: { id: { in: [...recurringIds] } },
+            select: { id: true, hotel_id: true },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const propertyById = new Map(properties.map((p) => [p.id, p]));
+    const recurringById = new Map(recurringJobs.map((r) => [r.id, r]));
+
+    for (const job of jobs) {
+      if (!jobNeedsOtaPropertyIdEnrichment(job)) continue;
+
+      if (!job.recurringJob && job.recurring_id) {
+        const recurring = recurringById.get(job.recurring_id);
+        if (recurring) job.recurringJob = recurring;
+      }
+
+      if (resolveOtaPropertyIdForJob(job) !== '') continue;
+
+      const propertyId =
+        job.property_id ??
+        (Array.isArray(job.jobItem) ? job.jobItem[0]?.property_id : null);
+      const fetched = propertyId ? propertyById.get(propertyId) : null;
+      if (!fetched) continue;
+
+      job.property = job.property ? { ...job.property, ...fetched } : fetched;
+    }
+  }
+
   private async loadMasterExportChunk(
     chunk: string[],
     itemCountByJobId: Map<string, number>,
@@ -1560,11 +1644,13 @@ export class JobRepository implements IJobRepository {
   ): Promise<any[]> {
     const heavyJobIds = chunk.filter(
       (id) =>
-        (itemCountByJobId.get(id) ?? 0) > MASTER_EXPORT_HEAVY_JOB_ITEM_THRESHOLD,
+        (itemCountByJobId.get(id) ?? 0) >
+        MASTER_EXPORT_HEAVY_JOB_ITEM_THRESHOLD,
     );
     const lightJobIds = chunk.filter(
       (id) =>
-        (itemCountByJobId.get(id) ?? 0) <= MASTER_EXPORT_HEAVY_JOB_ITEM_THRESHOLD,
+        (itemCountByJobId.get(id) ?? 0) <=
+        MASTER_EXPORT_HEAVY_JOB_ITEM_THRESHOLD,
     );
 
     const results: any[] = [];
@@ -1596,6 +1682,7 @@ export class JobRepository implements IJobRepository {
       if (job) results.push(job);
     }
 
+    await this.enrichMasterExportJobsWithOtaIds(results);
     return results;
   }
 
@@ -1887,10 +1974,7 @@ export class JobRepository implements IJobRepository {
             }
             if (approvedLen > maxApprovedCount) maxApprovedCount = approvedLen;
           }
-          if (
-            chunkIdx % logEvery === 0 ||
-            chunkIdx === totalChunks
-          ) {
+          if (chunkIdx % logEvery === 0 || chunkIdx === totalChunks) {
             this.logger.log(
               `[MasterExport.prescan] Expedia auth scan ` +
                 `${chunkIdx}/${totalChunks} chunks ` +

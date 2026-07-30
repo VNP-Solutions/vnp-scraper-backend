@@ -497,7 +497,8 @@ export class RemoveJobsFromScheduledJobResponseDto {
   removedRetrievalCount: number;
 
   @ApiProperty({
-    description: 'Number of retrieval IDs that were not found in the scheduled job',
+    description:
+      'Number of retrieval IDs that were not found in the scheduled job',
     example: 0,
   })
   notFoundRetrievalCount: number;
@@ -510,7 +511,8 @@ export class RemoveJobsFromScheduledJobResponseDto {
   removedRetrievalIds: string[];
 
   @ApiProperty({
-    description: 'Array of retrieval IDs that were not found in the scheduled job',
+    description:
+      'Array of retrieval IDs that were not found in the scheduled job',
     type: [String],
     example: [],
   })
@@ -586,7 +588,8 @@ export class CreateScheduledJobResponseDto {
 
 export class RemoveJobIdsFromAllScheduledJobsResponseDto {
   @ApiProperty({
-    description: 'Total number of jobs successfully removed across all scheduled jobs',
+    description:
+      'Total number of jobs successfully removed across all scheduled jobs',
     example: 5,
   })
   totalRemovedCount: number;
@@ -612,7 +615,8 @@ export class RemoveJobIdsFromAllScheduledJobsResponseDto {
   notFoundJobIds: string[];
 
   @ApiProperty({
-    description: 'Number of scheduled jobs that were deleted because they became empty',
+    description:
+      'Number of scheduled jobs that were deleted because they became empty',
     example: 2,
   })
   deletedScheduledJobsCount: number;
@@ -622,13 +626,15 @@ export class RemoveJobIdsFromAllScheduledJobsResponseDto {
 
 export class GetJobsByScheduleDateAndStatusQueryDto {
   @ApiProperty({
-    description: 'Date used to create the ScheduledJob record in DB (YYYY-MM-DD)',
+    description:
+      'Date used to create the ScheduledJob record in DB (YYYY-MM-DD)',
     example: '2024-06-15',
   })
   creating_date: string;
 
   @ApiProperty({
-    description: 'Date used to query jobs by their schedule_date field (YYYY-MM-DD)',
+    description:
+      'Date used to query jobs by their schedule_date field (YYYY-MM-DD)',
     example: '2024-06-15',
   })
   schedule_date: string;
@@ -645,7 +651,11 @@ export class JobSummaryDto {
   @ApiProperty({ example: '664f1a2b3c4d5e6f7a8b9c0d' })
   id: string;
 
-  @ApiProperty({ example: 'Property A Expedia Job', required: false, nullable: true })
+  @ApiProperty({
+    example: 'Property A Expedia Job',
+    required: false,
+    nullable: true,
+  })
   name: string | null;
 
   @ApiProperty({ enum: JobStatus, example: JobStatus.Pending })
@@ -672,12 +682,16 @@ export class JobsWithScheduledJobResponseDto {
   scheduledJob: ScheduledJobResponseDto;
 
   @ApiProperty({
-    description: 'Whether the ScheduledJob record was freshly created (true) or already existed (false)',
+    description:
+      'Whether the ScheduledJob record was freshly created (true) or already existed (false)',
     example: true,
   })
   created: boolean;
 
-  @ApiProperty({ description: 'Jobs matching the given schedule date and status', type: [JobSummaryDto] })
+  @ApiProperty({
+    description: 'Jobs matching the given schedule date and status',
+    type: [JobSummaryDto],
+  })
   jobs: JobSummaryDto[];
 
   @ApiProperty({ example: 5 })
@@ -688,7 +702,9 @@ export class UploadJobItemsValidationErrorDto {
   @ApiProperty({ example: 2 })
   row: number;
 
-  @ApiProperty({ example: "OTA value 'Booking' does not match job OTA provider 'Expedia'" })
+  @ApiProperty({
+    example: "OTA value 'Booking' does not match job OTA provider 'Expedia'",
+  })
   message: string;
 }
 
@@ -707,5 +723,56 @@ export class UploadJobItemsResponseDto {
     uploaded: number;
     created: number;
     updated: number;
+  };
+}
+
+export class BulkUploadJobItemsAcceptedDto {
+  @ApiProperty({ example: 202 })
+  statusCode: number;
+
+  @ApiProperty({
+    example:
+      'Bulk job-items import accepted and is being processed. You will receive an email report when it completes.',
+  })
+  message: string;
+
+  @ApiProperty({
+    description: 'Tracking information',
+    example: {
+      fileName: 'bulk-import.csv',
+      enqueuedAt: '2026-07-22T09:30:00.000Z',
+    },
+  })
+  data: {
+    fileName: string;
+    enqueuedAt: string;
+  };
+}
+
+export class BulkUploadJobItemsSyncResultDto {
+  @ApiProperty({ example: 200 })
+  statusCode: number;
+
+  @ApiProperty({ example: 'Bulk job-items import completed' })
+  message: string;
+
+  @ApiProperty({
+    description: 'Import report',
+    example: {
+      status: 'partial',
+      totalRows: 100,
+      processedJobs: 8,
+      created: 75,
+      updated: 25,
+      errors: [{ row: 12, message: 'Could not resolve a unique job' }],
+    },
+  })
+  data: {
+    status: string;
+    totalRows: number;
+    processedJobs: number;
+    created: number;
+    updated: number;
+    errors: UploadJobItemsValidationErrorDto[];
   };
 }

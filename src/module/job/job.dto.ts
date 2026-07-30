@@ -121,6 +121,58 @@ export class CreateJobDto {
   booking_vccs_filtered_reservation_count?: number;
 }
 
+export class BulkCreateJobFromDbmsItemDto {
+  @ApiProperty({
+    example: 'dbms-property-id',
+    description: 'DBMS property id (parent_id) used to resolve the scraper property',
+  })
+  parent_id: string;
+
+  @ApiProperty({
+    example: 'expedia',
+    description:
+      'OTA type: expedia | booking | agoda | expedia_db. Billing type is derived automatically (VCC for expedia/booking/agoda, DB for expedia_db).',
+  })
+  ota_type: string;
+
+  @ApiProperty({ example: '2025-07-01', required: false })
+  start_date?: string;
+
+  @ApiProperty({ example: '2025-10-01', required: false })
+  end_date?: string;
+
+  @ApiProperty({
+    example: 'VCC',
+    required: false,
+    deprecated: true,
+    description:
+      'Ignored — billing type is derived from ota_type (VCC or DB).',
+  })
+  billing_type?: string;
+}
+
+export class BulkCreateJobFromDbmsDto {
+  @ApiProperty({ type: [BulkCreateJobFromDbmsItemDto] })
+  jobs: BulkCreateJobFromDbmsItemDto[];
+}
+
+export class BulkCreateJobFromDbmsResultDto {
+  @ApiProperty({ example: 2 })
+  totalCount: number;
+
+  @ApiProperty({ example: 2 })
+  createdCount: number;
+
+  @ApiProperty({ example: 0 })
+  failureCount: number;
+
+  @ApiProperty({ example: [] })
+  errors: Array<{ parent_id: string; error: string }>;
+
+  @ApiProperty({ example: [] })
+  created: Array<{ parent_id: string; job_id: string }>;
+}
+
 export class UpdateJobDto implements Partial<CreateJobDto> {
   @ApiProperty({ required: false })
   name?: string;

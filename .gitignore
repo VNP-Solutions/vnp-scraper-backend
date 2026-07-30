@@ -137,3 +137,6 @@ dist
 
 decrypt-password.ts
 .docs/
+
+# Local database backups
+/backups
