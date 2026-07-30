@@ -7,12 +7,15 @@ import { PassThrough, Readable, Writable } from 'stream';
  *
  * Used by both `/jobs/export-master` and `/reports/export-master` to bundle
  * per-job / per-retrieval files into a single downloadable archive.
+ *
+ * Compression level 1 (fastest) — level 9 can be 10–20× slower with
+ * negligible size savings for CSV/XLSX entries.
  */
 export function zipFiles(
   files: Array<{ name: string; data: Buffer }>,
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const archive = archiver('zip', { zlib: { level: 9 } });
+    const archive = archiver('zip', { zlib: { level: 1 } });
     const chunks: Buffer[] = [];
     const sink = new PassThrough();
 

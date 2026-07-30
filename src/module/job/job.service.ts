@@ -7,10 +7,12 @@ import {
 } from '@nestjs/common';
 import { IPropertyService } from '../property/property.interface';
 import { Batch, Job, OTAProvider, PostingType } from '@prisma/client';
-import * as archiver from 'archiver';
 import { PassThrough, Writable } from 'stream';
 import * as XLSX from 'xlsx';
-import { streamZipEntries } from '../../common/utils/zip-and-filename.util';
+import {
+  streamZipEntries,
+  zipFiles,
+} from '../../common/utils/zip-and-filename.util';
 import { IRecurringJobService } from '../recurring-job/recurring-job.interface';
 import { IScheduledJobService } from '../scraper/scheduled-job.interface';
 import { IServerService } from '../server/server.interface';
@@ -1011,7 +1013,7 @@ export class JobService implements IJobService {
         );
       }
 
-      const zipBuffer = await this.zipFiles(csvEntries);
+      const zipBuffer = await zipFiles(csvEntries);
       const fileName = `${this.buildMasterZipBaseName(jobs)}.zip`;
 
       return { buffer: zipBuffer, fileName };
@@ -1750,34 +1752,6 @@ export class JobService implements IJobService {
     }
     used.add(candidate);
     return candidate;
-  }
-
-  private zipFiles(
-    files: Array<{ name: string; data: Buffer }>,
-  ): Promise<Buffer> {
-    return new Promise((resolve, reject) => {
-      const archive = archiver('zip', { zlib: { level: 9 } });
-      const chunks: Buffer[] = [];
-      const sink = new PassThrough();
-
-      sink.on('data', (chunk: Buffer) => chunks.push(chunk));
-      sink.on('end', () => resolve(Buffer.concat(chunks)));
-      sink.on('error', reject);
-      archive.on('error', reject);
-      archive.on('warning', (err: any) => {
-        if (err?.code === 'ENOENT') {
-          this.logger.warn(`archiver warning: ${err.message}`);
-        } else {
-          reject(err);
-        }
-      });
-
-      archive.pipe(sink);
-      for (const file of files) {
-        archive.append(file.data, { name: file.name });
-      }
-      void archive.finalize();
-    });
   }
 
   async getDbEntriesByJobId(jobId: string): Promise<any[]> {
