@@ -157,8 +157,8 @@ export class JobService implements IJobService {
           posting_type: PostingType.OTA,
           ota_provider: otaProvider,
           billing_type: billingType,
-          start_date: item.start_date,
-          end_date: item.end_date,
+          start_date: this.toJobDateFormat(item.start_date),
+          end_date: this.toJobDateFormat(item.end_date),
           execution_type: 'scheduled',
           remaining_direct_billed: 0,
           total_collectable: 0,
@@ -210,6 +210,25 @@ export class JobService implements IJobService {
       default:
         throw new Error(`Unsupported ota_type: ${otaType}`);
     }
+  }
+
+  private toJobDateFormat(value?: string): string | undefined {
+    const raw = (value ?? '').trim();
+    if (!raw) return undefined;
+  
+    const iso = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (iso) {
+      const [, y, m, d] = iso;
+      return `${m.padStart(2, '0')}/${d.padStart(2, '0')}/${y}`;
+    }
+  
+    const mdy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (mdy) {
+      const [, m, d, y] = mdy;
+      return `${m.padStart(2, '0')}/${d.padStart(2, '0')}/${y}`;
+    }
+  
+    return raw;
   }
 
   private mapBillingTypeFromOtaType(otaType: string): string {
