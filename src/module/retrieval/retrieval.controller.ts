@@ -29,9 +29,12 @@ import { ValidateBody } from 'src/common/decorators/validate.decorator';
 import { ExcelFileInterceptorOptions } from '../../common/interceptors/excel-file.interceptor';
 import { ResponseHandler } from '../../common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { ExternalJwtGuard } from '../qa-panel/guards/external-jwt.guard';
 import {
   BulkArchiveParentRetrievalsDto,
   BulkArchiveParentRetrievalsResponseDto,
+  BulkCreateRetrievalsFromDbmsDto,
+  BulkCreateRetrievalsFromDbmsResultDto,
   BulkDeleteParentRetrievalsDto,
   BulkDeleteParentRetrievalsResponseDto,
   BulkRetrievalBatchUpdateDto,
@@ -120,6 +123,38 @@ export class RetrievalController {
           },
         };
       },
+      this.logger,
+    );
+  }
+
+  @Post('/bulk-create-from-dbms')
+  @UseGuards(ExternalJwtGuard)
+  @ApiOperation({
+    summary: 'Internal: bulk create retrievals synced from DBMS Excel import',
+    description:
+      'Receiver for DBMS→scraper sync. Creates parent retrieval and per-hotel retrievals from grouped Excel rows. Per-row reporting: one failing row does not abort the batch.',
+  })
+  @ApiBody({ type: BulkCreateRetrievalsFromDbmsDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Batch processed; see per-row counts and errors',
+    type: BulkCreateRetrievalsFromDbmsResultDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Missing or invalid communication token',
+  })
+  async bulkCreateFromDbms(
+    @Body() dto: BulkCreateRetrievalsFromDbmsDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => ({
+        statusCode: 200,
+        message: 'Retrieval bulk create processed',
+        data: await this.retrievalService.bulkCreateFromDbms(dto),
+      }),
       this.logger,
     );
   }

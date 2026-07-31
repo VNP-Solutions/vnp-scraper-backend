@@ -5,6 +5,8 @@ import {
   RetrievalItem,
 } from '@prisma/client';
 import {
+  BulkCreateRetrievalsFromDbmsDto,
+  BulkCreateRetrievalsFromDbmsResultDto,
   CreateBatchDto,
   CreateParentRetrievalDto,
   CreateRetrievalDto,
@@ -25,6 +27,9 @@ export interface IRetrievalService {
     failedHotelIds: string[];
     retrievalItemsCount: number;
   }>;
+  bulkCreateFromDbms(
+    dto: BulkCreateRetrievalsFromDbmsDto,
+  ): Promise<BulkCreateRetrievalsFromDbmsResultDto>;
   exportRetrievalItemsToExcel(parentRetrievalId: string): Promise<Buffer>;
   buildRetrievalExportEntries(
     retrievalIds: string[],
