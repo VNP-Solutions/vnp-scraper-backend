@@ -1,5 +1,6 @@
 import { Logger, Module, forwardRef } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
 import { DatabaseService } from '../database/database.service';
 import { PropertyCredentialsModule } from '../property-credentials/property-credentials.module';
 import { PropertyModule } from '../property/property.module';
@@ -12,6 +13,7 @@ import { RetrievalService } from './retrieval.service';
 @Module({
   imports: [
     ConfigModule,
+    JwtModule.register({}),
     PropertyModule,
     PropertyCredentialsModule,
     forwardRef(() => RecurringJobModule),
