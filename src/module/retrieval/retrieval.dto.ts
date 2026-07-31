@@ -373,6 +373,74 @@ export class BulkDeleteParentRetrievalsDto {
   parent_retrieval_ids: string[];
 }
 
+export class BulkCreateRetrievalsFromDbmsGroupDto {
+  @ApiProperty({ example: '12345' })
+  hotel_id: string;
+
+  @ApiProperty({
+    type: 'array',
+    items: { type: 'object', additionalProperties: true },
+    description: 'Raw Excel rows for this hotel group',
+  })
+  rows: Record<string, unknown>[];
+}
+
+export class BulkCreateRetrievalsFromDbmsDto {
+  @ApiProperty({
+    example: 'retrieval-import.xlsx',
+    description: 'Parent retrieval name (typically the uploaded filename)',
+  })
+  parent_retrieval_name: string;
+
+  @ApiProperty({ type: [BulkCreateRetrievalsFromDbmsGroupDto] })
+  groups: BulkCreateRetrievalsFromDbmsGroupDto[];
+}
+
+export class BulkCreateRetrievalsFromDbmsErrorDto {
+  @ApiProperty({ example: '12345' })
+  hotel_id: string;
+
+  @ApiProperty({ required: false, example: 'Hotel Grandeur' })
+  name?: string;
+
+  @ApiProperty({ example: 'Property not found' })
+  error: string;
+}
+
+export class BulkCreateRetrievalsFromDbmsCreatedDto {
+  @ApiProperty({ example: '12345' })
+  hotel_id: string;
+
+  @ApiProperty({ example: 'retrieval-id-1' })
+  retrieval_id: string;
+}
+
+export class BulkCreateRetrievalsFromDbmsResultDto {
+  @ApiProperty({ example: 10 })
+  totalCount: number;
+
+  @ApiProperty({ example: 8 })
+  successCount: number;
+
+  @ApiProperty({ example: 2 })
+  failedCount: number;
+
+  @ApiProperty({ example: 25 })
+  retrievalItemsCount: number;
+
+  @ApiProperty({ example: 'parent-retrieval-id-1' })
+  parent_retrieval_id: string;
+
+  @ApiProperty({ type: [BulkCreateRetrievalsFromDbmsErrorDto] })
+  errors: BulkCreateRetrievalsFromDbmsErrorDto[];
+
+  @ApiProperty({ type: [String], example: ['12345', '67890'] })
+  failed_hotel_ids: string[];
+
+  @ApiProperty({ type: [BulkCreateRetrievalsFromDbmsCreatedDto] })
+  created: BulkCreateRetrievalsFromDbmsCreatedDto[];
+}
+
 export class BulkDeleteParentRetrievalsResponseDto {
   @ApiProperty({
     description: 'Number of parent retrievals deleted',
