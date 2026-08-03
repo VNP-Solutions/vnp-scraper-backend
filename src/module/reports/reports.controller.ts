@@ -239,7 +239,7 @@ export class ReportsController {
       '  compatibility but is silently ignored — this endpoint no longer ' +
       '  queries the Retrieval collection.)\n' +
       '- `run_within` → `updatedAt` range\n' +
-      '- `job_statuses`, `frequency_types`, `card_periods`, `batch_ids`\n' +
+      '- `job_statuses`, `frequency_types`, `card_periods`, `batch_ids`, `priority`\n' +
       '- `job_dates` → Job `start_date` / `end_date` overlap\n' +
       '- `include_archived`\n\n' +
       '`search_mode` (`property` / `portfolio`) is accepted for backwards ' +
@@ -254,8 +254,7 @@ export class ReportsController {
     examples: {
       // ───────────────────── No-mode / minimal payloads ────────────────────
       a00_empty: {
-        summary:
-          '00) Empty body {} — every job the user can see',
+        summary: '00) Empty body {} — every job the user can see',
         description:
           'All filter fields are optional. With an empty body the endpoint ' +
           'returns every job the caller has permission to view (admin → ' +
@@ -264,8 +263,7 @@ export class ReportsController {
         value: {},
       },
       a00b_search_only: {
-        summary:
-          '00b) Just a search term — no search_mode, no portfolio',
+        summary: '00b) Just a search term — no search_mode, no portfolio',
         description:
           'Demonstrates that fields are now independent. No `search_mode` ' +
           'needed; the endpoint searches Property.name (and numeric ' +
@@ -274,8 +272,7 @@ export class ReportsController {
         value: { search_term: 'Moxy' },
       },
       a00c_portfolio_only: {
-        summary:
-          '00c) Just a portfolio_id — no search_mode required',
+        summary: '00c) Just a portfolio_id — no search_mode required',
         description:
           'Sending `portfolio_id` alone scopes the search to that ' +
           'portfolio. `search_mode` is no longer required (or used) for ' +
@@ -283,8 +280,7 @@ export class ReportsController {
         value: { portfolio_id: '65f0a3c4e2b7a1d2c3e4f5a6' },
       },
       a00d_portfolio_plus_search: {
-        summary:
-          '00d) portfolio_id + search_term combined (independent)',
+        summary: '00d) portfolio_id + search_term combined (independent)',
         description:
           'Both fields are honoured independently — the term is matched ' +
           'against properties under the portfolio.',
@@ -349,7 +345,8 @@ export class ReportsController {
         },
       },
       a06_property_explicit_ids: {
-        summary: '06) Property mode — pass property_ids directly (no search box)',
+        summary:
+          '06) Property mode — pass property_ids directly (no search box)',
         description:
           'When the user has already selected one or more properties on the UI, send their ObjectIds in property_ids.',
         value: {
@@ -376,7 +373,8 @@ export class ReportsController {
         },
       },
       b02_portfolio_subset_of_properties: {
-        summary: '08) Portfolio mode — only specific properties under a portfolio',
+        summary:
+          '08) Portfolio mode — only specific properties under a portfolio',
         description:
           'portfolio_id selects the parent, property_ids narrows to the chosen subset.',
         value: {
@@ -605,8 +603,8 @@ export class ReportsController {
           'value space, so the API drops the `tags` clause from the Prisma ' +
           'query entirely — the result is exactly the same as omitting ' +
           '`card_periods` (or sending it as an empty array `[]`). ' +
-          'In particular, rows that don\'t have an `over_160` tag at all ' +
-          '(e.g. jobs that haven\'t been evaluated yet) are also included.',
+          "In particular, rows that don't have an `over_160` tag at all " +
+          "(e.g. jobs that haven't been evaluated yet) are also included.",
         value: {
           search_mode: 'property',
           card_periods: ['Over160', 'Under160'],
@@ -638,10 +636,7 @@ export class ReportsController {
           'Omit batch_ids (or pass an empty array) to search across all batches.',
         value: {
           search_mode: 'property',
-          batch_ids: [
-            '65f0a3c4e2b7a1d2c3e4f5b1',
-            '65f0a3c4e2b7a1d2c3e4f5b2',
-          ],
+          batch_ids: ['65f0a3c4e2b7a1d2c3e4f5b1', '65f0a3c4e2b7a1d2c3e4f5b2'],
           page: 1,
           limit: 10,
         },
@@ -676,7 +671,8 @@ export class ReportsController {
 
       // ─────────────────────────── Everything together ─────────────────────
       z01_all_filters_combined: {
-        summary: '32) All filters together — full Parser Global Reports payload',
+        summary:
+          '32) All filters together — full Parser Global Reports payload',
         description:
           'Showcases every filter the Parser Global Reports screen exposes in a single request body.',
         value: {
@@ -804,7 +800,8 @@ export class ReportsController {
         errors: [
           {
             field: 'portfolio_id',
-            message: 'Invalid ObjectId format. Must be a 24-character hex string.',
+            message:
+              'Invalid ObjectId format. Must be a 24-character hex string.',
           },
         ],
       },
@@ -872,7 +869,8 @@ export class ReportsController {
     summary: 'Get report statistics',
     description:
       'Returns job counts by status (`currentCounts`) for the same filter set ' +
-      'as `POST /reports/global`. Accepts the identical request body — all ' +
+      'as `POST /reports/global`, plus a `highPriority` count for jobs with ' +
+      '`priority = 1`. Accepts the identical request body — all ' +
       'fields are optional and independent. Non-admin users are automatically ' +
       'scoped to their `UserFeatureAccessPermission` entries.',
   })
@@ -883,7 +881,11 @@ export class ReportsController {
     type: ReportsStatisticsResponseDto,
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async getStatistics(@Req() request: any, @Body() body: any, @Res() response: Response) {
+  async getStatistics(
+    @Req() request: any,
+    @Body() body: any,
+    @Res() response: Response,
+  ) {
     return ResponseHandler.handler(
       response,
       async () => {
@@ -1033,7 +1035,8 @@ export class ReportsController {
         errors: [
           {
             field: 'portfolio_id',
-            message: 'Invalid ObjectId format. Must be a 24-character hex string.',
+            message:
+              'Invalid ObjectId format. Must be a 24-character hex string.',
           },
         ],
       },
@@ -1131,7 +1134,8 @@ export class ReportsController {
     examples: {
       single_job: {
         summary: '01) Single job',
-        description: 'Smallest valid payload — a single job exported as a one-entry ZIP.',
+        description:
+          'Smallest valid payload — a single job exported as a one-entry ZIP.',
         value: {
           job_ids: ['65f0a3c4e2b7a1d2c3e4f5a6'],
         },
@@ -1244,8 +1248,12 @@ export class ReportsController {
       // emailed when ready. Small exports stay on the synchronous path
       // below so the frontend can offer instant downloads for small
       // selections.
-      const went =
-        await this.tryEnqueueAsyncExport(request, body, 'master', response);
+      const went = await this.tryEnqueueAsyncExport(
+        request,
+        body,
+        'master',
+        response,
+      );
       if (went) return;
 
       const { buffer, fileName } = await this.reportsService.exportMaster(body);
@@ -1314,7 +1322,7 @@ export class ReportsController {
       '  matching the spec for the per-job CSV.\n\n' +
       '### Row ordering\n' +
       'Rows are written in the order the jobs are returned by the ' +
-      'database (matching `/reports/global/ids`\'s `sortOrder`), with all ' +
+      "database (matching `/reports/global/ids`'s `sortOrder`), with all " +
       'items of one job emitted before moving on to the next job. Jobs ' +
       'with no items are silently skipped.\n\n' +
       '### Filename\n' +
@@ -1503,7 +1511,7 @@ export class ReportsController {
     summary: 'Download for Dashboard — single XLSX (simplified column spec)',
     description:
       'Accepts an array of `job_ids` and returns ONE XLSX file containing ' +
-      'every selected job\'s items rendered with the simplified ' +
+      "every selected job's items rendered with the simplified " +
       '**Dashboard** column spec — a different (and shorter) layout from ' +
       'the one `POST /reports/export-consolidated` produces.\n\n' +
       'Use this when the user clicks **"Download for Dashboard"** on the ' +
@@ -1711,8 +1719,7 @@ export class ReportsController {
       response.status(status).json({
         statusCode: status,
         message:
-          error?.message ??
-          'Unexpected error while exporting dashboard report',
+          error?.message ?? 'Unexpected error while exporting dashboard report',
         data: null,
       });
     }
