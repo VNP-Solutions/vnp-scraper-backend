@@ -1,7 +1,22 @@
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { Property } from '@prisma/client';
 import { EncryptionUtil } from 'src/common/utils/encryption.util';
-import { CreatePropertyDto, SyncBulkDeletePropertyDto, SyncBulkDeletePropertyResultDto, SyncBulkUpsertPropertyItemDto, SyncBulkUpsertPropertyResultDto, SyncDeleteDto, SyncUpsertPropertyDto, UpdatePropertyDto } from './property.dto';
+import {
+  CreatePropertyDto,
+  SyncBulkDeletePropertyDto,
+  SyncBulkDeletePropertyResultDto,
+  SyncBulkUpsertPropertyItemDto,
+  SyncBulkUpsertPropertyResultDto,
+  SyncDeleteDto,
+  SyncUpsertPropertyDto,
+  UpdatePropertyDto,
+} from './property.dto';
 import type { RevealOtaCredentialsBody } from './property.validation';
 import {
   IPropertyRepository,
@@ -54,7 +69,9 @@ export class PropertyService implements IPropertyService {
       if (!property) {
         throw new Error(`Property with ID ${id} not found`);
       }
-      return this.processProperty(property);
+      const processed = this.processProperty(property);
+      this.decryptOtaCredentialPasswords(processed.credentials);
+      return processed;
     } catch (error) {
       this.logger.error(
         `Error finding property: ${error.message}`,
@@ -64,72 +81,92 @@ export class PropertyService implements IPropertyService {
     }
   }
 
-  async syncCreate(data: CreatePropertyDto): Promise<{ status: string; id?: string }> {
+  async syncCreate(
+    data: CreatePropertyDto,
+  ): Promise<{ status: string; id?: string }> {
     // duplicate check (unchanged)
     if (data.expedia_id || data.booking_id || data.agoda_id) {
       const existing = await this.repository.findByOtaIds({
         expedia_id: data.expedia_id ?? null,
         booking_id: data.booking_id ?? null,
-        agoda_id:   data.agoda_id   ?? null,
-      })
+        agoda_id: data.agoda_id ?? null,
+      });
       if (existing) {
-        this.logger.log(`[sync] property already exists by OTA id: ${existing.id}`)
-        return { status: 'already_exists', id: existing.id }
+        this.logger.log(
+          `[sync] property already exists by OTA id: ${existing.id}`,
+        );
+        return { status: 'already_exists', id: existing.id };
       }
     } else {
-      const existing = await this.repository.findByName(data.name)
+      const existing = await this.repository.findByName(data.name);
       if (existing) {
-        this.logger.log(`[sync] property already exists by name: ${data.name}`)
-        return { status: 'already_exists', id: existing.id }
+        this.logger.log(`[sync] property already exists by name: ${data.name}`);
+        return { status: 'already_exists', id: existing.id };
       }
     }
-  
-    let portfolioId: string | undefined
+
+    let portfolioId: string | undefined;
     if (data.portfolio_name) {
-      const existingPf = await this.repository.findPortfolioByName(data.portfolio_name)
+      const existingPf = await this.repository.findPortfolioByName(
+        data.portfolio_name,
+      );
       portfolioId = existingPf
         ? existingPf.id
-        : (await this.repository.createPortfolio(data.portfolio_name)).id
-      this.logger.log(`[sync] portfolio "${data.portfolio_name}" -> ${portfolioId}`)
+        : (await this.repository.createPortfolio(data.portfolio_name)).id;
+      this.logger.log(
+        `[sync] portfolio "${data.portfolio_name}" -> ${portfolioId}`,
+      );
     }
-  
-    let subPortfolioId: string | undefined
+
+    let subPortfolioId: string | undefined;
     if (data.sub_portfolio_name && portfolioId) {
-      const existingSub = await this.repository.findSubPortfolioByNameAndPortfolio(
-        data.sub_portfolio_name,
-        portfolioId,
-      )
+      const existingSub =
+        await this.repository.findSubPortfolioByNameAndPortfolio(
+          data.sub_portfolio_name,
+          portfolioId,
+        );
       subPortfolioId = existingSub
         ? existingSub.id
-        : (await this.repository.createSubPortfolio(data.sub_portfolio_name, portfolioId)).id
+        : (
+            await this.repository.createSubPortfolio(
+              data.sub_portfolio_name,
+              portfolioId,
+            )
+          ).id;
     }
-  
+
     const created = await this.createProperty({
       ...data,
-      portfolio_id: portfolioId,        // scraper id, not DBMS id
+      portfolio_id: portfolioId, // scraper id, not DBMS id
       sub_portfolio_id: subPortfolioId,
-    })
-    return { status: 'created', id: created.id }
+    });
+    return { status: 'created', id: created.id };
   }
 
-  async syncDelete(dto: SyncDeleteDto): Promise<{ status: string; id?: string }> {
-    if (dto.expedia_id == null && dto.booking_id == null && dto.agoda_id == null) {
-      return { status: 'no_ota_ids' }
+  async syncDelete(
+    dto: SyncDeleteDto,
+  ): Promise<{ status: string; id?: string }> {
+    if (
+      dto.expedia_id == null &&
+      dto.booking_id == null &&
+      dto.agoda_id == null
+    ) {
+      return { status: 'no_ota_ids' };
     }
     const existing = await this.repository.findByOtaIds({
       expedia_id: dto.expedia_id ?? null,
       booking_id: dto.booking_id ?? null,
-      agoda_id:   dto.agoda_id   ?? null,
-    })
+      agoda_id: dto.agoda_id ?? null,
+    });
     if (!existing) {
-      this.logger.log(`[sync] delete: property not found for OTA ids`)
-      return { status: 'not_found' }
+      this.logger.log(`[sync] delete: property not found for OTA ids`);
+      return { status: 'not_found' };
     }
-    await this.repository.delete(existing.id)
-    this.logger.log(`[sync] property deleted: ${existing.id}`)
-    return { status: 'deleted', id: existing.id }
+    await this.repository.delete(existing.id);
+    this.logger.log(`[sync] property deleted: ${existing.id}`);
+    return { status: 'deleted', id: existing.id };
   }
-  
+
   async updateProperty(id: string, data: UpdatePropertyDto): Promise<Property> {
     try {
       const property = await this.repository.update(id, data);
@@ -221,6 +258,35 @@ export class PropertyService implements IPropertyService {
     return property;
   }
 
+  private decryptOtaCredentialPasswords(
+    credentials: Record<string, unknown> | null | undefined,
+  ): void {
+    if (!credentials || typeof credentials !== 'object') {
+      return;
+    }
+
+    const passwordFields = [
+      'expediaPassword',
+      'agodaPassword',
+      'bookingPassword',
+    ];
+    for (const field of passwordFields) {
+      const encrypted = credentials[field];
+      if (encrypted == null || String(encrypted).trim() === '') {
+        continue;
+      }
+      try {
+        credentials[field] = this.encryptionUtil.decryptPassword(
+          String(encrypted),
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Failed to decrypt ${field} for property credentials: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+  }
+
   async findPortfolioAndSubPortfolioForDropdown(user: any): Promise<any> {
     return this.repository.findPortfolioAndSubPortfolioForDropdown(user);
   }
@@ -296,9 +362,7 @@ export class PropertyService implements IPropertyService {
     }
   }
 
-  async importExpediaCredentialsFromExcel(
-    file: Express.Multer.File,
-  ): Promise<{
+  async importExpediaCredentialsFromExcel(file: Express.Multer.File): Promise<{
     updated: number;
     propertyNotFound: number;
     rowsSkippedInvalid: number;
@@ -322,9 +386,7 @@ export class PropertyService implements IPropertyService {
     }
   }
 
-  async updateOtaCredentials(
-    body: UpdateOtaCredentialsBody,
-  ): Promise<{
+  async updateOtaCredentials(body: UpdateOtaCredentialsBody): Promise<{
     updated: number;
     propertyNotFound: boolean;
     failures: Array<{ reason: string; property_id?: string }>;
@@ -373,12 +435,16 @@ export class PropertyService implements IPropertyService {
   }
 
   async syncBulkCreate(items: CreatePropertyDto[]): Promise<{
-    created: number; alreadyExists: number; failed: number;
+    created: number;
+    alreadyExists: number;
+    failed: number;
     results: Array<{ name: string; status: string; id?: string }>;
   }> {
-    let created = 0, alreadyExists = 0, failed = 0;
+    let created = 0,
+      alreadyExists = 0,
+      failed = 0;
     const results: Array<{ name: string; status: string; id?: string }> = [];
-  
+
     for (const item of items) {
       try {
         const r = await this.syncCreate(item);
@@ -387,12 +453,16 @@ export class PropertyService implements IPropertyService {
         results.push({ name: item.name, status: r.status, id: r.id });
       } catch (e: any) {
         failed++;
-        this.logger.error(`[sync] bulk create failed for "${item.name}": ${e?.message ?? e}`);
+        this.logger.error(
+          `[sync] bulk create failed for "${item.name}": ${e?.message ?? e}`,
+        );
         results.push({ name: item.name, status: 'failed' });
       }
     }
-  
-    this.logger.log(`[sync] bulk create done: created=${created}, exists=${alreadyExists}, failed=${failed}`);
+
+    this.logger.log(
+      `[sync] bulk create done: created=${created}, exists=${alreadyExists}, failed=${failed}`,
+    );
     return { created, alreadyExists, failed, results };
   }
 
@@ -425,7 +495,7 @@ export class PropertyService implements IPropertyService {
     if (!Array.isArray(items) || !items.length) {
       throw new BadRequestException('No items provided');
     }
-  
+
     const result: SyncBulkUpsertPropertyResultDto = {
       totalRows: items.length,
       createdCount: 0,
@@ -434,12 +504,12 @@ export class PropertyService implements IPropertyService {
       errors: [],
       successfulUpserts: [],
     };
-  
+
     for (const item of items) {
       const rowNumber = item.row;
       const parentId =
         typeof item.parent_id === 'string' ? item.parent_id.trim() : '';
-  
+
       if (!Number.isInteger(rowNumber) || rowNumber < 1) {
         result.errors.push({
           row: Number.isInteger(rowNumber) ? rowNumber : 0,
@@ -449,7 +519,7 @@ export class PropertyService implements IPropertyService {
         result.failureCount++;
         continue;
       }
-  
+
       if (!parentId) {
         result.errors.push({
           row: rowNumber,
@@ -459,40 +529,42 @@ export class PropertyService implements IPropertyService {
         result.failureCount++;
         continue;
       }
-  
+
       try {
         const name = typeof item.name === 'string' ? item.name.trim() : '';
         if (!name) throw new Error('Property name is required');
-  
+
         const portfolioParentId =
           typeof item.portfolio_parent_id === 'string'
             ? item.portfolio_parent_id.trim()
             : '';
-        if (!portfolioParentId) throw new Error('Portfolio Parent ID is required');
-  
+        if (!portfolioParentId)
+          throw new Error('Portfolio Parent ID is required');
+
         const action = await this.syncUpsert(parentId, {
           ...item,
           name,
           portfolio_parent_id: portfolioParentId,
         });
-  
+
         if (action === 'created') result.createdCount++;
         else result.updatedCount++;
-  
+
         result.successfulUpserts.push({ parent_id: parentId, action });
       } catch (error) {
         result.errors.push({
           row: rowNumber,
           parent_id: parentId,
-          error: error instanceof Error ? error.message : 'Unknown error occurred',
+          error:
+            error instanceof Error ? error.message : 'Unknown error occurred',
         });
         result.failureCount++;
       }
     }
-  
+
     return result;
   }
-  
+
   private async syncUpsert(
     parentId: string,
     item: SyncBulkUpsertPropertyItemDto,
@@ -505,9 +577,9 @@ export class PropertyService implements IPropertyService {
         `Portfolio not found with parent_id: ${item.portfolio_parent_id}`,
       );
     }
-  
+
     const existing = await this.repository.findByParentId(parentId);
-  
+
     const propertyData: any = {
       name: item.name,
       parent_id: parentId,
@@ -516,10 +588,10 @@ export class PropertyService implements IPropertyService {
       booking_id: item.booking_id,
       agoda_id: item.agoda_id,
     };
-  
+
     let propertyId: string;
     let action: 'created' | 'updated';
-  
+
     if (existing) {
       if (item.name !== existing.name) {
         const clash = await this.repository.findByName(item.name);
@@ -538,7 +610,7 @@ export class PropertyService implements IPropertyService {
       propertyId = created.id;
       action = 'created';
     }
-  
+
     await this.repository.updatePropertyCredentials(propertyId, {
       expediaUsername: item.expedia_username,
       expediaPassword: item.expedia_password,
@@ -547,7 +619,7 @@ export class PropertyService implements IPropertyService {
       bookingUsername: item.booking_username,
       bookingPassword: item.booking_password,
     });
-  
+
     return action;
   }
 
@@ -580,7 +652,7 @@ export class PropertyService implements IPropertyService {
     if (!items.length) {
       throw new BadRequestException('No items provided');
     }
-  
+
     const result: SyncBulkDeletePropertyResultDto = {
       totalCount: items.length,
       deletedCount: 0,
@@ -588,17 +660,20 @@ export class PropertyService implements IPropertyService {
       errors: [],
       successfulDeletes: [],
     };
-  
+
     for (const item of items) {
       const parentId =
         typeof item.parent_id === 'string' ? item.parent_id.trim() : '';
-  
+
       if (!parentId) {
-        result.errors.push({ parent_id: 'Unknown', error: 'Parent ID is required' });
+        result.errors.push({
+          parent_id: 'Unknown',
+          error: 'Parent ID is required',
+        });
         result.failureCount++;
         continue;
       }
-  
+
       try {
         const existing = await this.repository.findByParentId(parentId);
         if (!existing) {
@@ -606,18 +681,19 @@ export class PropertyService implements IPropertyService {
         }
         const deleted = await this.repository.delete(existing.id);
         if (!deleted) throw new Error('Failed to delete property');
-  
+
         result.deletedCount++;
         result.successfulDeletes.push({ parent_id: parentId });
       } catch (error) {
         result.errors.push({
           parent_id: parentId,
-          error: error instanceof Error ? error.message : 'Unknown error occurred',
+          error:
+            error instanceof Error ? error.message : 'Unknown error occurred',
         });
         result.failureCount++;
       }
     }
-  
+
     return result;
   }
 }

@@ -362,6 +362,7 @@ export class JobRepository implements IJobRepository {
         portfolio_id,
         property_id,
         ota_provider,
+        priority,
         ...filters
       } = query || {};
       let allFilters: any = { ...filters };
@@ -509,6 +510,11 @@ export class JobRepository implements IJobRepository {
       // Filter by ota_provider
       if (ota_provider) {
         allFilters.ota_provider = ota_provider.toString();
+      }
+
+      // Filter by priority (0 = Normal, 1 = High)
+      if (priority !== undefined && priority !== null && priority !== '') {
+        allFilters.priority = parseInt(priority.toString(), 10);
       }
 
       const skip = page

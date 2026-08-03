@@ -21,7 +21,8 @@
     "decrypt-password": "ts-node scripts/decrypt-password.ts",
     "migrate:add-is-archived": "ts-node migrations/add-is-archived-field.ts",
     "backup:full": "ts-node scripts/backup-full-ejson.ts",
-    "backup:restore": "ts-node scripts/dump-and-restore-backup.ts"
+    "backup:restore": "ts-node scripts/dump-and-restore-backup.ts",
+    "export:property-job-date-ranges": "ts-node scripts/export-property-job-date-ranges.ts"
   },
   "dependencies": {
     "@aws-sdk/client-lambda": "^3.1043.0",

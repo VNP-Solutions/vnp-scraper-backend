@@ -267,7 +267,8 @@ export class JobController {
   @ApiQuery({
     name: 'schedule_start_date',
     required: false,
-    description: 'Start date for filtering by schedule_date (YYYY-MM-DD format)',
+    description:
+      'Start date for filtering by schedule_date (YYYY-MM-DD format)',
   })
   @ApiQuery({
     name: 'schedule_end_date',
@@ -289,6 +290,12 @@ export class JobController {
     required: false,
     enum: ['Expedia', 'Booking', 'Agoda'],
     description: 'Filter jobs by OTA provider',
+  })
+  @ApiQuery({
+    name: 'priority',
+    required: false,
+    type: Number,
+    description: 'Filter jobs by priority (0 = Normal, 1 = High)',
   })
   @ApiQuery({
     name: 'recurring_id',
@@ -1232,8 +1239,7 @@ export class JobController {
           const status = error?.status || 500;
           return {
             statusCode: status,
-            message:
-              error?.message || 'Failed to export single job master CSV',
+            message: error?.message || 'Failed to export single job master CSV',
             data: null,
           };
         },
@@ -1274,7 +1280,11 @@ export class JobController {
     schema: {
       type: 'object',
       properties: {
-        platform: { type: 'string', example: 'expedia', description: 'Platform name to send to Lambda' },
+        platform: {
+          type: 'string',
+          example: 'expedia',
+          description: 'Platform name to send to Lambda',
+        },
       },
       required: ['platform'],
     },
@@ -1301,7 +1311,10 @@ export class JobController {
         message: `Lambda triggered successfully for platform: ${body.platform}`,
       });
     } catch (error: any) {
-      this.logger.error(`Error triggering Lambda: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error triggering Lambda: ${error.message}`,
+        error.stack,
+      );
       return response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
         success: false,
         message: `Failed to trigger Lambda: ${error.message}`,
