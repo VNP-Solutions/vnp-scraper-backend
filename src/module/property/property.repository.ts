@@ -64,15 +64,10 @@ export class PropertyRepository implements IPropertyRepository {
       propertyData.phone_number_slot_id = data.phone_number_slot_id;
     }
 
-    try {
-      const property = await this.db.property.create({
-        data: propertyData,
-      });
-      return property;
-    } catch (error) {
-      this.logger.error(error);
-      return null;
-    }
+    const property = await this.db.property.create({
+      data: propertyData,
+    });
+    return property;
   }
 
   async findAll(

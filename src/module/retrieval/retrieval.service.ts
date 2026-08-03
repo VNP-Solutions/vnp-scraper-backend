@@ -9,6 +9,7 @@ import {
   OTAProvider,
   ParentRetrieval,
   PostingType,
+  Property,
   Retrieval,
   RetrievalItem,
 } from '@prisma/client';
@@ -74,17 +75,140 @@ export class RetrievalService implements IRetrievalService {
   private convertToOTAProvider(value: string): OTAProvider {
     if (!value) return OTAProvider.Expedia;
 
-    const normalizedValue = value.trim();
+    const normalizedValue = value.trim().toLowerCase();
     switch (normalizedValue) {
-      case 'Expedia':
+      case 'expedia':
         return OTAProvider.Expedia;
-      case 'Booking':
+      case 'booking':
         return OTAProvider.Booking;
-      case 'Agoda':
+      case 'agoda':
         return OTAProvider.Agoda;
       default:
         return OTAProvider.Expedia;
     }
+  }
+
+  private resolveOtaProviderFromRow(firstRow: Record<string, unknown>): OTAProvider {
+    const rawProvider =
+      (
+        firstRow['OTA Provider'] ||
+        firstRow['Provider'] ||
+        firstRow['OTA'] ||
+        ''
+      )?.toString() || '';
+
+    if (rawProvider.trim() !== '') {
+      return this.convertToOTAProvider(rawProvider);
+    }
+
+    if (
+      firstRow['Agoda ID'] ||
+      firstRow['Agoda Username'] ||
+      firstRow['Agoda Password']
+    ) {
+      return OTAProvider.Agoda;
+    }
+
+    return OTAProvider.Expedia;
+  }
+
+  private buildOtaIdFields(
+    otaProvider: OTAProvider,
+    hotelIdNum: number,
+  ): Record<string, string | number> {
+    switch (otaProvider) {
+      case OTAProvider.Agoda:
+        return { agoda_id: hotelIdNum, agoda_status: 'Active' };
+      case OTAProvider.Booking:
+        return { booking_id: hotelIdNum, booking_status: 'Active' };
+      default:
+        return { expedia_id: hotelIdNum, expedia_status: 'Active' };
+    }
+  }
+
+  private async ensurePropertyHasOtaId(
+    property: Property,
+    otaProvider: OTAProvider,
+    hotelIdNum: number,
+  ): Promise<Property> {
+    const needsAgoda =
+      otaProvider === OTAProvider.Agoda && property.agoda_id == null;
+    const needsExpedia =
+      otaProvider === OTAProvider.Expedia && property.expedia_id == null;
+    const needsBooking =
+      otaProvider === OTAProvider.Booking && property.booking_id == null;
+
+    if (!needsAgoda && !needsExpedia && !needsBooking) {
+      return property;
+    }
+
+    return this.propertyRepository.update(
+      property.id,
+      this.buildOtaIdFields(otaProvider, hotelIdNum),
+    );
+  }
+
+  private async upsertRetrievalPropertyCredentials(
+    property: { id: string },
+    otaProvider: OTAProvider,
+    firstRow: Record<string, unknown>,
+  ): Promise<void> {
+    const username = (firstRow['User Name'] || firstRow['Username'])
+      ?.toString()
+      ?.trim();
+    const password = firstRow['Password']?.toString()?.trim();
+
+    if (!username && !password) {
+      return;
+    }
+
+    const credentialsData: Record<string, string> =
+      otaProvider === OTAProvider.Agoda
+        ? {
+            agodaUsername: username || '',
+            agodaPassword: password || '',
+          }
+        : otaProvider === OTAProvider.Booking
+          ? {
+              bookingUsername: username || '',
+              bookingPassword: password || '',
+            }
+          : {
+              expediaUsername: username || '',
+              expediaPassword: password || '',
+            };
+
+    try {
+      const existingCredentials =
+        await this.propertyCredentialsService.getPropertyCredentialsByPropertyId(
+          property.id,
+        );
+
+      if (existingCredentials) {
+        await this.propertyCredentialsService.updatePropertyCredentials(
+          existingCredentials.id,
+          credentialsData,
+        );
+      } else {
+        await this.propertyCredentialsService.createPropertyCredentials({
+          property_id: property.id,
+          ...credentialsData,
+        });
+      }
+    } catch (credError: any) {
+      this.logger.error(
+        `Failed to upsert credentials for property ${property.id}: ${credError.message}`,
+      );
+    }
+  }
+
+  private isPrismaUniqueConstraintError(error: unknown): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error as { code?: string }).code === 'P2002'
+    );
   }
 
   private parseExcelDate(value: any): Date {
@@ -273,28 +397,31 @@ export class RetrievalService implements IRetrievalService {
           `Processing Hotel ID: ${hotelId}, Rows: ${rows.length}`,
         );
 
-        const rawProvider =
-          (
-            firstRow['OTA Provider'] ||
-            firstRow['Provider'] ||
-            firstRow['OTA'] ||
-            ''
-          )?.toString() || '';
-        const otaProvider =
-          rawProvider && rawProvider.trim() !== ''
-            ? this.convertToOTAProvider(rawProvider)
-            : firstRow['Agoda ID'] ||
-                firstRow['Agoda Username'] ||
-                firstRow['Agoda Password']
-              ? OTAProvider.Agoda
-              : OTAProvider.Expedia;
+        const otaProvider = this.resolveOtaProviderFromRow(firstRow);
 
-        let property =
-          otaProvider === OTAProvider.Agoda
-            ? await this.propertyRepository.findByAgodaId(parseInt(hotelId))
-            : await this.propertyRepository.findByExpediaId(parseInt(hotelId));
+        const hotelIdNum = parseInt(hotelId, 10);
+        if (!Number.isFinite(hotelIdNum)) {
+          throw new BadRequestException(`Invalid Hotel ID: ${hotelId}`);
+        }
 
-        if (!property) {
+        let property = await this.propertyRepository.findByOtaIds({
+          expedia_id: hotelIdNum,
+          booking_id: hotelIdNum,
+          agoda_id: hotelIdNum,
+        });
+
+        if (property) {
+          property = await this.ensurePropertyHasOtaId(
+            property,
+            otaProvider,
+            hotelIdNum,
+          );
+          await this.upsertRetrievalPropertyCredentials(
+            property,
+            otaProvider,
+            firstRow,
+          );
+        } else {
           const portfolioName = firstRow['Portfolio'] || 'Unknown Portfolio';
           let portfolio =
             await this.propertyRepository.findPortfolioByName(portfolioName);
@@ -311,79 +438,37 @@ export class RetrievalService implements IRetrievalService {
               firstRow['Property Name'] ||
               `Hotel ${hotelId}`,
             portfolio_id: portfolio.id,
-            ...(otaProvider === OTAProvider.Agoda
-              ? { agoda_id: parseInt(hotelId), agoda_status: 'Active' }
-              : { expedia_id: parseInt(hotelId), expedia_status: 'Active' }),
+            ...this.buildOtaIdFields(otaProvider, hotelIdNum),
           };
 
-          property = await this.propertyService.createProperty(propertyData);
-          createdPropertiesCount++;
-
-          const username = (firstRow['User Name'] || firstRow['Username'])
-            ?.toString()
-            ?.trim();
-          const password = firstRow['Password']?.toString()?.trim();
-
-          if (username || password) {
-            try {
-              const credentialsData: any = { property_id: property.id };
-              if (otaProvider === OTAProvider.Agoda) {
-                credentialsData.agodaUsername = username || '';
-                credentialsData.agodaPassword = password || '';
-              } else {
-                credentialsData.expediaUsername = username || '';
-                credentialsData.expediaPassword = password || '';
+          try {
+            property = await this.propertyService.createProperty(propertyData);
+            createdPropertiesCount++;
+          } catch (createError) {
+            if (this.isPrismaUniqueConstraintError(createError)) {
+              property = await this.propertyRepository.findByOtaIds({
+                expedia_id: hotelIdNum,
+                booking_id: hotelIdNum,
+                agoda_id: hotelIdNum,
+              });
+              if (!property) {
+                throw createError;
               }
-              await this.propertyCredentialsService.createPropertyCredentials(
-                credentialsData,
+              property = await this.ensurePropertyHasOtaId(
+                property,
+                otaProvider,
+                hotelIdNum,
               );
-            } catch (credError: any) {
-              this.logger.error(
-                `Failed to create credentials for property ${property.id}: ${credError.message}`,
-              );
+            } else {
+              throw createError;
             }
           }
-        } else {
-          const username = (firstRow['User Name'] || firstRow['Username'])
-            ?.toString()
-            ?.trim();
-          const password = firstRow['Password']?.toString()?.trim();
 
-          if (username || password) {
-            try {
-              const existingCredentials =
-                await this.propertyCredentialsService.getPropertyCredentialsByPropertyId(
-                  property.id,
-                );
-
-              const credentialsData: any =
-                otaProvider === OTAProvider.Agoda
-                  ? {
-                      agodaUsername: username || '',
-                      agodaPassword: password || '',
-                    }
-                  : {
-                      expediaUsername: username || '',
-                      expediaPassword: password || '',
-                    };
-
-              if (existingCredentials) {
-                await this.propertyCredentialsService.updatePropertyCredentials(
-                  existingCredentials.id,
-                  credentialsData,
-                );
-              } else {
-                await this.propertyCredentialsService.createPropertyCredentials({
-                  property_id: property.id,
-                  ...credentialsData,
-                });
-              }
-            } catch (credError: any) {
-              this.logger.error(
-                `Failed to update credentials for property ${property.id}: ${credError.message}`,
-              );
-            }
-          }
+          await this.upsertRetrievalPropertyCredentials(
+            property,
+            otaProvider,
+            firstRow,
+          );
         }
 
         const reservationIds = rows

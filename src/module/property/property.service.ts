@@ -203,6 +203,10 @@ export class PropertyService implements IPropertyService {
   }
 
   private processProperty(property: any) {
+    if (property == null) {
+      return property;
+    }
+
     // Decrypt the password when returning property data
     if (property.user_password) {
       try {
