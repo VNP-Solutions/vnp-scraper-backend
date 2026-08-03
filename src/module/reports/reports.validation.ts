@@ -111,6 +111,9 @@ export const searchReportsSchema = z
     // "Include Archived Jobs" toggle.
     include_archived: z.boolean().optional().default(false),
 
+    // Priority filter: 0 = Normal, 1 = High. Omit for no filter.
+    priority: z.union([z.literal(0), z.literal(1)]).optional(),
+
     // Pagination + sorting
     page: z.number().int().min(1).optional().default(1),
     // No upper bound — explicitly removed at the user's request. The
