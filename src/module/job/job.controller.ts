@@ -136,26 +136,30 @@ export class JobController {
     type: BulkCreateJobFromDbmsDto,
     examples: {
       two_jobs: {
-        summary: 'Create two jobs',
+        summary: 'Create jobs with priority',
         value: {
           jobs: [
             {
               parent_id: 'dbms-property-id',
               ota_type: 'expedia',
-              start_date: '2025-07-01',
-              end_date: '2025-10-01',
+              start_date: '2026-08-01',
+              end_date: '2026-08-31',
+              billing_type: 'VCC',
+              priority: 1,
             },
             {
               parent_id: 'dbms-property-id',
               ota_type: 'booking',
-              start_date: '2025-07-01',
-              end_date: '2026-10-01',
+              start_date: '2026-08-01',
+              end_date: '2026-08-31',
+              priority: 0,
             },
             {
               parent_id: 'dbms-property-id',
               ota_type: 'expedia_db',
-              start_date: '2025-07-01',
-              end_date: '2026-10-01',
+              start_date: '2026-08-01',
+              end_date: '2026-08-31',
+              priority: 1,
             },
           ],
         },
