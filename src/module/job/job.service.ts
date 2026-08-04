@@ -353,12 +353,12 @@ export class JobService implements IJobService {
   private async notifyDbmsHistoricalRunDate(job: Job): Promise<void> {
     try {
       const baseUrl = this.configService
-        .get<string>('DBMS_LOOKUP_BASE_URL')
+        .get<string>('DBMS_SERVER_URL')
         ?.trim?.();
 
       if (!baseUrl) {
         this.logger.warn(
-          `DBMS historical-run-date skipped for job ${job.id}: DBMS_LOOKUP_BASE_URL is not set`,
+          `DBMS historical-run-date skipped for job ${job.id}: DBMS_SERVER_URL is not set`,
         );
         return;
       }
