@@ -149,6 +149,14 @@ export class BulkCreateJobFromDbmsItemDto {
       'Ignored — billing type is derived from ota_type (VCC or DB).',
   })
   billing_type?: string;
+
+  @ApiProperty({
+    example: 1,
+    required: false,
+    default: 0,
+    description: 'Job priority (0 = Normal, 1 = High)',
+  })
+  priority?: number;
 }
 
 export class BulkCreateJobFromDbmsDto {

@@ -1,3 +1,4 @@
+import { HttpModule } from '@nestjs/axios';
 import { Logger, Module, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
@@ -19,6 +20,7 @@ import { JobService } from './job.service';
     PropertyModule,
     ServerModule,
     JwtModule.register({}),
+    HttpModule,
   ],
   controllers: [JobController],
   providers: [
