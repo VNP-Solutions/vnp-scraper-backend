@@ -1085,6 +1085,39 @@ export class PropertyRepository implements IPropertyRepository {
   }
 
   /**
+   * Parse an optional OTA ID from an Excel cell.
+   * Empty / blank / non-numeric values are ignored (returns undefined).
+   */
+  private parseOptionalOtaId(value: unknown): number | undefined {
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+    if (typeof value === 'string' && value.trim() === '') {
+      return undefined;
+    }
+    const num = typeof value === 'number' ? value : Number(String(value).trim());
+    if (!Number.isFinite(num) || num <= 0) {
+      return undefined;
+    }
+    return Math.trunc(num);
+  }
+
+  private parseOtaIdsFromRow(rowData: any): {
+    expedia_id?: number;
+    booking_id?: number;
+    agoda_id?: number;
+  } {
+    const expedia_id = this.parseOptionalOtaId(rowData['Expedia ID']);
+    const booking_id = this.parseOptionalOtaId(rowData['Booking ID']);
+    const agoda_id = this.parseOptionalOtaId(rowData['Agoda ID']);
+    return {
+      ...(expedia_id !== undefined ? { expedia_id } : {}),
+      ...(booking_id !== undefined ? { booking_id } : {}),
+      ...(agoda_id !== undefined ? { agoda_id } : {}),
+    };
+  }
+
+  /**
    * Parse optional "Phone Number" and optional "Slot".
    * - Phone only: slot null → link by finding PhoneNumberSlot with same last-3-digit key.
    * - Phone + slot: match or create pool row as before.
@@ -1447,15 +1480,24 @@ export class PropertyRepository implements IPropertyRepository {
             }
           }
 
-          // Check if property already exists
-          const existingProperty = await this.findPropertyByNameAndRelations(
-            rowData['Property Name'].toString(),
-            portfolioId,
-            subPortfolioId,
-          );
+          // Only use OTA IDs that are actually present; ignore empty Expedia/Agoda/Booking ID cells
+          const otaIds = this.parseOtaIdsFromRow(rowData);
+
+          // Prefer match by present OTA IDs, then fall back to name + portfolio
+          let existingProperty =
+            (await this.findByOtaIds({
+              expedia_id: otaIds.expedia_id ?? null,
+              booking_id: otaIds.booking_id ?? null,
+              agoda_id: otaIds.agoda_id ?? null,
+            })) ??
+            (await this.findPropertyByNameAndRelations(
+              rowData['Property Name'].toString(),
+              portfolioId,
+              subPortfolioId,
+            ));
 
           if (!existingProperty) {
-            // Create property data
+            // Create property data — only set OTA IDs that were provided
             const propertyData: CreatePropertyDto = {
               name: rowData['Property Name'].toString().trim(),
               portfolio_id: portfolioId,
@@ -1463,18 +1505,8 @@ export class PropertyRepository implements IPropertyRepository {
               expedia_status: rowData['Expedia Status'] || 'Access Required',
               booking_status: rowData['Booking Status'] || 'Access Required',
               agoda_status: rowData['Agoda Status'] || 'Access Required',
+              ...otaIds,
             };
-
-            if (rowData['Expedia ID']) {
-              propertyData.expedia_id = Number(rowData['Expedia ID']);
-            }
-
-            if (rowData['Booking ID']) {
-              propertyData.booking_id = Number(rowData['Booking ID']);
-            }
-            if (rowData['Agoda ID']) {
-              propertyData.agoda_id = Number(rowData['Agoda ID']);
-            }
 
             const parsedPhoneSlot = this.parsePhoneNumberAndSlotFromRow(rowData);
             if (parsedPhoneSlot) {
@@ -1686,17 +1718,8 @@ export class PropertyRepository implements IPropertyRepository {
               }
             }
 
-            // Update property with IDs if they exist
-            const propertyUpdateData: any = {};
-            if (rowData['Expedia ID']) {
-              propertyUpdateData.expedia_id = Number(rowData['Expedia ID']);
-            }
-            if (rowData['Booking ID']) {
-              propertyUpdateData.booking_id = Number(rowData['Booking ID']);
-            }
-            if (rowData['Agoda ID']) {
-              propertyUpdateData.agoda_id = Number(rowData['Agoda ID']);
-            }
+            // Update only OTA IDs that are present in the row (skip empty cells)
+            const propertyUpdateData: any = { ...otaIds };
 
             const parsedPhoneSlotExisting =
               this.parsePhoneNumberAndSlotFromRow(rowData);

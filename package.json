@@ -20,6 +20,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "decrypt-password": "ts-node scripts/decrypt-password.ts",
     "migrate:add-is-archived": "ts-node migrations/add-is-archived-field.ts",
+    "migrate:fix-ota-id-indexes": "ts-node migrations/fix-ota-id-sparse-unique-indexes.ts",
     "backup:full": "ts-node scripts/backup-full-ejson.ts",
     "backup:restore": "ts-node scripts/dump-and-restore-backup.ts"
   },
