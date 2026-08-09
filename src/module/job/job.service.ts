@@ -98,6 +98,40 @@ export class JobService implements IJobService {
     }
   }
 
+  /**
+   * Parse an optional OTA ID from an Excel cell.
+   * Empty / blank / non-numeric values are ignored.
+   */
+  private parseOptionalOtaId(value: unknown): number | undefined {
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+    if (typeof value === 'string' && value.trim() === '') {
+      return undefined;
+    }
+    const num =
+      typeof value === 'number' ? value : Number(String(value).trim());
+    if (!Number.isFinite(num) || num <= 0) {
+      return undefined;
+    }
+    return Math.trunc(num);
+  }
+
+  private parseOtaIdsFromImportRow(rowData: any): {
+    expedia_id?: number;
+    booking_id?: number;
+    agoda_id?: number;
+  } {
+    const expedia_id = this.parseOptionalOtaId(rowData['Expedia ID']);
+    const booking_id = this.parseOptionalOtaId(rowData['Booking ID']);
+    const agoda_id = this.parseOptionalOtaId(rowData['Agoda ID']);
+    return {
+      ...(expedia_id !== undefined ? { expedia_id } : {}),
+      ...(booking_id !== undefined ? { booking_id } : {}),
+      ...(agoda_id !== undefined ? { agoda_id } : {}),
+    };
+  }
+
   async createJob(data: CreateJobDto): Promise<Job> {
     try {
       const job = await this.repository.create(data);
@@ -585,19 +619,40 @@ export class JobService implements IJobService {
             rowData['Property Name'].trim() !== ''
           ) {
             propertyName = rowData['Property Name'].toString().trim();
+
+            // Prefer OTA IDs (same as property import) — Excel name often differs
+            // from the stored property name when matched previously by Expedia/Booking/Agoda ID
+            const otaIds = this.parseOtaIdsFromImportRow(rowData);
             const existingProperty =
-              await this.repository.findPropertyByNameAndRelations(
+              (await this.propertyRepository.findByOtaIds({
+                expedia_id: otaIds.expedia_id ?? null,
+                booking_id: otaIds.booking_id ?? null,
+                agoda_id: otaIds.agoda_id ?? null,
+              })) ??
+              (await this.repository.findPropertyByNameAndRelations(
                 propertyName,
                 portfolioId,
                 subPortfolioId,
-              );
+              ));
 
             if (!existingProperty) {
+              const idHint = [
+                otaIds.expedia_id != null
+                  ? `Expedia ID ${otaIds.expedia_id}`
+                  : null,
+                otaIds.booking_id != null
+                  ? `Booking ID ${otaIds.booking_id}`
+                  : null,
+                otaIds.agoda_id != null ? `Agoda ID ${otaIds.agoda_id}` : null,
+              ]
+                .filter(Boolean)
+                .join(', ');
               throw new Error(
-                `Property '${propertyName}' not found. Please import the property first.`,
+                `Property '${propertyName}'${idHint ? ` (${idHint})` : ''} not found. Please import the property first.`,
               );
             }
             propertyId = existingProperty.id;
+            propertyName = existingProperty.name || propertyName;
           }
 
           let batchId = null;
