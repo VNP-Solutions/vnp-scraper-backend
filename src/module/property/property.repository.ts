@@ -219,6 +219,20 @@ export class PropertyRepository implements IPropertyRepository {
     return this.db.portfolio.findFirst({ where: { parent_id: parentId } });
   }
 
+  async findByParentIds(parentIds: string[]): Promise<Property[]> {
+    if (!parentIds.length) return [];
+    return this.db.property.findMany({
+      where: { parent_id: { in: parentIds } },
+    });
+  }
+
+  async findPortfoliosByParentIds(parentIds: string[]): Promise<any[]> {
+    if (!parentIds.length) return [];
+    return this.db.portfolio.findMany({
+      where: { parent_id: { in: parentIds } },
+    });
+  }
+
   async findByExpediaId(expediaId: number): Promise<Property | null> {
     try {
       const property = await this.db.property.findFirst({
