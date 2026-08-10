@@ -544,28 +544,34 @@ export class PropertyService implements IPropertyService {
       `Pre-fetch done — existing=${existingByParentId.size}, portfolios=${portfolioByParentId.size} (${Date.now() - syncStart}ms)`,
     );
 
+    // Centralizes per-row failure recording + a colored row-level log so the
+    // scraper's bulk upsert is as observable as the DBMS import loop.
+    const recordRowError = (
+      row: number,
+      parentId: string,
+      error: string,
+    ): void => {
+      result.errors.push({ row, parent_id: parentId, error });
+      result.failureCount++;
+      this.syncLogger.warn(`Row ${row} | ${parentId} | ❌ FAILED: ${error}`);
+    };
+
     for (const item of items) {
       const rowNumber = item.row;
       const parentId =
         typeof item.parent_id === 'string' ? item.parent_id.trim() : '';
 
       if (!Number.isInteger(rowNumber) || rowNumber < 1) {
-        result.errors.push({
-          row: Number.isInteger(rowNumber) ? rowNumber : 0,
-          parent_id: parentId || 'Unknown',
-          error: 'Row is required and must be a positive integer',
-        });
-        result.failureCount++;
+        recordRowError(
+          Number.isInteger(rowNumber) ? rowNumber : 0,
+          parentId || 'Unknown',
+          'Row is required and must be a positive integer',
+        );
         continue;
       }
 
       if (!parentId) {
-        result.errors.push({
-          row: rowNumber,
-          parent_id: 'Unknown',
-          error: 'Parent ID is required',
-        });
-        result.failureCount++;
+        recordRowError(rowNumber, 'Unknown', 'Parent ID is required');
         continue;
       }
 
@@ -597,14 +603,15 @@ export class PropertyService implements IPropertyService {
         else result.updatedCount++;
 
         result.successfulUpserts.push({ parent_id: parentId, action });
+        this.syncLogger.info(
+          `Row ${rowNumber} | ${name} | ✅ ${action.toUpperCase()}`,
+        );
       } catch (error) {
-        result.errors.push({
-          row: rowNumber,
-          parent_id: parentId,
-          error:
-            error instanceof Error ? error.message : 'Unknown error occurred',
-        });
-        result.failureCount++;
+        recordRowError(
+          rowNumber,
+          parentId,
+          error instanceof Error ? error.message : 'Unknown error occurred',
+        );
       }
     }
 
