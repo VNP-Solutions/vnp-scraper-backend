@@ -5,8 +5,11 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { Property } from '@prisma/client';
 import { EncryptionUtil } from 'src/common/utils/encryption.util';
+import { ColoredLogger } from 'src/common/utils/colored-logger.util';
 import {
   CreatePropertyDto,
   SyncBulkDeletePropertyDto,
@@ -27,11 +30,15 @@ import type { UpdateOtaCredentialsBody } from './property.validation';
 
 @Injectable()
 export class PropertyService implements IPropertyService {
+  private readonly syncLogger = new ColoredLogger('PropertyBulkSync');
+
   constructor(
     @Inject('IPropertyRepository')
     private readonly repository: IPropertyRepository,
     private readonly logger: Logger,
     private readonly encryptionUtil: EncryptionUtil,
+    private readonly configService: ConfigService,
+    private readonly jwtService: JwtService,
   ) {}
 
   async createProperty(data: CreatePropertyDto): Promise<Property> {
@@ -496,6 +503,11 @@ export class PropertyService implements IPropertyService {
       throw new BadRequestException('No items provided');
     }
 
+    const syncStart = Date.now();
+    this.syncLogger.step(
+      `📥 SYNC BULK UPSERT RECEIVED — ${items.length} items`,
+    );
+
     const result: SyncBulkUpsertPropertyResultDto = {
       totalRows: items.length,
       createdCount: 0,
@@ -504,6 +516,33 @@ export class PropertyService implements IPropertyService {
       errors: [],
       successfulUpserts: [],
     };
+
+    // Pre-fetch existing properties and portfolios for the whole batch in
+    // two queries instead of one-per-item. Items are still upserted one at a
+    // time so per-item failures stay isolated (no behavior change).
+    const validParentIds = items
+      .map((i) => (typeof i.parent_id === 'string' ? i.parent_id.trim() : ''))
+      .filter((id) => id);
+    const validPortfolioParentIds = items
+      .map((i) =>
+        typeof i.portfolio_parent_id === 'string'
+          ? i.portfolio_parent_id.trim()
+          : '',
+      )
+      .filter((id) => id);
+
+    const [existingByParentId, portfolioByParentId] = await Promise.all([
+      this.repository
+        .findByParentIds(validParentIds)
+        .then((rows) => new Map(rows.map((p) => [p.parent_id, p]))),
+      this.repository
+        .findPortfoliosByParentIds(validPortfolioParentIds)
+        .then((rows) => new Map(rows.map((p) => [p.parent_id, p]))),
+    ]);
+
+    this.syncLogger.info(
+      `Pre-fetch done — existing=${existingByParentId.size}, portfolios=${portfolioByParentId.size} (${Date.now() - syncStart}ms)`,
+    );
 
     for (const item of items) {
       const rowNumber = item.row;
@@ -541,11 +580,18 @@ export class PropertyService implements IPropertyService {
         if (!portfolioParentId)
           throw new Error('Portfolio Parent ID is required');
 
-        const action = await this.syncUpsert(parentId, {
-          ...item,
-          name,
-          portfolio_parent_id: portfolioParentId,
-        });
+        const action = await this.syncUpsert(
+          parentId,
+          {
+            ...item,
+            name,
+            portfolio_parent_id: portfolioParentId,
+          },
+          {
+            existing: existingByParentId.get(parentId),
+            portfolio: portfolioByParentId.get(portfolioParentId),
+          },
+        );
 
         if (action === 'created') result.createdCount++;
         else result.updatedCount++;
@@ -562,23 +608,140 @@ export class PropertyService implements IPropertyService {
       }
     }
 
+    this.syncLogger.success(
+      `✅ SYNC BULK UPSERT DONE — created=${result.createdCount}, updated=${result.updatedCount}, failed=${result.failureCount} (${Date.now() - syncStart}ms)`,
+    );
+
     return result;
+  }
+
+  // Async/callback variant: accept the batch, return immediately, process the
+  // items in the background using the same syncBulkUpsert logic, then POST the
+  // per-row result back to the DBMS callback URL. Removes the 15s timeout
+  // pressure entirely — no long-held HTTP connection anywhere.
+  async syncBulkUpsertAsync(
+    items: SyncBulkUpsertPropertyItemDto[],
+    batchId: string,
+    callbackUrl: string,
+  ): Promise<{ batchId: string; status: string }> {
+    if (!Array.isArray(items) || !items.length) {
+      throw new BadRequestException('No items provided');
+    }
+    if (!callbackUrl) {
+      throw new BadRequestException('callbackUrl is required for async sync');
+    }
+
+    this.syncLogger.step(
+      `📥 SYNC BULK UPSERT (ASYNC) RECEIVED — ${items.length} items, batch=${batchId}`,
+    );
+
+    this.processBulkUpsertInBackground(items, batchId, callbackUrl).catch((e) =>
+      this.syncLogger.error(
+        `[async] background sync failed for batch ${batchId}: ${e?.message ?? e}`,
+      ),
+    );
+
+    return { batchId, status: 'accepted' };
+  }
+
+  private async processBulkUpsertInBackground(
+    items: SyncBulkUpsertPropertyItemDto[],
+    batchId: string,
+    callbackUrl: string,
+  ): Promise<void> {
+    let result: SyncBulkUpsertPropertyResultDto;
+    try {
+      result = await this.syncBulkUpsert(items);
+    } catch (e: any) {
+      this.syncLogger.error(
+        `[async] syncBulkUpsert threw for batch ${batchId}: ${e?.message ?? e}`,
+      );
+      result = {
+        totalRows: items.length,
+        createdCount: 0,
+        updatedCount: 0,
+        failureCount: items.length,
+        errors: items.map((it) => ({
+          row: it.row ?? 0,
+          parent_id: it.parent_id ?? '',
+          error: e?.message ?? 'Unknown error occurred',
+        })),
+        successfulUpserts: [],
+      };
+    }
+
+    await this.postSyncCallback(batchId, callbackUrl, result);
+  }
+
+  private async postSyncCallback(
+    batchId: string,
+    callbackUrl: string,
+    result: SyncBulkUpsertPropertyResultDto,
+  ): Promise<void> {
+    const secret =
+      this.configService.get<string>('JWT_COMMUNICATION_SECRET') ??
+      this.configService.get<string>('DASHBOARD_PROXY_SECRET');
+    if (!secret) {
+      this.syncLogger.warn(
+        `[async] JWT_COMMUNICATION_SECRET missing — cannot send callback for batch ${batchId}`,
+      );
+      return;
+    }
+
+    const token = this.jwtService.sign(
+      { type: 'external-communication' },
+      { secret, expiresIn: '24h' },
+    );
+
+    const body = { batchId, source: 'scraper', result };
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const res = await fetch(callbackUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(body),
+        });
+        if (res.ok) {
+          this.syncLogger.success(
+            `[async] callback delivered for batch ${batchId} (attempt ${attempt}, status ${res.status})`,
+          );
+          return;
+        }
+        this.syncLogger.warn(
+          `[async] callback attempt ${attempt} for batch ${batchId} returned ${res.status}`,
+        );
+      } catch (e: any) {
+        this.syncLogger.warn(
+          `[async] callback attempt ${attempt} for batch ${batchId} failed: ${e?.message ?? e}`,
+        );
+      }
+      await new Promise((r) => setTimeout(r, 1000 * attempt));
+    }
+    this.syncLogger.error(
+      `[async] callback FAILED for batch ${batchId} after retries — DBMS sweeper will finalize`,
+    );
   }
 
   private async syncUpsert(
     parentId: string,
     item: SyncBulkUpsertPropertyItemDto,
+    opts?: { existing?: Property | null; portfolio?: any },
   ): Promise<'created' | 'updated'> {
-    const portfolio = await this.repository.findPortfolioByParentId(
-      item.portfolio_parent_id,
-    );
+    const portfolio =
+      opts?.portfolio ??
+      (await this.repository.findPortfolioByParentId(item.portfolio_parent_id));
     if (!portfolio) {
       throw new Error(
         `Portfolio not found with parent_id: ${item.portfolio_parent_id}`,
       );
     }
 
-    const existing = await this.repository.findByParentId(parentId);
+    const existing =
+      opts?.existing ?? (await this.repository.findByParentId(parentId));
 
     const propertyData: any = {
       name: item.name,
