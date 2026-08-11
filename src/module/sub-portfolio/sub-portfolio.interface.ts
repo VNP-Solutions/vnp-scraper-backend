@@ -7,6 +7,16 @@ import {
 export interface ISubPortfolioRepository {
   create(data: CreateSubPortfolioDto): Promise<SubPortfolio>;
   findById(id: string): Promise<SubPortfolio>;
+  findByName(name: string): Promise<SubPortfolio | null>;
+  createWithId(
+    id: string,
+    name: string,
+    portfolioId: string,
+  ): Promise<SubPortfolio>;
+  reassignPropertiesFromSubPortfolio(
+    fromSubPortfolioId: string,
+    toSubPortfolioId: string,
+  ): Promise<void>;
   findAll(
     query: Record<string, any>,
   ): Promise<{ data: SubPortfolio[]; metadata: any }>;
@@ -37,4 +47,12 @@ export interface ISubPortfolioService {
     query?: Record<string, any>,
   ): Promise<{ data: SubPortfolio[]; metadata: any }>;
   getPermissionByPortfolioId(portfolioId: string, userId: string): Promise<any>;
+  syncBulkUpsert(
+    items: Array<{
+      row: number;
+      parent_id: string;
+      portfolio_parent_id: string;
+      name: string;
+    }>,
+  ): Promise<import('./sub-portfolio.dto').SyncBulkUpsertSubPortfolioResultDto>;
 }

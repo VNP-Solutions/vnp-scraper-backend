@@ -75,6 +75,28 @@ export class PropertyRepository implements IPropertyRepository {
     }
   }
 
+  async createWithId(id: string, data: CreatePropertyDto): Promise<Property> {
+    const propertyData: CreatePropertyDto & { id?: string } = {
+      name: data.name,
+      portfolio_id: data.portfolio_id,
+      sub_portfolio_id: data.sub_portfolio_id,
+      expedia_status: data.expedia_status || 'Access Required',
+      booking_status: data.booking_status || 'Access Required',
+      agoda_status: data.agoda_status || 'Access Required',
+    };
+
+    if (data.expedia_id) propertyData.expedia_id = data.expedia_id;
+    if (data.booking_id) propertyData.booking_id = data.booking_id;
+    if (data.agoda_id) propertyData.agoda_id = data.agoda_id;
+
+    return this.db.property.create({
+      data: {
+        id,
+        ...propertyData,
+      },
+    });
+  }
+
   async findAll(
     query?: Record<string, any>,
   ): Promise<{ properties: Property[]; metadata: any }> {
