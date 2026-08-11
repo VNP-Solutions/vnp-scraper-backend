@@ -39,3 +39,26 @@ export class UpdateSubPortfolioDto {
   })
   portfolio_id?: string;
 }
+
+export class SyncBulkUpsertSubPortfolioItemDto {
+  row: number;
+  parent_id: string;
+  portfolio_parent_id: string;
+  name: string;
+}
+
+export class SyncBulkUpsertSubPortfolioDto {
+  items: SyncBulkUpsertSubPortfolioItemDto[];
+}
+
+export class SyncBulkUpsertSubPortfolioResultDto {
+  totalRows: number;
+  createdCount: number;
+  updatedCount: number;
+  failureCount: number;
+  errors: Array<{ row: number; parent_id: string; error: string }>;
+  successfulUpserts: Array<{
+    parent_id: string;
+    action: 'created' | 'updated';
+  }>;
+}
