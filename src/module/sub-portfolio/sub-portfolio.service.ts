@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { SubPortfolio } from '@prisma/client';
 import {
   CreateSubPortfolioDto,
+  SyncBulkUpsertSubPortfolioResultDto,
   UpdateSubPortfolioDto,
 } from './sub-portfolio.dto';
 import {
@@ -126,5 +127,130 @@ export class SubPortfolioService implements ISubPortfolioService {
     query?: Record<string, any>,
   ): Promise<any> {
     return this.repository.findFilteredSubPortfolios(userId, query);
+  }
+
+  async syncUpsertByParentId(
+    parentId: string,
+    portfolioParentId: string,
+    name: string,
+  ): Promise<{ action: 'created' | 'updated'; id: string }> {
+    const trimmedName = name.trim();
+    if (!trimmedName) throw new Error('Subportfolio name is required');
+    if (!portfolioParentId?.trim()) {
+      throw new Error('Portfolio parent ID is required');
+    }
+
+    const byId = await this.repository.findById(parentId);
+    if (byId) {
+      if (
+        byId.name !== trimmedName ||
+        byId.portfolio_id !== portfolioParentId
+      ) {
+        const nameHolder = await this.repository.findByName(trimmedName);
+        if (nameHolder && nameHolder.id !== parentId) {
+          const tempName = `${trimmedName}__legacy_${nameHolder.id}`;
+          await this.repository.update(nameHolder.id, { name: tempName });
+          await this.repository.reassignPropertiesFromSubPortfolio(
+            nameHolder.id,
+            parentId,
+          );
+          await this.repository.delete(nameHolder.id);
+        }
+        await this.repository.update(parentId, {
+          name: trimmedName,
+          portfolio_id: portfolioParentId,
+        });
+      }
+      return { action: 'updated', id: parentId };
+    }
+
+    const byName = await this.repository.findByName(trimmedName);
+    if (byName) {
+      if (byName.id !== parentId) {
+        const tempName = `${trimmedName}__legacy_${byName.id}`;
+        await this.repository.update(byName.id, { name: tempName });
+        await this.repository.createWithId(
+          parentId,
+          trimmedName,
+          portfolioParentId,
+        );
+        await this.repository.reassignPropertiesFromSubPortfolio(
+          byName.id,
+          parentId,
+        );
+        await this.repository.delete(byName.id);
+        return { action: 'updated', id: parentId };
+      }
+      return { action: 'updated', id: parentId };
+    }
+
+    await this.repository.createWithId(
+      parentId,
+      trimmedName,
+      portfolioParentId,
+    );
+    return { action: 'created', id: parentId };
+  }
+
+  async syncBulkUpsert(
+    items: Array<{
+      row: number;
+      parent_id: string;
+      portfolio_parent_id: string;
+      name: string;
+    }>,
+  ): Promise<SyncBulkUpsertSubPortfolioResultDto> {
+    const result: SyncBulkUpsertSubPortfolioResultDto = {
+      totalRows: items.length,
+      createdCount: 0,
+      updatedCount: 0,
+      failureCount: 0,
+      errors: [],
+      successfulUpserts: [],
+    };
+
+    for (const item of items) {
+      const parentId =
+        typeof item.parent_id === 'string' ? item.parent_id.trim() : '';
+      const portfolioParentId =
+        typeof item.portfolio_parent_id === 'string'
+          ? item.portfolio_parent_id.trim()
+          : '';
+      const row = item.row ?? 0;
+      const subName = typeof item.name === 'string' ? item.name.trim() : '';
+
+      if (!parentId) {
+        result.errors.push({
+          row,
+          parent_id: 'Unknown',
+          error: 'Parent ID is required',
+        });
+        result.failureCount++;
+        continue;
+      }
+
+      try {
+        const upsert = await this.syncUpsertByParentId(
+          parentId,
+          portfolioParentId,
+          subName,
+        );
+        if (upsert.action === 'created') result.createdCount++;
+        else result.updatedCount++;
+        result.successfulUpserts.push({
+          parent_id: parentId,
+          action: upsert.action,
+        });
+      } catch (e: any) {
+        result.errors.push({
+          row,
+          parent_id: parentId,
+          error: e?.message ?? String(e),
+        });
+        result.failureCount++;
+      }
+    }
+
+    return result;
   }
 }
