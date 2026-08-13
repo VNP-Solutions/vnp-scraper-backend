@@ -1113,6 +1113,29 @@ export class JobService implements IJobService {
     }
   }
 
+  async bulkStatusUpdate(
+    jobIds: string[],
+    jobStatus: JobStatus,
+  ): Promise<{ updatedCount: number; job_status: JobStatus }> {
+    try {
+      if (!jobIds || jobIds.length === 0) {
+        throw new Error('job_ids array cannot be empty');
+      }
+
+      const result = await this.repository.bulkStatusUpdate(jobIds, jobStatus);
+      return {
+        updatedCount: result.count,
+        job_status: jobStatus,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error bulk updating jobs status: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
   async bulkDeleteJobs(
     jobIds: string[],
   ): Promise<{ deletedCount: number; deletedJobIds: string[] }> {

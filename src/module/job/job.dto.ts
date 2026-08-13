@@ -545,6 +545,37 @@ export class BulkArchiveJobsResponseDto {
   status: boolean;
 }
 
+export class BulkStatusUpdateJobsDto {
+  @ApiProperty({
+    description: 'Array of job IDs to update',
+    type: [String],
+    example: ['64a1b2c3d4e5f6789012345', '64a1b2c3d4e5f6789012346'],
+  })
+  job_ids: string[];
+
+  @ApiProperty({
+    description: 'Job status to apply to all provided jobs',
+    enum: JobStatus,
+    example: JobStatus.Stopped,
+  })
+  job_status: JobStatus;
+}
+
+export class BulkStatusUpdateJobsResponseDto {
+  @ApiProperty({
+    description: 'Number of jobs updated',
+    example: 5,
+  })
+  updatedCount: number;
+
+  @ApiProperty({
+    description: 'Job status that was applied',
+    enum: JobStatus,
+    example: JobStatus.Stopped,
+  })
+  job_status: JobStatus;
+}
+
 export class BulkDeleteJobsDto {
   @ApiProperty({
     description: 'Array of job IDs to delete',

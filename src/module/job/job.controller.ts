@@ -43,6 +43,8 @@ import {
   BulkArchiveJobsDto,
   BulkCreateJobFromDbmsDto,
   BulkArchiveJobsResponseDto,
+  BulkStatusUpdateJobsDto,
+  BulkStatusUpdateJobsResponseDto,
   BulkBatchUpdateDto,
   BulkBatchUpdateResponseDto,
   BulkDeleteBatchesDto,
@@ -67,6 +69,7 @@ import {
 } from '../property/property.validation';
 import {
   bulkArchiveJobsSchema,
+  bulkStatusUpdateJobsSchema,
   bulkDeleteBatchesSchema,
   bulkDeleteJobsSchema,
   createBatchSchema,
@@ -923,6 +926,40 @@ export class JobController {
         return {
           statusCode: 200,
           message: 'Jobs updated successfully',
+          data: result,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Post('/bulk_status_update')
+  @UseGuards(JwtAuthGuard)
+  @ValidateBody(bulkStatusUpdateJobsSchema)
+  @ApiOperation({ summary: 'Bulk update job status for multiple jobs' })
+  @ApiResponse({
+    status: 200,
+    description: 'Jobs status updated successfully',
+    type: BulkStatusUpdateJobsResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid input' })
+  async bulkStatusUpdate(
+    @Body() bulkStatusUpdateJobsDto: BulkStatusUpdateJobsDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const jobIds = Array.from(
+          new Set(bulkStatusUpdateJobsDto.job_ids),
+        ).filter(Boolean);
+        const result = await this.jobService.bulkStatusUpdate(
+          jobIds,
+          bulkStatusUpdateJobsDto.job_status,
+        );
+        return {
+          statusCode: 200,
+          message: 'Jobs status updated successfully',
           data: result,
         };
       },

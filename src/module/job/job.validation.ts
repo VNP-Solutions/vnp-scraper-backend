@@ -80,6 +80,14 @@ export const bulkArchiveJobsSchema = z.object({
   }),
 });
 
+export const bulkStatusUpdateJobsSchema = z.object({
+  job_ids: z.array(objectIdSchema).min(1, 'At least one job ID is required'),
+  job_status: z.nativeEnum(JobStatus, {
+    required_error: 'Job status is required',
+    invalid_type_error: 'Invalid job status',
+  }),
+});
+
 export const bulkDeleteJobsSchema = z.object({
   job_ids: z.array(objectIdSchema).min(1, 'At least one job ID is required'),
 });
@@ -99,6 +107,7 @@ export type UpdateJobType = z.infer<typeof updateJobSchema>;
 export type CreateBatchType = z.infer<typeof createBatchSchema>;
 export type UpdateBatchType = z.infer<typeof updateBatchSchema>;
 export type BulkArchiveJobsType = z.infer<typeof bulkArchiveJobsSchema>;
+export type BulkStatusUpdateJobsType = z.infer<typeof bulkStatusUpdateJobsSchema>;
 export type BulkDeleteJobsType = z.infer<typeof bulkDeleteJobsSchema>;
 export type BulkDeleteBatchesType = z.infer<typeof bulkDeleteBatchesSchema>;
 export type ExportMasterJobsType = z.infer<typeof exportMasterJobsSchema>;
