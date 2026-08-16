@@ -47,6 +47,10 @@ export class ActivityLoggerMiddleware implements NestMiddleware {
             if (dbUser) {
               user.username = dbUser.name;
               user.role = dbUser.role;
+            } else {
+              // Fallback to JWT token information when database lookup fails
+              user.username = (req as any).user?.email || 'anonymous';
+              user.role = (req as any).user?.role || 'guest';
             }
           }
 
@@ -55,7 +59,7 @@ export class ActivityLoggerMiddleware implements NestMiddleware {
 
           // Log to console
           console.log(
-            `[${user.username}] [${user.role}] ${req.method} ${req.path} - ${success ? 'SUCCESS' : 'FAILED'} (${res.statusCode}) - IP: ${req.ip} - Resource: ${resource} - ${responseTime}ms - ${new Date().toISOString()}`,
+            `[${user.username}] [${user.role}] ${req.method} ${req.path} - ${success ? 'SUCCESS' : 'FAILED'} (${res.statusCode}) - IP: ${req.ip || 'unknown'} - Resource: ${resource} - ${responseTime}ms - ${new Date().toISOString()}`,
           );
 
           if (req.path.startsWith('/activity-logs') && req.method === 'GET') {
@@ -69,7 +73,7 @@ export class ActivityLoggerMiddleware implements NestMiddleware {
             endpoint: req.method + ' ' + req.path,
             success: success,
             statusCode: res.statusCode,
-            ipAddress: req.ip,
+            ipAddress: req.ip || 'unknown',
             resource: resource,
             responseTime: responseTime,
           });

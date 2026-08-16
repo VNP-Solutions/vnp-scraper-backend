@@ -1,11 +1,14 @@
 import { Logger, Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
 import { DatabaseService } from '../database/database.service';
+import { ExternalJwtGuard } from '../qa-panel/guards/external-jwt.guard';
 import { PortfolioController } from './portfolio.controller';
 import { PortfolioRepository } from './portfolio.repository';
 import { PortfolioService } from './portfolio.service';
 
 @Module({
-  imports: [],
+  imports: [ConfigModule, JwtModule.register({})],
   controllers: [PortfolioController],
   providers: [
     {
@@ -16,6 +19,8 @@ import { PortfolioService } from './portfolio.service';
       provide: 'IPortfolioRepository',
       useClass: PortfolioRepository,
     },
+    ExternalJwtGuard,
+    ConfigService,
     DatabaseService,
     Logger,
   ],

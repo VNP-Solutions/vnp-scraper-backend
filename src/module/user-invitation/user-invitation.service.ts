@@ -39,17 +39,25 @@ export class UserInvitationService implements IUserInvitationService {
     private readonly configService: ConfigService,
     private readonly logger: Logger,
   ) {
+    const smtpHost = this.configService.get('SMTP_HOST') || 'smtp.gmail.com';
+    const smtpPort = parseInt(this.configService.get('SMTP_PORT') || '465');
+    const smtpSecure = this.configService.get('SMTP_SECURE') !== 'false';
+    const smtpUser = this.configService.get('SMTP_EMAIL');
+    const smtpPass = this.configService.get('SMTP_PASSWORD');
+
     this.transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
-      service: 'gmail',
-      auth: {
-        user: this.configService.get('SMTP_EMAIL'),
-        pass: this.configService.get('SMTP_PASSWORD'),
-      },
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpSecure,
+      ...(smtpHost === 'smtp.gmail.com' && { service: 'gmail' }),
+      ...(smtpUser && smtpPass && {
+        auth: {
+          user: smtpUser,
+          pass: smtpPass,
+        },
+      }),
       tls: {
-        rejectUnauthorized: true,
+        rejectUnauthorized: smtpSecure,
       },
     });
   }
@@ -64,14 +72,14 @@ export class UserInvitationService implements IUserInvitationService {
     invitedByName: string,
     message?: string,
   ): Promise<void> {
-    const invitationUrl = `${this.configService.get('FRONTEND_URL')}/accept-invitation?token=${invitationToken}`;
+    const invitationUrl = `${this.configService.get('INVITATION_REDIRECT_URL')}/auth/accept-invitation?token=${invitationToken}`;
 
     const emailHTML = `
     <body style="margin: 0; padding: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f4f4f4; color: #333333; line-height: 1.6;">
       <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
         <tr>
           <td style="padding: 30px 20px; text-align: center; background-color: #ffffff; border-bottom: 1px solid #eeeeee;">
-            <img src="https://argobot-bucket.s3.us-east-2.amazonaws.com/VNP+LOGO_PNG.png" alt="VNP Solutions Logo" style="max-width: 200px; height: auto;">
+            <img src="https://qp-console.dashboardvnps.com/assets/logo.svg" alt="VNP Solutions Logo" style="max-width: 200px; height: auto;">
           </td>
         </tr>
         <tr>
@@ -98,7 +106,7 @@ export class UserInvitationService implements IUserInvitationService {
         <tr>
           <td style="padding: 20px 30px; background-color: #f8f9fa; border-top: 1px solid #eeeeee;">
             <p style="margin: 0; font-size: 12px; color: #666666; text-align: center;">
-              © 2024 VNP Solutions. All rights reserved.<br>
+              © 2026 VNP Solutions. All rights reserved.<br>
               This invitation was sent by ${invitedByName} on behalf of VNP Solutions.
             </p>
           </td>

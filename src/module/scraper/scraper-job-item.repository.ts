@@ -1,7 +1,44 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { JobItem } from '@prisma/client';
+import { JobItem, OTAProvider } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
-import { IScraperJobItemRepository } from './scraper-job-item.interface';
+import { startOfDay } from '../job/job-item-derived.util';
+import {
+  DerivedFieldsUpdate,
+  IScraperJobItemRepository,
+  JobItemUploadRow,
+} from './scraper-job-item.interface';
+
+const OVER_160_DAYS = 160;
+
+/**
+ * Parses a query-string boolean ("true" / "false" / true / false). Returns
+ * `undefined` when the value is missing or unparseable so the caller can
+ * skip the filter entirely.
+ */
+function parseQueryBoolean(value: unknown): boolean | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value === 'boolean') return value;
+  const s = String(value).trim().toLowerCase();
+  if (s === 'true' || s === '1' || s === 'yes') return true;
+  if (s === 'false' || s === '0' || s === 'no') return false;
+  return undefined;
+}
+
+/**
+ * Returns the threshold date used by the `over_160` filter:
+ *   check_out_date < (today − 160 days)  →  over_160 = true
+ *
+ * Computed from the start of today (local time) to match the day-granular
+ * semantics in `daysBetween` / `computeDerivedJobItemFields`. Using a
+ * date-based predicate (rather than the persisted `over_160` column)
+ * keeps the filter consistent with the value the API actually returns,
+ * even when the lazy cache for a row is stale.
+ */
+function getOver160ThresholdDate(today: Date = new Date()): Date {
+  const t = startOfDay(today);
+  t.setDate(t.getDate() - OVER_160_DAYS);
+  return t;
+}
 
 @Injectable()
 export class ScraperJobItemRepository implements IScraperJobItemRepository {
@@ -26,6 +63,7 @@ export class ScraperJobItemRepository implements IScraperJobItemRepository {
               },
             },
           },
+          cardActivity: true,
         },
         orderBy: {
           createdAt: 'desc',
@@ -52,6 +90,7 @@ export class ScraperJobItemRepository implements IScraperJobItemRepository {
         start_date,
         end_date,
         reason_for_charge,
+        over_160,
         ...filters
       } = query || {};
 
@@ -90,6 +129,23 @@ export class ScraperJobItemRepository implements IScraperJobItemRepository {
         };
       }
 
+      // `over_160` is an Expedia-only derived field equal to
+      // (today − check_out_date) > 160 days. Filter on `check_out_date`
+      // rather than the persisted `over_160` column so the result matches
+      // the value the API returns today, even when a row's lazy cache is
+      // stale. Implicitly restricts to Expedia jobs (Booking/Agoda always
+      // surface this field as `null`).
+      const over160Bool = parseQueryBoolean(over_160);
+      if (over160Bool !== undefined) {
+        const threshold = getOver160ThresholdDate();
+        allFilters.job = {
+          is: { ota_provider: OTAProvider.Expedia },
+        };
+        allFilters.check_out_date = over160Bool
+          ? { lt: threshold }
+          : { gte: threshold };
+      }
+
       if (search) {
         allFilters.OR = [
           {
@@ -116,6 +172,7 @@ export class ScraperJobItemRepository implements IScraperJobItemRepository {
           include: {
             job: true,
             property: true,
+            cardActivity: true,
           },
         }),
         this.db.jobItem.count({
@@ -138,5 +195,117 @@ export class ScraperJobItemRepository implements IScraperJobItemRepository {
       this.logger.error(`Error finding job items for job ${jobId}:`, error);
       return { data: [], metadata: null };
     }
+  }
+
+  async updateJobCurrentUrl(jobId: string, currentUrl: string): Promise<void> {
+    try {
+      await this.db.job.update({
+        where: { id: jobId },
+        data: { current_url: currentUrl },
+      });
+      this.logger.log(`Successfully updated current_url for job ${jobId}`);
+    } catch (error) {
+      this.logger.error(`Error updating current_url for job ${jobId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Creates or updates a single JobItem row identified by (job_id, reservation_id).
+   * When reservation_id is null/empty a new record is always created since there
+   * is no unique key to match on.
+   */
+  async upsertJobItem(
+    row: JobItemUploadRow,
+  ): Promise<{ item: JobItem; wasCreated: boolean }> {
+    if (row.reservation_id) {
+      const existing = await this.db.jobItem.findFirst({
+        where: { job_id: row.job_id, reservation_id: row.reservation_id },
+      });
+
+      if (existing) {
+        const updated = await this.db.jobItem.update({
+          where: { id: existing.id },
+          data: {
+            guest_name: row.guest_name,
+            confirmation_number: row.confirmation_number,
+            check_in_date: row.check_in_date,
+            check_out_date: row.check_out_date,
+            room_type: row.room_type,
+            booked_date: row.booked_date,
+            has_card_info: row.has_card_info,
+            card_info: row.card_info ?? undefined,
+            has_payment_info: row.has_payment_info,
+            payment_info: row.payment_info ?? undefined,
+            reservation_status: row.reservation_status,
+          },
+        });
+        return { item: updated, wasCreated: false };
+      }
+    }
+
+    const created = await this.db.jobItem.create({
+      data: {
+        job_id: row.job_id,
+        property_id: row.property_id,
+        guest_name: row.guest_name,
+        reservation_id: row.reservation_id,
+        confirmation_number: row.confirmation_number,
+        check_in_date: row.check_in_date,
+        check_out_date: row.check_out_date,
+        room_type: row.room_type,
+        booked_date: row.booked_date,
+        has_card_info: row.has_card_info,
+        card_info: row.card_info ?? undefined,
+        has_payment_info: row.has_payment_info,
+        payment_info: row.payment_info ?? undefined,
+        reservation_status: row.reservation_status,
+      },
+    });
+    return { item: created, wasCreated: true };
+  }
+
+  /**
+   * Writes the per-row derived-field updates produced by the service
+   * layer's lazy materialization step. Each row is updated in parallel
+   * because the values differ per row (no bulk-write API in Prisma can
+   * express that). The `where` clause double-checks that the target
+   * row's job is Expedia — see the interface JSDoc for rationale.
+   *
+   * Failures on individual rows are logged but never thrown, because
+   * the caller is decorating a read response; a transient write failure
+   * shouldn't break the user's request, it just means next read will
+   * recompute and try again.
+   */
+  async bulkRefreshDerivedFields(
+    updates: DerivedFieldsUpdate[],
+  ): Promise<void> {
+    if (!updates || updates.length === 0) return;
+    await Promise.all(
+      updates.map(async (u) => {
+        try {
+          await this.db.jobItem.updateMany({
+            where: {
+              id: u.id,
+              // Defense-in-depth: only Expedia rows should ever receive
+              // derived-field writes. If a non-Expedia id slips through
+              // the service-layer filter, updateMany silently no-ops.
+              job: { ota_provider: OTAProvider.Expedia },
+            },
+            data: {
+              over_160: u.over_160,
+              days_since_checkout: u.days_since_checkout,
+              derived_calculated_at: u.derived_calculated_at,
+            },
+          });
+        } catch (error) {
+          this.logger.warn(
+            `Failed to refresh derived fields for job item ${u.id}: ${
+              (error as Error)?.message ?? error
+            }`,
+          );
+        }
+      }),
+    );
   }
 }

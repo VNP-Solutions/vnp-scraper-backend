@@ -1,4 +1,4 @@
-import { User } from '@prisma/client';
+import { Notification, User } from '@prisma/client';
 import { CreateUserDto, UpdateUserDto } from './user.dto';
 
 export interface IUserRepository {
@@ -17,7 +17,7 @@ export interface IUserService {
   getAllUsers(
     query: Record<string, any>,
   ): Promise<{ data: User[]; metadata: any }>;
-  getUserById(id: string): Promise<User>;
+  getUserById(id: string): Promise<User & { notifications: Notification[] }>;
   updateUser(id: string, data: UpdateUserDto): Promise<User>;
   deleteUser(id: string): Promise<User>;
 }

@@ -1,28 +1,49 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { Property } from '@prisma/client';
 import { EncryptionUtil } from 'src/common/utils/encryption.util';
-import * as XLSX from 'xlsx';
-import { CreatePropertyDto, UpdatePropertyDto } from './property.dto';
-import { IPropertyRepository, IPropertyService } from './property.interface';
+import { ColoredLogger } from 'src/common/utils/colored-logger.util';
+import {
+  CreatePropertyDto,
+  SyncBulkDeletePropertyDto,
+  SyncBulkDeletePropertyResultDto,
+  SyncBulkUpsertPropertyItemDto,
+  SyncBulkUpsertPropertyResultDto,
+  SyncDeleteDto,
+  SyncUpsertPropertyDto,
+  UpdatePropertyDto,
+} from './property.dto';
+import type { RevealOtaCredentialsBody } from './property.validation';
+import {
+  IPropertyRepository,
+  IPropertyService,
+  PropertyDropdownItem,
+} from './property.interface';
+import type { UpdateOtaCredentialsBody } from './property.validation';
 
 @Injectable()
 export class PropertyService implements IPropertyService {
+  private readonly syncLogger = new ColoredLogger('PropertyBulkSync');
+
   constructor(
     @Inject('IPropertyRepository')
     private readonly repository: IPropertyRepository,
     private readonly logger: Logger,
     private readonly encryptionUtil: EncryptionUtil,
+    private readonly configService: ConfigService,
+    private readonly jwtService: JwtService,
   ) {}
 
   async createProperty(data: CreatePropertyDto): Promise<Property> {
     try {
-      // Encrypt the password before saving
-      const encryptedData = {
-        ...data,
-        user_password: this.encryptionUtil.encryptPassword(data.user_password),
-      };
-
-      const property = await this.repository.create(encryptedData);
+      const property = await this.repository.create(data);
       return this.processProperty(property);
     } catch (error) {
       this.logger.error(
@@ -55,7 +76,9 @@ export class PropertyService implements IPropertyService {
       if (!property) {
         throw new Error(`Property with ID ${id} not found`);
       }
-      return this.processProperty(property);
+      const processed = this.processProperty(property);
+      this.decryptOtaCredentialPasswords(processed.credentials);
+      return processed;
     } catch (error) {
       this.logger.error(
         `Error finding property: ${error.message}`,
@@ -65,17 +88,95 @@ export class PropertyService implements IPropertyService {
     }
   }
 
+  async syncCreate(
+    data: CreatePropertyDto,
+  ): Promise<{ status: string; id?: string }> {
+    // duplicate check (unchanged)
+    if (data.expedia_id || data.booking_id || data.agoda_id) {
+      const existing = await this.repository.findByOtaIds({
+        expedia_id: data.expedia_id ?? null,
+        booking_id: data.booking_id ?? null,
+        agoda_id: data.agoda_id ?? null,
+      });
+      if (existing) {
+        this.logger.log(
+          `[sync] property already exists by OTA id: ${existing.id}`,
+        );
+        return { status: 'already_exists', id: existing.id };
+      }
+    } else {
+      const existing = await this.repository.findByName(data.name);
+      if (existing) {
+        this.logger.log(`[sync] property already exists by name: ${data.name}`);
+        return { status: 'already_exists', id: existing.id };
+      }
+    }
+
+    let portfolioId: string | undefined;
+    if (data.portfolio_name) {
+      const existingPf = await this.repository.findPortfolioByName(
+        data.portfolio_name,
+      );
+      portfolioId = existingPf
+        ? existingPf.id
+        : (await this.repository.createPortfolio(data.portfolio_name)).id;
+      this.logger.log(
+        `[sync] portfolio "${data.portfolio_name}" -> ${portfolioId}`,
+      );
+    }
+
+    let subPortfolioId: string | undefined;
+    if (data.sub_portfolio_name && portfolioId) {
+      const existingSub =
+        await this.repository.findSubPortfolioByNameAndPortfolio(
+          data.sub_portfolio_name,
+          portfolioId,
+        );
+      subPortfolioId = existingSub
+        ? existingSub.id
+        : (
+            await this.repository.createSubPortfolio(
+              data.sub_portfolio_name,
+              portfolioId,
+            )
+          ).id;
+    }
+
+    const created = await this.createProperty({
+      ...data,
+      portfolio_id: portfolioId, // scraper id, not DBMS id
+      sub_portfolio_id: subPortfolioId,
+    });
+    return { status: 'created', id: created.id };
+  }
+
+  async syncDelete(
+    dto: SyncDeleteDto,
+  ): Promise<{ status: string; id?: string }> {
+    if (
+      dto.expedia_id == null &&
+      dto.booking_id == null &&
+      dto.agoda_id == null
+    ) {
+      return { status: 'no_ota_ids' };
+    }
+    const existing = await this.repository.findByOtaIds({
+      expedia_id: dto.expedia_id ?? null,
+      booking_id: dto.booking_id ?? null,
+      agoda_id: dto.agoda_id ?? null,
+    });
+    if (!existing) {
+      this.logger.log(`[sync] delete: property not found for OTA ids`);
+      return { status: 'not_found' };
+    }
+    await this.repository.delete(existing.id);
+    this.logger.log(`[sync] property deleted: ${existing.id}`);
+    return { status: 'deleted', id: existing.id };
+  }
+
   async updateProperty(id: string, data: UpdatePropertyDto): Promise<Property> {
     try {
-      // Encrypt the password before updating if it's provided
-      const updateData = { ...data };
-      if (data.user_password) {
-        updateData.user_password = this.encryptionUtil.encryptPassword(
-          data.user_password,
-        );
-      }
-
-      const property = await this.repository.update(id, updateData);
+      const property = await this.repository.update(id, data);
       return this.processProperty(property);
     } catch (error) {
       this.logger.error(
@@ -139,6 +240,12 @@ export class PropertyService implements IPropertyService {
     return this.repository.findPropertyBySubPortfolioId(subPortfolioId);
   }
 
+  applyPropertyCredentialsShape(property: any | null | undefined): void {
+    if (property == null) return;
+    const credential = { ...property.credentials?.[0] };
+    property.credentials = credential;
+  }
+
   private processProperty(property: any) {
     // Decrypt the password when returning property data
     if (property.user_password) {
@@ -154,9 +261,37 @@ export class PropertyService implements IPropertyService {
       }
     }
 
-    const credential = { ...property.credentials?.[0] };
-    property.credentials = credential;
+    this.applyPropertyCredentialsShape(property);
     return property;
+  }
+
+  private decryptOtaCredentialPasswords(
+    credentials: Record<string, unknown> | null | undefined,
+  ): void {
+    if (!credentials || typeof credentials !== 'object') {
+      return;
+    }
+
+    const passwordFields = [
+      'expediaPassword',
+      'agodaPassword',
+      'bookingPassword',
+    ];
+    for (const field of passwordFields) {
+      const encrypted = credentials[field];
+      if (encrypted == null || String(encrypted).trim() === '') {
+        continue;
+      }
+      try {
+        credentials[field] = this.encryptionUtil.decryptPassword(
+          String(encrypted),
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Failed to decrypt ${field} for property credentials: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
   }
 
   async findPortfolioAndSubPortfolioForDropdown(user: any): Promise<any> {
@@ -166,13 +301,11 @@ export class PropertyService implements IPropertyService {
   async getAllPropertiesByUserPermission(
     userId: string,
     isAdmin: boolean,
-  ): Promise<Property[]> {
+  ): Promise<PropertyDropdownItem[]> {
     try {
-      const properties = await this.repository.findAllByUserPermission(
-        userId,
-        isAdmin,
-      );
-      return properties.map((property) => this.processProperty(property));
+      // Dropdown payload only needs id/name/portfolio_id – skip decrypt &
+      // credentials reshape work done by processProperty.
+      return await this.repository.findAllByUserPermission(userId, isAdmin);
     } catch (error) {
       this.logger.error(
         `Error getting properties by user permission: ${error.message}`,
@@ -187,46 +320,28 @@ export class PropertyService implements IPropertyService {
    * @param propertyId - Property ID
    * @returns Object with decrypted user_email and user_password
    */
-  async getPropertyCredentials(
-    propertyId: string,
-  ): Promise<{ user_email: string; user_password: string }> {
-    try {
-      const property = await this.repository.findById(propertyId);
-      if (!property) {
-        throw new Error(`Property with ID ${propertyId} not found`);
-      }
+  // async getPropertyCredentials(
+  //   propertyId: string,
+  // ): Promise<any> {
+  //   try {
+  //     const property = await this.repository.findById(propertyId);
+  //     if (!property) {
+  //       throw new Error(`Property with ID ${propertyId} not found`);
+  //     }
 
-      const decryptedPassword = property.user_password
-        ? this.encryptionUtil.decryptPassword(property.user_password)
-        : '';
-
-      return {
-        user_email: property.user_email,
-        user_password: decryptedPassword,
-      };
-    } catch (error) {
-      this.logger.error(
-        `Error getting property credentials: ${error.message}`,
-        error.stack,
-      );
-      throw error;
-    }
-  }
+  //     return property
+  //   } catch (error) {
+  //     this.logger.error(
+  //       `Error getting property credentials: ${error.message}`,
+  //       error.stack,
+  //     );
+  //     throw error;
+  //   }
+  // }
 
   /**
    * Import properties from Excel file
-   *
-   * Expected Excel format:
-   * - Required columns: "Property"
-   * - Optional columns: "Portfolio", "Sub Portfolio", "user_email", "user_password", "email", "password"
-   * - OTA columns: "expedia_id", "expedia_status", "booking_id", "booking_status", "agoda_id", "agoda_status"
-   * - Credential columns: "expediaUsername", "expediaPassword", "agodaUsername", "agodaPassword", "bookingUsername", "bookingPassword", "expediaEmailAssociated", "propertyContactEmail", "portfolioContactEmail"
-   *
-   * The method will:
-   * 1. Extract unique portfolio names and create them if they don't exist
-   * 2. Extract unique sub-portfolio names and create them if they don't exist (linked to portfolios)
-   * 3. Create properties with relationships to portfolios and sub-portfolios
-   * 4. Create property credentials for OTA platforms
+   * Delegates to repository for reusable implementation
    *
    * @param file - Excel file buffer
    * @returns Object containing creation counts and created entities
@@ -241,355 +356,514 @@ export class PropertyService implements IPropertyService {
     properties: any[];
   }> {
     try {
-      // Validate file buffer
-      if (!file.buffer) {
-        throw new Error('File buffer is empty');
-      }
-
-      // Parse Excel file
-      const workbook = XLSX.read(file.buffer, { type: 'buffer' });
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
-      const data = XLSX.utils.sheet_to_json(worksheet);
-
-      if (!data || data.length === 0) {
-        throw new Error('Excel file is empty or invalid');
-      }
-
-      // Get headers from first row
-      const headers = Object.keys(data[0] as any);
-
-      // Check required headers
-      if (!headers.includes('Property Name')) {
-        throw new Error('Property column is required in Excel file');
-      }
-
-      this.logger.log(
-        `Starting import process for ${data.length} rows with headers: ${headers.join(', ')}`,
-      );
-
-      let portfoliosCreated = 0;
-      let subPortfoliosCreated = 0;
-      let propertiesCreated = 0;
-      let credentialsCreated = 0;
-      const portfolios: any[] = [];
-      const subPortfolios: any[] = [];
-      const properties: any[] = [];
-
-      // Step 1: Handle Portfolios
-      if (headers.includes('Portfolio')) {
-        const portfolioNames = [
-          ...new Set(
-            data
-              .map((row: any) => row.Portfolio)
-              .filter((name) => name && name.trim() !== ''),
-          ),
-        ];
-
-        this.logger.log(
-          `Found ${portfolioNames.length} unique portfolios to process`,
-        );
-
-        for (const portfolioName of portfolioNames) {
-          try {
-            // Check if portfolio exists
-            const existingPortfolio = await this.repository.findPortfolioByName(
-              portfolioName.toString(),
-            );
-
-            if (!existingPortfolio) {
-              // Create new portfolio
-              const newPortfolio = await this.repository.createPortfolio(
-                portfolioName.toString(),
-              );
-              portfolios.push(newPortfolio);
-              portfoliosCreated++;
-              this.logger.log(`Created new portfolio: ${newPortfolio.name}`);
-            } else {
-              portfolios.push(existingPortfolio);
-              this.logger.log(
-                `Using existing portfolio: ${existingPortfolio.name}`,
-              );
-            }
-          } catch (error) {
-            this.logger.error(
-              `Error processing portfolio ${portfolioName}: ${error.message}`,
-            );
-            throw error;
-          }
-        }
-      }
-
-      // Step 2: Handle Sub Portfolios
-      if (headers.includes('Sub Portfolio')) {
-        const subPortfolioData = data
-          .map((row: any) => ({
-            subPortfolioName: row['Sub Portfolio'],
-            portfolioName: row['Portfolio'],
-          }))
-          .filter(
-            (item) =>
-              item.subPortfolioName && item.subPortfolioName.trim() !== '',
-          );
-
-        // Get unique sub-portfolio names
-        const uniqueSubPortfolios = [
-          ...new Set(subPortfolioData.map((item) => item.subPortfolioName)),
-        ];
-
-        this.logger.log(
-          `Found ${uniqueSubPortfolios.length} unique sub-portfolios to process`,
-        );
-
-        for (const subPortfolioName of uniqueSubPortfolios) {
-          try {
-            // Find the corresponding portfolio for this sub-portfolio
-            const relatedData = subPortfolioData.find(
-              (item) => item.subPortfolioName === subPortfolioName,
-            );
-            const portfolioName = relatedData?.portfolioName;
-
-            if (portfolioName) {
-              const portfolio = portfolios.find(
-                (p) => p.name === portfolioName.toString().trim(),
-              );
-
-              if (portfolio) {
-                // Check if sub-portfolio exists
-                const existingSubPortfolio =
-                  await this.repository.findSubPortfolioByNameAndPortfolio(
-                    subPortfolioName.toString(),
-                    portfolio.id,
-                  );
-
-                if (!existingSubPortfolio) {
-                  // Create new sub-portfolio
-                  const newSubPortfolio =
-                    await this.repository.createSubPortfolio(
-                      subPortfolioName.toString(),
-                      portfolio.id,
-                    );
-                  subPortfolios.push(newSubPortfolio);
-                  subPortfoliosCreated++;
-                  this.logger.log(
-                    `Created new sub-portfolio: ${newSubPortfolio.name} under portfolio: ${portfolio.name}`,
-                  );
-                } else {
-                  subPortfolios.push(existingSubPortfolio);
-                  this.logger.log(
-                    `Using existing sub-portfolio: ${existingSubPortfolio.name}`,
-                  );
-                }
-              } else {
-                this.logger.warn(
-                  `Portfolio '${portfolioName}' not found for sub-portfolio '${subPortfolioName}'`,
-                );
-              }
-            } else {
-              this.logger.warn(
-                `No portfolio specified for sub-portfolio '${subPortfolioName}'`,
-              );
-            }
-          } catch (error) {
-            this.logger.error(
-              `Error processing sub-portfolio ${subPortfolioName}: ${error.message}`,
-            );
-            throw error;
-          }
-        }
-      }
-
-      // Step 3: Handle Properties
-      this.logger.log(`Processing ${data.length} properties`);
-
-      for (const row of data) {
-        const rowData = row as any;
-
-        if (!rowData['Property Name'] || rowData['Property Name'].trim() === '') {
-          continue;
-        }
-
-        try {
-          // Find related portfolio and sub-portfolio
-          let portfolioId = null;
-          let subPortfolioId = null;
-
-          if (rowData.Portfolio) {
-            const portfolio = portfolios.find(
-              (p) => p.name === rowData.Portfolio.toString().trim(),
-            );
-            if (portfolio) {
-              portfolioId = portfolio.id;
-            }
-          }
-
-          if (rowData['Sub Portfolio']) {
-            const subPortfolio = subPortfolios.find(
-              (sp) => sp.name === rowData['Sub Portfolio'].toString().trim(),
-            );
-            if (subPortfolio) {
-              subPortfolioId = subPortfolio.id;
-            }
-          }
-
-          // Check if property already exists
-          const existingProperty =
-            await this.repository.findPropertyByNameAndRelations(
-              rowData['Property Name'].toString(),
-              portfolioId,
-              subPortfolioId,
-            );
-
-          if (!existingProperty) {
-            // Create property data
-            const propertyData: CreatePropertyDto = {
-              name: rowData['Property Name'].toString().trim(),
-              portfolio_id: portfolioId,
-              sub_portfolio_id: subPortfolioId,
-              user_email: rowData['User Name'] || rowData['User Email'] || '',
-              user_password:
-                rowData['Password'] ||
-                rowData.password ||
-                'defaultPassword123',
-              expedia_id: rowData['Expedia ID']
-                ? parseInt(rowData['Expedia ID'])
-                : 0,
-              expedia_status: rowData['Expedia Status'] || 'Access Required',
-              booking_id: rowData.booking_id
-                ? parseInt(rowData.booking_id)
-                : 0,
-              booking_status: rowData['Booking Status'] || 'Access Required',
-              agoda_id: rowData['Agoda ID']
-                ? parseInt(rowData['Agoda ID'])
-                : 0,
-              agoda_status: rowData['Agoda Status'] || 'Access Required',
-            };
-
-            // Create property using existing method (which handles encryption)
-            const newProperty = await this.createProperty(propertyData);
-            properties.push(newProperty);
-            propertiesCreated++;
-            this.logger.log(`Created new property: ${newProperty.name}`);
-
-            // Create property credentials if any credential data exists
-            const credentialsData: any = {};
-            let hasCredentials = false;
-
-            // Check for credential columns and extract data
-            if (rowData['User Name']) {
-              credentialsData.expediaUsername = rowData['User Name']
-                .toString()
-                .trim();
-              hasCredentials = true;
-            }
-            if (rowData['Password']) {
-              credentialsData.expediaPassword = rowData['Password']
-                .toString()
-                .trim();
-              hasCredentials = true;
-            }
-            if (rowData['User Name']) {
-              credentialsData.agodaUsername = rowData['User Name']
-                .toString()
-                .trim();
-              hasCredentials = true;
-            }
-            if (rowData['Password']) {
-              credentialsData.agodaPassword = rowData['Password']
-                .toString()
-                .trim();
-              hasCredentials = true;
-            }
-            if (rowData['User Name']) {
-              credentialsData.bookingUsername = rowData['User Name']
-                .toString()
-                .trim();
-              hasCredentials = true;
-            }
-            if (rowData['Password']) {
-              credentialsData.bookingPassword = rowData['Password']
-                .toString()
-                .trim();
-              hasCredentials = true;
-            }
-            if (rowData.expediaEmailAssociated) {
-              credentialsData.expediaEmailAssociated =
-                rowData.expediaEmailAssociated.toString().trim();
-              hasCredentials = true;
-            }
-            if (rowData.propertyContactEmail) {
-              credentialsData.propertyContactEmail =
-                rowData.propertyContactEmail.toString().trim();
-              hasCredentials = true;
-            }
-            if (rowData.portfolioContactEmail) {
-              credentialsData.portfolioContactEmail =
-                rowData.portfolioContactEmail.toString().trim();
-              hasCredentials = true;
-            }
-            if (rowData.multiplePortfolioEmails) {
-              // Handle comma-separated emails
-              const emails = rowData.multiplePortfolioEmails
-                .toString()
-                .split(',')
-                .map((email: string) => email.trim())
-                .filter((email: string) => email);
-              if (emails.length > 0) {
-                credentialsData.multiplePortfolioEmails = emails;
-                hasCredentials = true;
-              }
-            }
-
-            // Create credentials if any credential data exists
-            if (hasCredentials) {
-              try {
-                await this.repository.createPropertyCredentials(
-                  newProperty.id,
-                  credentialsData,
-                );
-                credentialsCreated++;
-                this.logger.log(
-                  `Created credentials for property: ${newProperty.name}`,
-                );
-              } catch (credentialError) {
-                this.logger.error(
-                  `Error creating credentials for property ${newProperty.name}: ${credentialError.message}`,
-                );
-                // Don't fail the entire import if credentials creation fails
-              }
-            }
-          } else {
-            this.logger.log(
-              `Property '${rowData['Property Name']}' already exists, skipping`,
-            );
-          }
-        } catch (error) {
-          this.logger.error(
-            `Error processing property ${rowData['Property Name']}: ${error.message}`,
-          );
-          // Continue with next property instead of stopping the entire import
-        }
-      }
-
-      this.logger.log(
-        `Import completed: ${portfoliosCreated} portfolios, ${subPortfoliosCreated} sub-portfolios, ${propertiesCreated} properties, and ${credentialsCreated} credentials created`,
-      );
-
-      return {
-        portfoliosCreated,
-        subPortfoliosCreated,
-        propertiesCreated,
-        credentialsCreated,
-        portfolios,
-        subPortfolios,
-        properties,
-      };
+      this.logger.log('Starting Excel import process via repository');
+      const result = await this.repository.importPropertiesFromExcel(file);
+      this.logger.log('Excel import completed successfully');
+      return result;
     } catch (error) {
       this.logger.error(
-        `Error importing properties from Excel: ${error.message}`,
+        `Error in service layer during Excel import: ${error.message}`,
         error.stack,
       );
       throw error;
     }
+  }
+
+  async importExpediaCredentialsFromExcel(file: Express.Multer.File): Promise<{
+    updated: number;
+    propertyNotFound: number;
+    rowsSkippedInvalid: number;
+    failures: Array<{ row: number; expediaId?: number; reason: string }>;
+  }> {
+    try {
+      this.logger.log('Starting Expedia credentials Excel import');
+      const result =
+        await this.repository.importExpediaCredentialsFromExcel(file);
+      this.logger.log(
+        `Expedia credentials import finished: ${result.updated} updated`,
+      );
+      return result;
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error(
+        `Error importing Expedia credentials from Excel: ${err.message}`,
+        err.stack,
+      );
+      throw error;
+    }
+  }
+
+  async updateOtaCredentials(body: UpdateOtaCredentialsBody): Promise<{
+    updated: number;
+    propertyNotFound: boolean;
+    failures: Array<{ reason: string; property_id?: string }>;
+  }> {
+    try {
+      this.logger.log(
+        `Updating OTA credentials for property_id=${body.property_id}, provider=${body.ota_provider}`,
+      );
+      const result = await this.repository.updateOtaCredentials(body);
+      this.logger.log(
+        `OTA credentials update finished: ${result.updated} updated, propertyNotFound=${result.propertyNotFound}`,
+      );
+      return result;
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error(
+        `Error updating OTA credentials: ${err.message}`,
+        err.stack,
+      );
+      throw error;
+    }
+  }
+
+  async getOtaCredentialsReveal(body: RevealOtaCredentialsBody): Promise<{
+    propertyNotFound: boolean;
+    credentialsNotFound: boolean;
+    username: string;
+    password: string;
+  }> {
+    try {
+      this.logger.log(
+        `Reveal OTA credentials for property_id=${body.property_id}, provider=${body.ota_provider}`,
+      );
+      return await this.repository.getOtaCredentialsReveal(
+        body.property_id,
+        body.ota_provider,
+      );
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error(
+        `Error revealing OTA credentials: ${err.message}`,
+        err.stack,
+      );
+      throw error;
+    }
+  }
+
+  async syncBulkCreate(items: CreatePropertyDto[]): Promise<{
+    created: number;
+    alreadyExists: number;
+    failed: number;
+    results: Array<{ name: string; status: string; id?: string }>;
+  }> {
+    let created = 0,
+      alreadyExists = 0,
+      failed = 0;
+    const results: Array<{ name: string; status: string; id?: string }> = [];
+
+    for (const item of items) {
+      try {
+        const r = await this.syncCreate(item);
+        if (r.status === 'created') created++;
+        else if (r.status === 'already_exists') alreadyExists++;
+        results.push({ name: item.name, status: r.status, id: r.id });
+      } catch (e: any) {
+        failed++;
+        this.logger.error(
+          `[sync] bulk create failed for "${item.name}": ${e?.message ?? e}`,
+        );
+        results.push({ name: item.name, status: 'failed' });
+      }
+    }
+
+    this.logger.log(
+      `[sync] bulk create done: created=${created}, exists=${alreadyExists}, failed=${failed}`,
+    );
+    return { created, alreadyExists, failed, results };
+  }
+
+  async syncUpsertProperty(
+    parentId: string,
+    dto: SyncUpsertPropertyDto,
+  ): Promise<{ action: 'created' | 'updated'; property: Property }> {
+    const trimmedParent = (parentId ?? '').trim();
+    if (!trimmedParent) {
+      throw new BadRequestException('Parent ID is required');
+    }
+
+    const action = await this.syncUpsert(trimmedParent, {
+      row: 1,
+      parent_id: trimmedParent,
+      ...dto,
+    });
+
+    const property = await this.repository.findByParentId(trimmedParent);
+    if (!property) {
+      throw new Error('Property not found after sync upsert');
+    }
+
+    return { action, property };
+  }
+
+  async syncBulkUpsert(
+    items: SyncBulkUpsertPropertyItemDto[],
+  ): Promise<SyncBulkUpsertPropertyResultDto> {
+    if (!Array.isArray(items) || !items.length) {
+      throw new BadRequestException('No items provided');
+    }
+
+    const syncStart = Date.now();
+    this.syncLogger.step(
+      `📥 SYNC BULK UPSERT RECEIVED — ${items.length} items`,
+    );
+
+    const result: SyncBulkUpsertPropertyResultDto = {
+      totalRows: items.length,
+      createdCount: 0,
+      updatedCount: 0,
+      failureCount: 0,
+      errors: [],
+      successfulUpserts: [],
+    };
+
+    // Pre-fetch existing properties and portfolios for the whole batch in
+    // two queries instead of one-per-item. Items are still upserted one at a
+    // time so per-item failures stay isolated (no behavior change).
+    const validParentIds = items
+      .map((i) => (typeof i.parent_id === 'string' ? i.parent_id.trim() : ''))
+      .filter((id) => id);
+    const validPortfolioParentIds = items
+      .map((i) =>
+        typeof i.portfolio_parent_id === 'string'
+          ? i.portfolio_parent_id.trim()
+          : '',
+      )
+      .filter((id) => id);
+
+    const [existingByParentId, portfolioByParentId] = await Promise.all([
+      this.repository
+        .findByParentIds(validParentIds)
+        .then((rows) => new Map(rows.map((p) => [p.parent_id, p]))),
+      this.repository
+        .findPortfoliosByParentIds(validPortfolioParentIds)
+        .then((rows) => new Map(rows.map((p) => [p.parent_id, p]))),
+    ]);
+
+    this.syncLogger.info(
+      `Pre-fetch done — existing=${existingByParentId.size}, portfolios=${portfolioByParentId.size} (${Date.now() - syncStart}ms)`,
+    );
+
+    // Centralizes per-row failure recording + a colored row-level log so the
+    // scraper's bulk upsert is as observable as the DBMS import loop.
+    const recordRowError = (
+      row: number,
+      parentId: string,
+      error: string,
+    ): void => {
+      result.errors.push({ row, parent_id: parentId, error });
+      result.failureCount++;
+      this.syncLogger.warn(`Row ${row} | ${parentId} | ❌ FAILED: ${error}`);
+    };
+
+    for (const item of items) {
+      const rowNumber = item.row;
+      const parentId =
+        typeof item.parent_id === 'string' ? item.parent_id.trim() : '';
+
+      if (!Number.isInteger(rowNumber) || rowNumber < 1) {
+        recordRowError(
+          Number.isInteger(rowNumber) ? rowNumber : 0,
+          parentId || 'Unknown',
+          'Row is required and must be a positive integer',
+        );
+        continue;
+      }
+
+      if (!parentId) {
+        recordRowError(rowNumber, 'Unknown', 'Parent ID is required');
+        continue;
+      }
+
+      try {
+        const name = typeof item.name === 'string' ? item.name.trim() : '';
+        if (!name) throw new Error('Property name is required');
+
+        const portfolioParentId =
+          typeof item.portfolio_parent_id === 'string'
+            ? item.portfolio_parent_id.trim()
+            : '';
+        if (!portfolioParentId)
+          throw new Error('Portfolio Parent ID is required');
+
+        const action = await this.syncUpsert(
+          parentId,
+          {
+            ...item,
+            name,
+            portfolio_parent_id: portfolioParentId,
+          },
+          {
+            existing: existingByParentId.get(parentId),
+            portfolio: portfolioByParentId.get(portfolioParentId),
+          },
+        );
+
+        if (action === 'created') result.createdCount++;
+        else result.updatedCount++;
+
+        result.successfulUpserts.push({ parent_id: parentId, action });
+        this.syncLogger.info(
+          `Row ${rowNumber} | ${name} | ✅ ${action.toUpperCase()}`,
+        );
+      } catch (error) {
+        recordRowError(
+          rowNumber,
+          parentId,
+          error instanceof Error ? error.message : 'Unknown error occurred',
+        );
+      }
+    }
+
+    this.syncLogger.success(
+      `✅ SYNC BULK UPSERT DONE — created=${result.createdCount}, updated=${result.updatedCount}, failed=${result.failureCount} (${Date.now() - syncStart}ms)`,
+    );
+
+    return result;
+  }
+
+  // Async/callback variant: accept the batch, return immediately, process the
+  // items in the background using the same syncBulkUpsert logic, then POST the
+  // per-row result back to the DBMS callback URL. Removes the 15s timeout
+  // pressure entirely — no long-held HTTP connection anywhere.
+  async syncBulkUpsertAsync(
+    items: SyncBulkUpsertPropertyItemDto[],
+    batchId: string,
+    callbackUrl: string,
+  ): Promise<{ batchId: string; status: string }> {
+    if (!Array.isArray(items) || !items.length) {
+      throw new BadRequestException('No items provided');
+    }
+    if (!callbackUrl) {
+      throw new BadRequestException('callbackUrl is required for async sync');
+    }
+
+    this.syncLogger.step(
+      `📥 SYNC BULK UPSERT (ASYNC) RECEIVED — ${items.length} items, batch=${batchId}`,
+    );
+
+    this.processBulkUpsertInBackground(items, batchId, callbackUrl).catch((e) =>
+      this.syncLogger.error(
+        `[async] background sync failed for batch ${batchId}: ${e?.message ?? e}`,
+      ),
+    );
+
+    return { batchId, status: 'accepted' };
+  }
+
+  private async processBulkUpsertInBackground(
+    items: SyncBulkUpsertPropertyItemDto[],
+    batchId: string,
+    callbackUrl: string,
+  ): Promise<void> {
+    let result: SyncBulkUpsertPropertyResultDto;
+    try {
+      result = await this.syncBulkUpsert(items);
+    } catch (e: any) {
+      this.syncLogger.error(
+        `[async] syncBulkUpsert threw for batch ${batchId}: ${e?.message ?? e}`,
+      );
+      result = {
+        totalRows: items.length,
+        createdCount: 0,
+        updatedCount: 0,
+        failureCount: items.length,
+        errors: items.map((it) => ({
+          row: it.row ?? 0,
+          parent_id: it.parent_id ?? '',
+          error: e?.message ?? 'Unknown error occurred',
+        })),
+        successfulUpserts: [],
+      };
+    }
+
+    await this.postSyncCallback(batchId, callbackUrl, result);
+  }
+
+  private async postSyncCallback(
+    batchId: string,
+    callbackUrl: string,
+    result: SyncBulkUpsertPropertyResultDto,
+  ): Promise<void> {
+    const secret =
+      this.configService.get<string>('JWT_COMMUNICATION_SECRET') ??
+      this.configService.get<string>('DASHBOARD_PROXY_SECRET');
+    if (!secret) {
+      this.syncLogger.warn(
+        `[async] JWT_COMMUNICATION_SECRET missing — cannot send callback for batch ${batchId}`,
+      );
+      return;
+    }
+
+    const token = this.jwtService.sign(
+      { type: 'external-communication' },
+      { secret, expiresIn: '24h' },
+    );
+
+    const body = { batchId, source: 'scraper', result };
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const res = await fetch(callbackUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(body),
+        });
+        if (res.ok) {
+          this.syncLogger.success(
+            `[async] callback delivered for batch ${batchId} (attempt ${attempt}, status ${res.status})`,
+          );
+          return;
+        }
+        this.syncLogger.warn(
+          `[async] callback attempt ${attempt} for batch ${batchId} returned ${res.status}`,
+        );
+      } catch (e: any) {
+        this.syncLogger.warn(
+          `[async] callback attempt ${attempt} for batch ${batchId} failed: ${e?.message ?? e}`,
+        );
+      }
+      await new Promise((r) => setTimeout(r, 1000 * attempt));
+    }
+    this.syncLogger.error(
+      `[async] callback FAILED for batch ${batchId} after retries — DBMS sweeper will finalize`,
+    );
+  }
+
+  private async syncUpsert(
+    parentId: string,
+    item: SyncBulkUpsertPropertyItemDto,
+    opts?: { existing?: Property | null; portfolio?: any },
+  ): Promise<'created' | 'updated'> {
+    const portfolio =
+      opts?.portfolio ??
+      (await this.repository.findPortfolioByParentId(item.portfolio_parent_id));
+    if (!portfolio) {
+      throw new Error(
+        `Portfolio not found with parent_id: ${item.portfolio_parent_id}`,
+      );
+    }
+
+    const existing =
+      opts?.existing ?? (await this.repository.findByParentId(parentId));
+
+    const propertyData: any = {
+      name: item.name,
+      parent_id: parentId,
+      portfolio_id: portfolio.id,
+      expedia_id: item.expedia_id,
+      booking_id: item.booking_id,
+      agoda_id: item.agoda_id,
+    };
+
+    let propertyId: string;
+    let action: 'created' | 'updated';
+
+    if (existing) {
+      if (item.name !== existing.name) {
+        const clash = await this.repository.findByName(item.name);
+        if (clash && clash.id !== existing.id) {
+          throw new Error('Property with this name already exists');
+        }
+      }
+      const updated = await this.repository.update(existing.id, propertyData);
+      if (!updated) throw new Error('Failed to update property');
+      propertyId = updated.id;
+      action = 'updated';
+    } else {
+      const clash = await this.repository.findByName(item.name);
+      if (clash) throw new Error('Property with this name already exists');
+      const created = await this.repository.create(propertyData);
+      propertyId = created.id;
+      action = 'created';
+    }
+
+    await this.repository.updatePropertyCredentials(propertyId, {
+      expediaUsername: item.expedia_username,
+      expediaPassword: item.expedia_password,
+      agodaUsername: item.agoda_username,
+      agodaPassword: item.agoda_password,
+      bookingUsername: item.booking_username,
+      bookingPassword: item.booking_password,
+    });
+
+    return action;
+  }
+
+  async syncDeleteByParentId(parentId: string): Promise<{ message: string }> {
+    const trimmedParent = (parentId ?? '').trim();
+    if (!trimmedParent) {
+      throw new BadRequestException('Parent ID is required');
+    }
+
+    const existing = await this.repository.findByParentId(trimmedParent);
+    if (!existing) {
+      throw new NotFoundException(
+        `Property not found with parent_id: ${trimmedParent}`,
+      );
+    }
+
+    const deleted = await this.repository.delete(existing.id);
+    if (!deleted) {
+      throw new Error('Failed to delete property');
+    }
+
+    this.logger.log(`[sync] property deleted by parent_id: ${trimmedParent}`);
+    return { message: 'Property deleted successfully' };
+  }
+
+  async syncBulkDelete(
+    dto: SyncBulkDeletePropertyDto,
+  ): Promise<SyncBulkDeletePropertyResultDto> {
+    const items = dto.items ?? [];
+    if (!items.length) {
+      throw new BadRequestException('No items provided');
+    }
+
+    const result: SyncBulkDeletePropertyResultDto = {
+      totalCount: items.length,
+      deletedCount: 0,
+      failureCount: 0,
+      errors: [],
+      successfulDeletes: [],
+    };
+
+    for (const item of items) {
+      const parentId =
+        typeof item.parent_id === 'string' ? item.parent_id.trim() : '';
+
+      if (!parentId) {
+        result.errors.push({
+          parent_id: 'Unknown',
+          error: 'Parent ID is required',
+        });
+        result.failureCount++;
+        continue;
+      }
+
+      try {
+        const existing = await this.repository.findByParentId(parentId);
+        if (!existing) {
+          throw new Error(`Property not found with parent_id: ${parentId}`);
+        }
+        const deleted = await this.repository.delete(existing.id);
+        if (!deleted) throw new Error('Failed to delete property');
+
+        result.deletedCount++;
+        result.successfulDeletes.push({ parent_id: parentId });
+      } catch (error) {
+        result.errors.push({
+          parent_id: parentId,
+          error:
+            error instanceof Error ? error.message : 'Unknown error occurred',
+        });
+        result.failureCount++;
+      }
+    }
+
+    return result;
   }
 }

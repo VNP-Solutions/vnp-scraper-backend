@@ -1,5 +1,25 @@
-import { Property } from '@prisma/client';
-import { CreatePropertyDto, UpdatePropertyDto } from './property.dto';
+import { OTAProvider, Property } from '@prisma/client';
+import {
+  CreatePropertyDto,
+  SyncBulkDeletePropertyDto,
+  SyncBulkDeletePropertyItemDto,
+  SyncBulkDeletePropertyResultDto,
+  SyncBulkUpsertPropertyItemDto,
+  SyncBulkUpsertPropertyResultDto,
+  SyncDeleteDto,
+  SyncUpsertPropertyDto,
+  UpdatePropertyDto,
+} from './property.dto';
+import type {
+  RevealOtaCredentialsBody,
+  UpdateOtaCredentialsBody,
+} from './property.validation';
+
+export interface PropertyDropdownItem {
+  id: string;
+  name: string;
+  portfolio_id: string | null;
+}
 
 export interface IPropertyRepository {
   create(data: CreatePropertyDto): Promise<Property>;
@@ -7,6 +27,8 @@ export interface IPropertyRepository {
     query?: Record<string, any>,
   ): Promise<{ properties: Property[]; metadata: any }>;
   findById(id: string): Promise<Property>;
+  findByExpediaId(expediaId: number): Promise<Property | null>;
+  findByAgodaId(agodaId: number): Promise<Property | null>;
   update(id: string, data: UpdatePropertyDto): Promise<Property>;
   delete(id: string): Promise<Property>;
   findFilteredProperty(
@@ -25,7 +47,7 @@ export interface IPropertyRepository {
   findAllByUserPermission(
     userId: string,
     isAdmin: boolean,
-  ): Promise<Property[]>;
+  ): Promise<PropertyDropdownItem[]>;
   // Portfolio operations
   findPortfolioByName(name: string): Promise<any>;
   createPortfolio(name: string): Promise<any>;
@@ -50,7 +72,51 @@ export interface IPropertyRepository {
     propertyId: string,
     credentialsData: any,
   ): Promise<any>;
+  mergePropertyCredentials(
+    propertyId: string,
+    credentialsData: any,
+  ): Promise<any>;
   findPropertyCredentialsByPropertyId(propertyId: string): Promise<any>;
+  // Excel import operations
+  importPropertiesFromExcel(file: Express.Multer.File): Promise<{
+    portfoliosCreated: number;
+    subPortfoliosCreated: number;
+    propertiesCreated: number;
+    credentialsCreated: number;
+    portfolios: any[];
+    subPortfolios: any[];
+    properties: any[];
+  }>;
+  importExpediaCredentialsFromExcel(file: Express.Multer.File): Promise<{
+    updated: number;
+    propertyNotFound: number;
+    rowsSkippedInvalid: number;
+    failures: Array<{ row: number; expediaId?: number; reason: string }>;
+  }>;
+  updateOtaCredentials(body: UpdateOtaCredentialsBody): Promise<{
+    updated: number;
+    propertyNotFound: boolean;
+    failures: Array<{ reason: string; property_id?: string }>;
+  }>;
+  getOtaCredentialsReveal(
+    propertyId: string,
+    otaProvider: OTAProvider,
+  ): Promise<{
+    propertyNotFound: boolean;
+    credentialsNotFound: boolean;
+    username: string;
+    password: string;
+  }>;
+  findByOtaIds(ids: {
+    expedia_id: number | null;
+    booking_id: number | null;
+    agoda_id: number | null;
+  }): Promise<Property | null>;
+  findByName(name: string): Promise<Property | null>;
+  findByParentId(parentId: string): Promise<Property | null>;
+  findPortfolioByParentId(parentId: string): Promise<any>;
+  findByParentIds(parentIds: string[]): Promise<Property[]>;
+  findPortfoliosByParentIds(parentIds: string[]): Promise<any[]>;
 }
 
 export interface IPropertyService {
@@ -78,10 +144,8 @@ export interface IPropertyService {
   getAllPropertiesByUserPermission(
     userId: string,
     isAdmin: boolean,
-  ): Promise<Property[]>;
-  getPropertyCredentials(
-    propertyId: string,
-  ): Promise<{ user_email: string; user_password: string }>;
+  ): Promise<PropertyDropdownItem[]>;
+  // getPropertyCredentials(propertyId: string): Promise<any>;
   importPropertiesFromExcel(file: Express.Multer.File): Promise<{
     portfoliosCreated: number;
     subPortfoliosCreated: number;
@@ -91,4 +155,48 @@ export interface IPropertyService {
     subPortfolios: any[];
     properties: any[];
   }>;
+  importExpediaCredentialsFromExcel(file: Express.Multer.File): Promise<{
+    updated: number;
+    propertyNotFound: number;
+    rowsSkippedInvalid: number;
+    failures: Array<{ row: number; expediaId?: number; reason: string }>;
+  }>;
+  updateOtaCredentials(body: UpdateOtaCredentialsBody): Promise<{
+    updated: number;
+    propertyNotFound: boolean;
+    failures: Array<{ reason: string; property_id?: string }>;
+  }>;
+  getOtaCredentialsReveal(body: RevealOtaCredentialsBody): Promise<{
+    propertyNotFound: boolean;
+    credentialsNotFound: boolean;
+    username: string;
+    password: string;
+  }>;
+
+  /** Flattens `credentials[]` to a single object like GET /properties. */
+  applyPropertyCredentialsShape(property: any | null | undefined): void;
+  syncCreate(dto: CreatePropertyDto): Promise<{ status: string; id?: string }>;
+  syncDelete(dto: SyncDeleteDto): Promise<{ status: string; id?: string }>;
+  syncDeleteByParentId(parentId: string): Promise<{ message: string }>;
+  syncBulkCreate(items: CreatePropertyDto[]): Promise<{
+    created: number;
+    alreadyExists: number;
+    failed: number;
+    results: Array<{ name: string; status: string; id?: string }>;
+  }>;
+  syncUpsertProperty(
+    parentId: string,
+    dto: SyncUpsertPropertyDto,
+  ): Promise<{ action: 'created' | 'updated'; property: Property }>;
+  syncBulkUpsert(
+    items: SyncBulkUpsertPropertyItemDto[],
+  ): Promise<SyncBulkUpsertPropertyResultDto>;
+  syncBulkUpsertAsync(
+    items: SyncBulkUpsertPropertyItemDto[],
+    batchId: string,
+    callbackUrl: string,
+  ): Promise<{ batchId: string; status: string }>;
+  syncBulkDelete(
+    dto: SyncBulkDeletePropertyDto,
+  ): Promise<SyncBulkDeletePropertyResultDto>;
 }

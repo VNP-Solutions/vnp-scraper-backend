@@ -1,3 +1,4 @@
+import { OTAProvider } from '@prisma/client';
 import { z } from 'zod';
 
 // MongoDB ObjectId validation
@@ -15,10 +16,36 @@ export const createPropertySchema = z.object({
   booking_status: z.string().optional().nullable(),
   agoda_id: z.number().optional().nullable(),
   agoda_status: z.string().optional().nullable(),
-  user_email: z.string().email('Please provide a valid email address'),
-  user_password: z
-    .string()
-    .min(6, 'Password must be at least 6 characters long'),
+  phone_number: z.string().optional().nullable(),
+  slot: z.coerce.number().int().optional().nullable(),
+  phone_number_slot_id: objectIdSchema.optional().nullable(),
 });
 
 export const updatePropertySchema = createPropertySchema;
+
+/** Updates `property_credentials` for one property; OTA fields chosen from `ota_provider`. */
+export const updateOtaCredentialsSchema = z
+  .object({
+    property_id: objectIdSchema,
+    ota_provider: z.nativeEnum(OTAProvider),
+    username: z.string().optional(),
+    password: z.string().optional(),
+  })
+  .refine(
+    (row) =>
+      (row.username != null && String(row.username).trim() !== '') ||
+      (row.password != null && String(row.password).trim() !== ''),
+    {
+      message:
+        'Provide a non-empty username and/or password for the chosen OTA',
+    },
+  );
+
+export type UpdateOtaCredentialsBody = z.infer<typeof updateOtaCredentialsSchema>;
+
+export const revealOtaCredentialsSchema = z.object({
+  property_id: objectIdSchema,
+  ota_provider: z.nativeEnum(OTAProvider),
+});
+
+export type RevealOtaCredentialsBody = z.infer<typeof revealOtaCredentialsSchema>;

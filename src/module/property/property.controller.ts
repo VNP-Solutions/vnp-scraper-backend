@@ -31,11 +31,30 @@ import { ResponseHandler } from 'src/common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
   CreatePropertyDto,
+  ImportExpediaCredentialsResponseDto,
   ImportPropertiesResponseDto,
+  RevealOtaCredentialsDto,
+  RevealOtaCredentialsResponseDto,
+  SyncBulkCreateDto,
+  SyncBulkDeletePropertyDto,
+  SyncBulkUpsertPropertyItemDto,
+  SyncBulkUpsertRequestDto,
+  SyncDeleteDto,
+  SyncUpsertPropertyDto,
+  UpdateOtaCredentialsDto,
+  UpdateOtaCredentialsResponseDto,
   UpdatePropertyDto,
 } from './property.dto';
 import { IPropertyService } from './property.interface';
-import { createPropertySchema } from './property.validation';
+import {
+  createPropertySchema,
+  revealOtaCredentialsSchema,
+  type RevealOtaCredentialsBody,
+  updateOtaCredentialsSchema,
+  type UpdateOtaCredentialsBody,
+} from './property.validation';
+import { ServiceTokenGuard } from './guards/service-token';
+import { ExternalJwtGuard } from '../qa-panel/guards/external-jwt.guard';
 
 @ApiTags('Properties')
 @ApiBearerAuth('JWT-auth')
@@ -503,7 +522,7 @@ export class PropertyController {
   @ApiOperation({
     summary: 'Import properties from Excel file',
     description:
-      'Upload an Excel file to import properties, portfolios, and sub-portfolios. The Excel file should contain columns: Portfolio (optional), Sub Portfolio (optional), Property (required), user_email, user_password, and credential columns like expediaUsername, expediaPassword, agodaUsername, agodaPassword, bookingUsername, bookingPassword, expediaEmailAssociated, propertyContactEmail, portfolioContactEmail, multiplePortfolioEmails.',
+      'Upload an Excel file to import properties, portfolios, and sub-portfolios. Columns: Portfolio (optional), Sub Portfolio (optional), Property Name (required), optional Phone Number and optional Slot — with both, links to the phone pool by last 3 digits + slot or creates a pool row; with phone only, finds an existing PhoneNumberSlot by last 3 digits (exact full-number match preferred). Sets property phone_number, slot, and phone_number_slot_id. Credential columns: Expedia/Agoda/Booking usernames and passwords, Expedia Email Associated, Property/Portfolio contact emails, Multiple Portfolio Emails.',
   })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -582,6 +601,333 @@ export class PropertyController {
           data: result,
         };
       },
+      this.logger,
+    );
+  }
+
+  @Post('/import-bulk-credentials')
+  @ApiOperation({
+    summary: 'Bulk update Expedia credentials from Excel',
+    description:
+      'Upload a spreadsheet with columns: Expedia ID, Expedia Username, Expedia Password. Each row finds every property with that expedia_id and updates (or creates) property_credentials expediaUsername and expediaPassword for each. Header names are matched case-insensitively.',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description: 'Excel file with Expedia ID, Username, Password columns',
+    type: 'multipart/form-data',
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Excel file (.xlsx, .xls, .csv)',
+        },
+      },
+      required: ['file'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Import finished; see counts and per-row failures in data',
+    type: ImportExpediaCredentialsResponseDto,
+  })
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(ExcelFileInterceptor)
+  async importExpediaCredentials(
+    @Req() request: Request,
+    @UploadedFile() file: Express.Multer.File,
+    @Res() response: Response,
+  ) {
+    const { user } = request as any;
+    if (user.role !== 'admin') {
+      return ResponseHandler.handler(
+        response,
+        async () => {
+          return {
+            statusCode: 403,
+            message: 'You are not authorized to import Expedia credentials',
+            data: null,
+          };
+        },
+        this.logger,
+      );
+    }
+
+    if (!file) {
+      return ResponseHandler.handler(
+        response,
+        async () => {
+          return {
+            statusCode: 400,
+            message: 'Excel file is required',
+            data: null,
+          };
+        },
+        this.logger,
+      );
+    }
+
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result =
+          await this.propertyService.importExpediaCredentialsFromExcel(file);
+        return {
+          statusCode: 200,
+          message: `Expedia credentials import completed: ${result.updated} updated, ${result.propertyNotFound} property not found, ${result.rowsSkippedInvalid} rows skipped`,
+          data: result,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Post('/ota-credentials/reveal')
+  @UseGuards(JwtAuthGuard)
+  @ValidateBody(revealOtaCredentialsSchema)
+  @ApiOperation({
+    summary: 'Read decrypted OTA username and password for a property',
+    description:
+      'Returns plaintext username and decrypted password for the given `property_id` and `ota_provider`. Sensitive: use only for trusted operators over HTTPS.',
+  })
+  @ApiBody({ type: RevealOtaCredentialsDto })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Check propertyNotFound / credentialsNotFound; username and password may be empty',
+    type: RevealOtaCredentialsResponseDto,
+  })
+  async revealOtaCredentials(
+    @Body() body: RevealOtaCredentialsBody,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const data = await this.propertyService.getOtaCredentialsReveal(body);
+        let message = 'Credentials retrieved';
+        if (data.propertyNotFound) {
+          message = 'No property found with this property_id';
+        } else if (data.credentialsNotFound) {
+          message = 'No property_credentials row for this property';
+        }
+        return {
+          statusCode: 200,
+          message,
+          data,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Post('/ota-credentials')
+  @UseGuards(JwtAuthGuard)
+  @ValidateBody(updateOtaCredentialsSchema)
+  @ApiOperation({
+    summary: 'Update property credentials by property id and OTA',
+    description:
+      '`property_id` (Mongo ObjectId), `ota_provider` (Expedia, Agoda, or Booking), plus `username` and/or `password`. Updates that OTA’s fields on property_credentials for that property only.',
+  })
+  @ApiBody({ type: UpdateOtaCredentialsDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Update finished; see updated count and failures in data',
+    type: UpdateOtaCredentialsResponseDto,
+  })
+  async updateOtaCredentials(
+    @Body() body: UpdateOtaCredentialsBody,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result = await this.propertyService.updateOtaCredentials(body);
+        return {
+          statusCode: 200,
+          message: result.propertyNotFound
+            ? 'No property found with this property_id'
+            : result.updated > 0
+              ? 'Credentials updated successfully'
+              : 'Credentials were not updated; see failures in data',
+          data: result,
+        };
+      },
+      this.logger,
+    );
+  }
+  @Post('/sync-upsert/:parent_id')
+  @UseGuards(ExternalJwtGuard)
+  @ApiOperation({
+    summary: 'Internal: upsert a property synced from DBMS (parent_id keyed)',
+  })
+  @ApiBody({ type: SyncUpsertPropertyDto })
+  async syncUpsert(
+    @Param('parent_id') parentId: string,
+    @Body() dto: SyncUpsertPropertyDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result = await this.propertyService.syncUpsertProperty(
+          parentId,
+          dto,
+        );
+        return {
+          statusCode: 200,
+          message: `Property ${result.action} successfully`,
+          data: result.property,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Post('/sync-create')
+  @UseGuards(ServiceTokenGuard)
+  @ApiOperation({ summary: 'Internal: create property synced from DBMS' })
+  async syncCreate(@Body() dto: CreatePropertyDto, @Res() response: Response) {
+    return ResponseHandler.handler(
+      response,
+      async () => ({
+        statusCode: 201,
+        message: 'Sync create processed',
+        data: await this.propertyService.syncCreate(dto),
+      }),
+      this.logger,
+    );
+  }
+
+  @Post('/sync-bulk-upsert')
+  @UseGuards(ExternalJwtGuard)
+  @ApiOperation({
+    summary:
+      'Internal: bulk upsert properties synced from DBMS (parent_id keyed)',
+  })
+  @ApiBody({ type: SyncBulkUpsertRequestDto })
+  async syncBulkUpsert(
+    @Body() body: SyncBulkUpsertRequestDto | SyncBulkUpsertPropertyItemDto[],
+    @Res() response: Response,
+  ) {
+    // Support both the new wrapper object ({ items, batchId?, callbackUrl? })
+    // and the legacy bare-array shape.
+    const isAsync = !Array.isArray(body) && !!body.batchId;
+    if (isAsync) {
+      const req = body as SyncBulkUpsertRequestDto;
+      return ResponseHandler.handler(
+        response,
+        async () => ({
+          statusCode: 200,
+          message: 'Sync bulk upsert accepted (async)',
+          data: await this.propertyService.syncBulkUpsertAsync(
+            req.items,
+            req.batchId as string,
+            req.callbackUrl ?? '',
+          ),
+        }),
+        this.logger,
+      );
+    }
+    const items = Array.isArray(body)
+      ? body
+      : (body as SyncBulkUpsertRequestDto).items;
+    return ResponseHandler.handler(
+      response,
+      async () => ({
+        statusCode: 200,
+        message: 'Sync bulk upsert processed',
+        data: await this.propertyService.syncBulkUpsert(items),
+      }),
+      this.logger,
+    );
+  }
+
+  @Post('/sync-delete/:parent_id')
+  @UseGuards(ExternalJwtGuard)
+  @ApiOperation({
+    summary: 'Internal: delete a property synced from DBMS (parent_id keyed)',
+  })
+  async syncDeleteByParent(
+    @Param('parent_id') parentId: string,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => ({
+        statusCode: 200,
+        message: 'Property deleted successfully',
+        data: await this.propertyService.syncDeleteByParentId(parentId),
+      }),
+      this.logger,
+    );
+  }
+
+  @Post('/sync-delete')
+  @UseGuards(ServiceTokenGuard)
+  @ApiOperation({ summary: 'Internal: delete property synced from DBMS' })
+  @ApiBody({
+    type: SyncDeleteDto,
+    examples: {
+      delete_two_hotels: {
+        summary: 'Delete test Hotel + test Hotel 2',
+        value: {
+          items: [{ parent_id: 'test-hotel-1' }, { parent_id: 'test-hotel-2' }],
+        },
+      },
+    },
+  })
+  async syncDelete(@Body() dto: SyncDeleteDto, @Res() response: Response) {
+    return ResponseHandler.handler(
+      response,
+      async () => ({
+        statusCode: 200,
+        message: 'Sync delete processed',
+        data: await this.propertyService.syncDelete(dto),
+      }),
+      this.logger,
+    );
+  }
+
+  @Post('/sync-bulk-delete')
+  @UseGuards(ExternalJwtGuard)
+  @ApiOperation({
+    summary:
+      'Internal: bulk delete properties synced from DBMS (parent_id keyed)',
+  })
+  @ApiBody({ type: SyncBulkDeletePropertyDto })
+  async syncBulkDelete(
+    @Body() dto: SyncBulkDeletePropertyDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => ({
+        statusCode: 200,
+        message: 'Sync bulk delete processed',
+        data: await this.propertyService.syncBulkDelete(dto),
+      }),
+      this.logger,
+    );
+  }
+
+  @Post('/sync-bulk-create')
+  @UseGuards(ServiceTokenGuard)
+  @ApiOperation({
+    summary: 'Internal: bulk create properties synced from DBMS',
+  })
+  async syncBulkCreate(
+    @Body() dto: SyncBulkCreateDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => ({
+        statusCode: 201,
+        message: 'Sync bulk create processed',
+        data: await this.propertyService.syncBulkCreate(dto.items ?? []),
+      }),
       this.logger,
     );
   }

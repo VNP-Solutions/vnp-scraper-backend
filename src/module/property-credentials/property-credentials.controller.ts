@@ -20,11 +20,15 @@ import { Response } from 'express';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
 import { ResponseHandler } from 'src/common/utils/response-handler';
 import {
+  BulkUpdatePropertyCredentialsDto,
   CreatePropertyCredentialsDto,
   UpdatePropertyCredentialsDto,
 } from './property-credentials.dto';
 import { IPropertyCredentialsService } from './property-credentials.interface';
-import { createPropertyCredentialsSchema } from './property-credentials.validation';
+import {
+  bulkUpdatePropertyCredentialsSchema,
+  createPropertyCredentialsSchema,
+} from './property-credentials.validation';
 
 @ApiTags('Property Credentials')
 @ApiBearerAuth('JWT-auth')
@@ -104,6 +108,45 @@ export class PropertyCredentialsController {
           statusCode: 200,
           message: 'Property credentials retrieved successfully',
           data: credentials,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @Put('/bulk-update')
+  @ApiOperation({
+    summary: 'Apply the same credentials to multiple properties',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Credentials applied to properties successfully',
+  })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ValidateBody(bulkUpdatePropertyCredentialsSchema)
+  async bulkUpdatePropertyCredentials(
+    @Body() bulkUpdateDto: BulkUpdatePropertyCredentialsDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const result =
+          await this.propertyCredentialsService.bulkUpdatePropertyCredentials(
+            bulkUpdateDto,
+          );
+        return {
+          statusCode: 200,
+          message: 'Credentials applied to properties successfully',
+          data: {
+            success: result.success,
+            failed: result.failed,
+            summary: {
+              total: bulkUpdateDto.propertyIds.length,
+              success: result.success.length,
+              failed: result.failed.length,
+            },
+          },
         };
       },
       this.logger,

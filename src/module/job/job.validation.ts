@@ -30,6 +30,7 @@ export const createJobSchema = z.object({
     .optional()
     .nullable(),
   next_due_date: z.string(),
+  schedule_date: z.string().optional().nullable(),
   ota_provider: z.nativeEnum(OTAProvider),
   remaining_direct_billed: z.number().min(0),
   total_collectable: z.number().min(0),
@@ -48,9 +49,56 @@ export const createJobSchema = z.object({
   end_date: z.string().optional().nullable(),
   log_link: z.string().optional().nullable(),
   live_url: z.string().optional().nullable(),
+  watcher_emails: z.array(z.string()).optional(),
+  batch_id: z.union([objectIdSchema, z.null(), z.undefined()]).optional(),
+  recurring_id: z.union([objectIdSchema, z.null(), z.undefined()]).optional(),
+  server_id: z.union([objectIdSchema, z.null(), z.undefined()]).optional(),
+  db_billing_duration: z.number().int().optional().nullable(),
+  booking_vccs_filtered_reservation_count: z
+    .number()
+    .int()
+    .optional()
+    .nullable(),
 });
 
 export const updateJobSchema = createJobSchema.partial();
 
+export const createBatchSchema = z.object({
+  name: z
+    .string()
+    .min(1, 'Batch name is required')
+    .max(100, 'Batch name must be less than 100 characters'),
+});
+
+export const updateBatchSchema = createBatchSchema.partial();
+
+export const bulkArchiveJobsSchema = z.object({
+  job_ids: z.array(objectIdSchema).min(1, 'At least one job ID is required'),
+  status: z.boolean({
+    required_error: 'Status is required',
+    invalid_type_error: 'Status must be a boolean',
+  }),
+});
+
+export const bulkDeleteJobsSchema = z.object({
+  job_ids: z.array(objectIdSchema).min(1, 'At least one job ID is required'),
+});
+
+export const bulkDeleteBatchesSchema = z.object({
+  batch_ids: z.array(objectIdSchema).min(1, 'At least one batch ID is required'),
+});
+
+export const exportMasterJobsSchema = z.object({
+  job_ids: z
+    .array(objectIdSchema)
+    .min(1, 'At least one job ID is required'),
+});
+
 export type CreateJobType = z.infer<typeof createJobSchema>;
 export type UpdateJobType = z.infer<typeof updateJobSchema>;
+export type CreateBatchType = z.infer<typeof createBatchSchema>;
+export type UpdateBatchType = z.infer<typeof updateBatchSchema>;
+export type BulkArchiveJobsType = z.infer<typeof bulkArchiveJobsSchema>;
+export type BulkDeleteJobsType = z.infer<typeof bulkDeleteJobsSchema>;
+export type BulkDeleteBatchesType = z.infer<typeof bulkDeleteBatchesSchema>;
+export type ExportMasterJobsType = z.infer<typeof exportMasterJobsSchema>;

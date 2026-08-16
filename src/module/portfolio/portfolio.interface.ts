@@ -1,5 +1,10 @@
 import { Portfolio } from '@prisma/client';
-import { CreatePortfolioDto, UpdatePortfolioDto } from './portfolio.dto';
+import {
+  CreatePortfolioDto,
+  SyncBulkUpsertPortfolioItemDto,
+  SyncBulkUpsertPortfolioResultDto,
+  UpdatePortfolioDto,
+} from './portfolio.dto';
 
 export interface IPortfolioRepository {
   create(data: CreatePortfolioDto, id: string): Promise<Portfolio>;
@@ -17,6 +22,13 @@ export interface IPortfolioRepository {
     userId: string,
   ): Promise<{ data: Portfolio[]; metadata: any }>;
   findPermission(id: string, userId: string): Promise<any>;
+  findByName(name: string): Promise<Portfolio | null>;
+  findByParentId(parentId: string): Promise<Portfolio | null>;
+  ensureInternalPortfolio(): Promise<Portfolio>;
+  reassignPropertiesToPortfolio(
+    fromPortfolioId: string,
+    toPortfolioId: string,
+  ): Promise<number>;
 }
 
 export interface IPortfolioService {
@@ -35,4 +47,23 @@ export interface IPortfolioService {
     userId: string,
   ): Promise<{ data: Portfolio[]; metadata: any }>;
   getPermission(id: string, userId: string): Promise<any>;
+  syncCreate(
+    name: string,
+    parentId?: string,
+  ): Promise<{ status: string; id?: string }>;
+  syncUpdate(
+    oldName: string,
+    newName: string,
+  ): Promise<{ status: string; id?: string }>;
+  syncDelete(
+    name: string,
+  ): Promise<{ status: string; id?: string; movedProperties?: number }>;
+  syncUpsert(
+    parentId: string,
+    name: string,
+  ): Promise<{ action: 'created' | 'updated'; portfolio: Portfolio }>;
+  syncDeleteByParentId(parentId: string): Promise<{ message: string }>;
+  syncBulkUpsert(
+    items: SyncBulkUpsertPortfolioItemDto[],
+  ): Promise<SyncBulkUpsertPortfolioResultDto>;
 }

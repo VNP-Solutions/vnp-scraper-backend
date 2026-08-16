@@ -26,6 +26,31 @@ enum JobStatus {
   Completed
   Partial
   Failed
+  Stopped
+  InQueue
+  NothingToReport
+  Manual
+}
+
+/// Identifies which "kind" of evaluation a JobTagEntry represents.
+/// Add new values here as new tag kinds are introduced.
+///   - over_160: whether (today − check_out_date) > 160 days majority on
+///               the job's items at completion time.
+enum JobTagField {
+  over_160
+}
+
+/// Embedded entry stored inside Job.tags. Each entry records both the
+/// kind of evaluation (`field`) and its outcome (`value`). This shape
+/// lets a tag be explicitly stored as `false` (= evaluated, not
+/// matched) rather than only "present / absent" the way a flat enum
+/// array did.
+///
+/// Example payload:
+///   "tags": [{ "field": "over_160", "value": true }]
+type JobTagEntry {
+  field JobTagField
+  value Boolean
 }
 
 enum PostingType {
@@ -53,311 +78,855 @@ enum OtpPurpose {
   MFA_SETUP
 }
 
+enum OtpStatusValue {
+  Occupied
+  Released
+}
+
+enum PhoneNumberSlotStatus {
+  Occupied
+  Released
+}
+
+enum OtpPlatform {
+  expedia
+  agoda
+  booking
+  expedia_retrieval
+  agoda_retrieval
+  expedia_db
+}
+
 type CardInfo {
-  card_number    String    // Store encrypted or masked
-  expiry_date    String
-  cvv            String?   // Optional or encrypted
-  reason_for_charge                 String?
+  card_number       String // Store encrypted or masked
+  expiry_date       String
+  cvv               String? // Optional or encrypted
+  reason_for_charge String?
+  card_holder_name  String?
 }
 
 type PaymentInfo {
-  total_guest_payment               Float
-  cancellation_fee                  Float
-  total_payout                      Float
-  amount_to_charge_or_refund        Float
+  total_guest_payment                 Float?
+  cancellation_fee                    Float?
+  total_payout                        Float?
+  amount_to_charge_or_refund          Float
+  charge_before                       String?
+  amount_to_charge_or_refund_currency String?
+}
+
+type DateRange {
+  start_date String
+  end_date   String
+}
+
+type MoneyAmount {
+  amount   Float?
+  currency String?
+}
+
+type Authorization {
+  dateTime            DateTime?
+  status              String?
+  authCode            String?
+  declineCode         String?
+  responseDescription String?
+  amount              MoneyAmount?
+}
+
+enum ScreenshotUrlType {
+  step
+  error
+}
+
+type JobScreenshotUrl {
+  step      String
+  url       String
+  timestamp String
+  type      ScreenshotUrlType
 }
 
 model User {
-  id                            String   @id @default(auto()) @map("_id") @db.ObjectId
-  email                         String   @unique
-  password                      String
-  name                          String
-  role                          RoleEnum
-  image                         String?
-  phone_number                  String?
-  invited_user_id               String?  @db.ObjectId
-  mfa_enabled                   Boolean  @default(false)
-  mfa_secret                    String?
-  is_verified                   Boolean  @default(false)
-  is_active                     Boolean  @default(false)
-  download_report               Boolean  @default(false)
-  last_login                    DateTime?
-  createdAt                     DateTime @default(now())
-  updatedAt                     DateTime @updatedAt
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  email           String    @unique
+  password        String
+  name            String
+  role            RoleEnum
+  image           String?
+  phone_number    String?
+  invited_user_id String?   @db.ObjectId
+  mfa_enabled     Boolean   @default(false)
+  mfa_secret      String?
+  is_verified     Boolean   @default(false)
+  is_active       Boolean   @default(false)
+  download_report Boolean   @default(false)
+  last_login      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  invited_user                  User?     @relation("UserInvites", fields: [invited_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  invited_user User? @relation("UserInvites", fields: [invited_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
-  invitedUsers                  User[]    @relation("UserInvites") 
-  connected_entities            ConnectedEntity[]
-  otps                          Otp[]
-  jobs                          Job[]
-  userFeatureAccessPermissions  UserFeatureAccessPermission[]
-  sentInvitations               UserInvitation[] @relation("InvitedBy")
-  receivedInvitation            UserInvitation? @relation("InvitedUser")
+  invitedUsers                 User[]                        @relation("UserInvites")
+  connected_entities           ConnectedEntity[]
+  otps                         Otp[]
+  jobs                         Job[]
+  userFeatureAccessPermissions UserFeatureAccessPermission[]
+  sentInvitations              UserInvitation[]              @relation("InvitedBy")
+  receivedInvitations          UserInvitation[]              @relation("InvitedUser")
+  notifications                Notification[]
 
   @@map("users")
 }
 
 model ConnectedEntity {
-  id                            String   @id @default(auto()) @map("_id") @db.ObjectId
-  user_id                       String   @db.ObjectId
-  portfolio_id                  String?
-  sub_portfolio_id              String?
-  property_id                   String?
+  id               String  @id @default(auto()) @map("_id") @db.ObjectId
+  user_id          String  @db.ObjectId
+  portfolio_id     String?
+  sub_portfolio_id String?
+  property_id      String?
 
-  user                          User?     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [user_id], references: [id], onDelete: Cascade)
 }
 
 model Portfolio {
-  id                            String   @id @default(auto()) @map("_id") @db.ObjectId
-  name                          String   @unique
-  createdBy                     String?
-  updatedBy                     String?
-  createdAt                     DateTime @default(now())
-  updatedAt                     DateTime @updatedAt
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  parent_id String?
+  name      String   @unique
+  createdBy String?
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  sub_portfolios                SubPortfolio[]
-  jobs                          Job[]
-  userFeatureAccessPermissions  UserFeatureAccessPermission[]
-  property                      Property[]
+  sub_portfolios               SubPortfolio[]
+  jobs                         Job[]
+  userFeatureAccessPermissions UserFeatureAccessPermission[]
+  property                     Property[]
+  recurringJobs                RecurringJob[]
 
+  @@index([parent_id])
   @@map("portfolios")
 }
 
 model SubPortfolio {
-  id                            String   @id @default(auto()) @map("_id") @db.ObjectId
-  name                          String   @unique
-  description                   String?
-  portfolio_id                  String   @db.ObjectId
-  createdAt                     DateTime @default(now())
-  updatedAt                     DateTime @updatedAt
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  name         String   @unique
+  description  String?
+  portfolio_id String   @db.ObjectId
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
+  portfolio Portfolio? @relation(fields: [portfolio_id], references: [id], onDelete: Cascade)
 
-  portfolio                     Portfolio? @relation(fields: [portfolio_id], references: [id], onDelete: Cascade)
+  jobs                         Job[]
+  userFeatureAccessPermissions UserFeatureAccessPermission[]
+  property                     Property[]
 
-  jobs                          Job[]
-  userFeatureAccessPermissions  UserFeatureAccessPermission[]
-  property                      Property[]
-  
   @@map("sub_portfolios")
 }
 
 model Job {
-  id                            String      @id @default(auto()) @map("_id") @db.ObjectId
-  name                          String?
-  job_status                    JobStatus   @default(Pending)
-  portfolio_id                  String?     @db.ObjectId
-  sub_portfolio_id              String?     @db.ObjectId
-  property_id                   String?     @db.ObjectId
-  user_id                       String      @db.ObjectId
-  posting_type                  PostingType
-  portfolio_name                String?
-  sub_portfolio_name            String?
-  property_name                 String
-  billing_type                  String?
-  next_due_date                 DateTime?
-  ota_provider                  OTAProvider @map("OTA")
-  remaining_direct_billed       Float
-  total_collectable             Float
-  total_amount_confirmed        Float
-  execution_type                String      
-  retries_attempted             Int         @default(0)
-  max_retries                   Int         @default(3)
-  retry_delay_ms                Int?
-  priority                      Int         @default(0)
-  job_backoff_length_loading    Int
-  job_backoff_length_selector   Int   
-  queue_name                    String?
-  worker_assigned               String?
-  batch_execution_id            String?
-  start_date                    String?
-  end_date                      String?
-  log_link                      String?
-  live_url                      String?
-  createdAt                     DateTime    @default(now())
-  updatedAt                     DateTime    @updatedAt
+  id                                      String             @id @default(auto()) @map("_id") @db.ObjectId
+  name                                    String?
+  job_status                              JobStatus          @default(Pending)
+  portfolio_id                            String?            @db.ObjectId
+  sub_portfolio_id                        String?            @db.ObjectId
+  property_id                             String?            @db.ObjectId
+  user_id                                 String             @db.ObjectId
+  batch_id                                String?            @db.ObjectId
+  recurring_id                            String?            @db.ObjectId
+  recurring_report_bucket_id              String?            @db.ObjectId
+  server_id                               String?            @db.ObjectId
+  posting_type                            PostingType
+  portfolio_name                          String?
+  sub_portfolio_name                      String?
+  property_name                           String
+  billing_type                            String?
+  next_due_date                           DateTime?
+  schedule_date                           String?
+  ota_provider                            OTAProvider        @map("OTA")
+  remaining_direct_billed                 Float
+  total_collectable                       Float
+  total_amount_confirmed                  Float
+  execution_type                          String
+  retries_attempted                       Int                @default(0)
+  max_retries                             Int                @default(3)
+  retry_delay_ms                          Int?
+  priority                                Int                @default(0)
+  job_backoff_length_loading              Int
+  job_backoff_length_selector             Int
+  queue_name                              String?
+  worker_assigned                         String?
+  batch_execution_id                      String?
+  start_date                              String?
+  end_date                                String?
+  log_link                                String?
+  failed_reason                           String?
+  screenshot_urls                         JobScreenshotUrl[]
+  live_url                                String?
+  current_url                             String?
+  case_open                               Boolean?           @default(false)
+  watcher_emails                          String[]
+  tags                                    JobTagEntry[]
+  db_billing_duration                     Int?
+  booking_vccs_filtered_reservation_count Int?
+  is_archived                             Boolean            @default(false)
+  createdAt                               DateTime           @default(now())
+  updatedAt                               DateTime           @updatedAt
 
-  portfolio                     Portfolio?  @relation(fields: [portfolio_id], references: [id])
-  subPortfolio                  SubPortfolio? @relation(fields: [sub_portfolio_id], references: [id])
-  property                      Property?   @relation(fields: [property_id], references: [id])
-  user                          User?       @relation(fields: [user_id], references: [id])
-  jobItem                       JobItem[]
+  portfolio             Portfolio?             @relation(fields: [portfolio_id], references: [id])
+  subPortfolio          SubPortfolio?          @relation(fields: [sub_portfolio_id], references: [id])
+  property              Property?              @relation(fields: [property_id], references: [id])
+  user                  User?                  @relation(fields: [user_id], references: [id])
+  batch                 Batch?                 @relation(fields: [batch_id], references: [id])
+  recurringJob          RecurringJob?          @relation(fields: [recurring_id], references: [id], onDelete: Cascade)
+  recurringReportBucket RecurringReportBucket? @relation(fields: [recurring_report_bucket_id], references: [id], onDelete: Cascade)
+  server                Server?                @relation(fields: [server_id], references: [id])
+  jobItem               JobItem[]
+  OtpStatus             OtpStatus[]
+  phoneNumberSlots      PhoneNumberSlot[]
+  dbData                DbData[]
+  dbEntries             DbEntry[]
 
   @@map("jobs")
 }
 
+model RecurringJob {
+  id            String       @id @default(auto()) @map("_id") @db.ObjectId
+  name          String
+  schedule_date String?
+  next_date     String?
+  ota_provider  OTAProvider?
+  duration      Int          @default(1) // Number of monthly jobs per cycle
+  is_active     Boolean      @default(true)
+
+  // Portfolio and Property information
+  portfolio_id   String? @db.ObjectId
+  portfolio_name String?
+  property_id    String? @db.ObjectId
+  property_name  String?
+
+  // Hotel ID (based on OTA provider)
+  hotel_id Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  portfolio Portfolio?              @relation(fields: [portfolio_id], references: [id])
+  property  Property?               @relation(fields: [property_id], references: [id])
+  jobs      Job[]
+  buckets   RecurringReportBucket[]
+
+  @@map("recurring_jobs")
+}
+
+model RecurringReportBucket {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  recurring_id  String   @db.ObjectId
+  bucket_number Int
+  name          String // Auto-generated: "Reporting for {Month-YYYY}"
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  recurringJob RecurringJob @relation(fields: [recurring_id], references: [id], onDelete: Cascade)
+  jobs         Job[]
+
+  @@index([recurring_id])
+  @@map("recurring_report_buckets")
+}
+
 model Property {
-  id                            String   @id @default(auto()) @map("_id") @db.ObjectId
-  portfolio_id                  String?  @db.ObjectId
-  sub_portfolio_id              String?  @db.ObjectId
-  name                          String
-  expedia_id                    Int?
-  expedia_status                String?
-  booking_id                    Int?
-  booking_status                String?
-  agoda_id                      Int?
-  agoda_status                  String?
-  user_email                    String
-  user_password                 String
-  createdAt                     DateTime @default(now())
-  updatedAt                     DateTime @updatedAt
-  
-  portfolio                     Portfolio?  @relation(fields: [portfolio_id], references: [id])
-  subPortfolio                  SubPortfolio?  @relation(fields: [sub_portfolio_id], references: [id])
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  parent_id        String?
+  portfolio_id     String?  @db.ObjectId
+  sub_portfolio_id String?  @db.ObjectId
+  name             String
+  expedia_id       Int?
+  expedia_status   String?
+  booking_id       Int?
+  booking_status   String?
+  agoda_id         Int?
+  agoda_status     String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  jobs                          Job[]
-  files                         File[]
-  credentials                   PropertyCredentials[]
-  userFeatureAccessPermissions  UserFeatureAccessPermission[]
-  jobItem                       JobItem[]
+  portfolio    Portfolio?    @relation(fields: [portfolio_id], references: [id])
+  subPortfolio SubPortfolio? @relation(fields: [sub_portfolio_id], references: [id])
 
+  booking_trusted_status String?   @default("not_trusted")
+  booking_last_login     DateTime?
+
+  phone_number         String?
+  slot                 Int?
+  phone_number_slot_id String? @db.ObjectId
+
+  phoneNumberSlot PhoneNumberSlot? @relation(fields: [phone_number_slot_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  jobs                         Job[]
+  files                        File[]
+  credentials                  PropertyCredentials[]
+  userFeatureAccessPermissions UserFeatureAccessPermission[]
+  jobItem                      JobItem[]
+  recurringJobs                RecurringJob[]
+
+  @@index([phone_number_slot_id])
+  @@index([parent_id])
   @@map("properties")
 }
 
 model PropertyCredentials {
-  id                           String   @id @default(auto()) @map("_id") @db.ObjectId
-  property_id                  String   @db.ObjectId
-  expediaUsername              String?
-  expediaPassword              String?
-  agodaUsername                String?
-  agodaPassword                String?
-  bookingUsername              String?
-  bookingPassword              String?
-  expediaEmailAssociated       String?
-  propertyContactEmail         String?
-  portfolioContactEmail        String?
-  multiplePortfolioEmails      String[]
+  id                      String   @id @default(auto()) @map("_id") @db.ObjectId
+  property_id             String   @db.ObjectId
+  expediaUsername         String?
+  expediaPassword         String?
+  agodaUsername           String?
+  agodaPassword           String?
+  bookingUsername         String?
+  bookingPassword         String?
+  expediaEmailAssociated  String?
+  propertyContactEmail    String?
+  portfolioContactEmail   String?
+  multiplePortfolioEmails String[]
 
-  property                     Property  @relation(fields: [property_id], references: [id], onDelete: Cascade)
+  property Property @relation(fields: [property_id], references: [id], onDelete: Cascade)
 
   @@map("property_credentials")
 }
 
 model Otp {
-  id                            String     @id @default(auto()) @map("_id") @db.ObjectId
-  user_id                       String     @db.ObjectId
-  otp_code                      String
-  purpose                       OtpPurpose @default(LOGIN)
-  ip_address                    String?
-  expires_at                    DateTime
-  is_used                       Boolean    @default(false)
-  created_at                    DateTime   @default(now())
-  updated_at                    DateTime   @updatedAt
+  id         String     @id @default(auto()) @map("_id") @db.ObjectId
+  user_id    String     @db.ObjectId
+  otp_code   String
+  purpose    OtpPurpose @default(LOGIN)
+  ip_address String?
+  expires_at DateTime
+  is_used    Boolean    @default(false)
+  created_at DateTime   @default(now())
+  updated_at DateTime   @updatedAt
 
-  user                          User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id])
   @@index([otp_code])
   @@index([purpose])
   @@index([ip_address])
-
   @@map("otps")
 }
 
-
 model File {
-  id                           String   @id @default(auto()) @map("_id") @db.ObjectId
-  url                          String
-  thumbnile_url                String?
-  originalName                 String
-  size                         Int
-  property_id                  String?  @db.ObjectId
-  createdAt                    DateTime @default(now())
-  updatedAt                    DateTime @updatedAt
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  url           String
+  thumbnile_url String?
+  originalName  String
+  size          Int
+  property_id   String?  @db.ObjectId
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  property                     Property? @relation(fields: [property_id], references: [id], onDelete: Cascade)
+  property Property? @relation(fields: [property_id], references: [id], onDelete: Cascade)
 
   @@map("files")
 }
 
 model UserFeatureAccessPermission {
-  id                           String   @id @default(auto()) @map("_id") @db.ObjectId
-  user_id                      String   @db.ObjectId
-  portfolio_id                 String?  @db.ObjectId
-  sub_portfolio_id             String?  @db.ObjectId
-  property_id                  String?  @db.ObjectId
+  id               String  @id @default(auto()) @map("_id") @db.ObjectId
+  user_id          String  @db.ObjectId
+  portfolio_id     String? @db.ObjectId
+  sub_portfolio_id String? @db.ObjectId
+  property_id      String? @db.ObjectId
 
-  user                         User?         @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  portfolio                    Portfolio?    @relation(fields: [portfolio_id], references: [id], onDelete: Cascade)
-  subPortFolio                 SubPortfolio? @relation(fields: [sub_portfolio_id], references: [id], onDelete: Cascade)
-  property                     Property?     @relation(fields: [property_id], references: [id], onDelete: Cascade)
+  user         User?         @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  portfolio    Portfolio?    @relation(fields: [portfolio_id], references: [id], onDelete: Cascade)
+  subPortFolio SubPortfolio? @relation(fields: [sub_portfolio_id], references: [id], onDelete: Cascade)
+  property     Property?     @relation(fields: [property_id], references: [id], onDelete: Cascade)
 
   @@map("user_feature_access_permissions")
 }
 
 model UserInvitation {
-  id                           String           @id @default(auto()) @map("_id") @db.ObjectId
-  email                        String
-  invited_by_id                String           @db.ObjectId
-  invited_user_id              String?          @unique @db.ObjectId
-  invitation_token             String           @unique
-  role                         RoleEnum         @default(partial)
-  status                       InvitationStatus @default(Pending)
-  expires_at                   DateTime
-  accepted_at                  DateTime?
-  message                      String?
-  portfolio_ids                String[]         @default([]) @db.ObjectId
-  sub_portfolio_ids            String[]         @default([]) @db.ObjectId
-  property_ids                 String[]         @default([]) @db.ObjectId
-  createdAt                    DateTime         @default(now())
-  updatedAt                    DateTime         @updatedAt
+  id                String           @id @default(auto()) @map("_id") @db.ObjectId
+  email             String
+  invited_by_id     String           @db.ObjectId
+  invited_user_id   String?          @db.ObjectId
+  invitation_token  String           @unique
+  role              RoleEnum         @default(partial)
+  status            InvitationStatus @default(Pending)
+  expires_at        DateTime
+  accepted_at       DateTime?
+  message           String?
+  portfolio_ids     String[]         @default([]) @db.ObjectId
+  sub_portfolio_ids String[]         @default([]) @db.ObjectId
+  property_ids      String[]         @default([]) @db.ObjectId
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 
-  invitedBy                    User             @relation("InvitedBy", fields: [invited_by_id], references: [id], onDelete: Cascade)
-  invitedUser                  User?            @relation("InvitedUser", fields: [invited_user_id], references: [id], onDelete: SetNull)
+  invitedBy   User  @relation("InvitedBy", fields: [invited_by_id], references: [id], onDelete: Cascade)
+  invitedUser User? @relation("InvitedUser", fields: [invited_user_id], references: [id], onDelete: SetNull)
 
+  @@unique([email, status], name: "unique_pending_invitation")
   @@index([email])
   @@index([status])
-
+  @@index([invited_user_id])
   @@map("user_invitations")
 }
 
 model JobItem {
-  id                           String      @id @default(auto()) @map("_id") @db.ObjectId
-  job_id                       String      @db.ObjectId
-  property_id                  String?     @db.ObjectId
-  guest_name                   String
-  
-  reservation_id               String
-  confirmation_number          String
-  
-  check_in_date                DateTime
-  check_out_date               DateTime
-  
-  room_type                    String
-  
-  booking_amount               Float       // Original amount booked
-  
-  booked_date                  DateTime
-  has_card_info                Boolean     @default(false)
-  
-  card_info                    CardInfo?   // Embedded document
-  
-  has_payment_info             Boolean     @default(false)
-  payment_info                 PaymentInfo? // Embedded document
-  
-  reservation_status           String      // e.g., 'Active', 'Cancelled'
-  
-  createdAt                    DateTime    @default(now())
-  updatedAt                    DateTime    @updatedAt
+  id          String @id @default(auto()) @map("_id") @db.ObjectId
+  job_id      String @db.ObjectId
+  property_id String @db.ObjectId
+  guest_name  String
+
+  reservation_id      String?
+  confirmation_number String?
+
+  check_in_date  DateTime
+  check_out_date DateTime
+
+  room_type String
+
+  booking_amount Float? // Original amount booked
+
+  booked_date   DateTime
+  has_card_info Boolean  @default(false)
+
+  card_info CardInfo? // Embedded document
+
+  has_payment_info Boolean      @default(false)
+  payment_info     PaymentInfo? // Embedded document
+
+  has_card_activity Boolean @default(false)
+  card_activity_id  String? @db.ObjectId
+
+  reservation_status String // e.g., 'Active', 'Cancelled'
+  additional_text    String? // Additional text field
+
+  over_160              Boolean?
+  days_since_checkout   Int?
+  derived_calculated_at DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  job                          Job         @relation(fields: [job_id], references: [id], onDelete: Cascade)
-  property                     Property?   @relation(fields: [property_id], references: [id], onDelete: Cascade)
+  job          Job           @relation(fields: [job_id], references: [id], onDelete: Cascade)
+  property     Property?     @relation(fields: [property_id], references: [id], onDelete: Cascade)
+  cardActivity CardActivity?
 
+  @@unique([job_id, reservation_id])
+  @@index([job_id])
+  @@index([property_id])
+  @@index([reservation_id])
+  @@index([confirmation_number])
+  @@index([job_id, property_id])
+  @@index([guest_name])
+  @@index([check_in_date])
+  @@index([reservation_status])
+  @@index([card_activity_id])
   @@map("job_items")
 }
 
+model CardActivity {
+  id                    String          @id @default(auto()) @map("_id") @db.ObjectId
+  job_item_id           String          @unique @db.ObjectId
+  job_id                String?         @db.ObjectId
+  property_id           String?         @db.ObjectId
+  reservation_id        String?
+  totalSettlementAmount MoneyAmount?
+  authorizations        Authorization[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  jobItem JobItem @relation(fields: [job_item_id], references: [id], onDelete: Cascade)
+
+  @@index([job_id])
+  @@index([property_id])
+  @@index([reservation_id])
+  @@map("card_activities")
+}
+
 model ActivityLog {
-  id            String   @id @default(auto()) @map("_id") @db.ObjectId
-  username      String
-  role          String
-  endpoint      String
-  success       Boolean
-  statusCode    Int
-  ipAddress     String
-  resource      String
-  responseTime  Int
-  timestamp     DateTime @default(now())
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  username     String
+  role         String
+  endpoint     String
+  success      Boolean
+  statusCode   Int
+  ipAddress    String
+  resource     String
+  responseTime Int
+  timestamp    DateTime @default(now())
 
   @@map("activity_logs")
+}
+
+model ActivityLogExport {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  fileName   String
+  s3Url      String
+  exportDate DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("activity_log_exports")
+}
+
+model OtpStatus {
+  id        String         @id @default(auto()) @map("_id") @db.ObjectId
+  status    OtpStatusValue
+  platform  OtpPlatform?
+  job_id    String?        @db.ObjectId
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  job Job? @relation(fields: [job_id], references: [id])
+
+  @@map("otp_statuses")
+}
+
+model PhoneNumberSlot {
+  id           String                @id @default(auto()) @map("_id") @db.ObjectId
+  phone_number String
+  slot         Int
+  status       PhoneNumberSlotStatus @default(Released)
+  job_id       String?               @db.ObjectId
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  job Job? @relation(fields: [job_id], references: [id])
+
+  properties Property[]
+
+  @@index([job_id])
+  @@index([phone_number])
+  @@index([status])
+  @@index([phone_number, slot])
+  @@map("phone_number_slots")
+}
+
+model Batch {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  jobs       Job[]
+  retrievals Retrieval[]
+
+  @@map("batches")
+}
+
+model ParentRetrieval {
+  id           String       @id @default(auto()) @map("_id") @db.ObjectId
+  name         String
+  ota_provider OTAProvider? @map("OTA")
+  is_archived  Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  retrievals     Retrieval[]
+  retrievalItems RetrievalItem[]
+
+  @@map("parent_retrievals")
+}
+
+model Retrieval {
+  id                          String             @id @default(auto()) @map("_id") @db.ObjectId
+  name                        String?
+  job_status                  JobStatus          @default(Pending)
+  portfolio_id                String?            @db.ObjectId
+  sub_portfolio_id            String?            @db.ObjectId
+  property_id                 String?            @db.ObjectId
+  user_id                     String             @db.ObjectId
+  batch_id                    String?            @db.ObjectId
+  parent_retrieval_id         String             @db.ObjectId
+  posting_type                PostingType
+  portfolio_name              String?
+  sub_portfolio_name          String?
+  property_name               String
+  billing_type                String?
+  next_due_date               DateTime?
+  ota_provider                OTAProvider        @map("OTA")
+  remaining_direct_billed     Float
+  total_collectable           Float
+  total_amount_confirmed      Float
+  execution_type              String
+  retries_attempted           Int                @default(0)
+  max_retries                 Int                @default(3)
+  retry_delay_ms              Int?
+  priority                    Int                @default(0)
+  job_backoff_length_loading  Int
+  job_backoff_length_selector Int
+  queue_name                  String?
+  worker_assigned             String?
+  batch_execution_id          String?
+  start_date                  String?
+  end_date                    String?
+  log_link                    String?
+  failed_reason               String?
+  screenshot_urls             JobScreenshotUrl[]
+  live_url                    String?
+  current_url                 String?
+  case_open                   Boolean?           @default(false)
+  watcher_emails              String[]
+  reservations                String[]
+  is_archived                 Boolean            @default(false)
+  createdAt                   DateTime           @default(now())
+  updatedAt                   DateTime           @updatedAt
+
+  parentRetrieval ParentRetrieval? @relation(fields: [parent_retrieval_id], references: [id])
+  retrievalItems  RetrievalItem[]
+  batch           Batch?           @relation(fields: [batch_id], references: [id])
+
+  @@map("retrievals")
+}
+
+model RetrievalItem {
+  id                  String @id @default(auto()) @map("_id") @db.ObjectId
+  retrieval_id        String @db.ObjectId
+  parent_retrieval_id String @db.ObjectId
+  property_id         String @db.ObjectId
+  guest_name          String
+
+  reservation_id      String?
+  confirmation_number String?
+
+  check_in_date  DateTime
+  check_out_date DateTime
+
+  room_type String
+
+  booking_amount Float? // Original amount booked
+
+  booked_date   DateTime
+  has_card_info Boolean  @default(false)
+
+  card_info CardInfo? // Embedded document
+
+  has_payment_info Boolean      @default(false)
+  payment_info     PaymentInfo? // Embedded document
+
+  reservation_status String // e.g., 'Active', 'Cancelled'
+  additional_text    String? // Additional text field
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  retrieval       Retrieval        @relation(fields: [retrieval_id], references: [id], onDelete: Cascade)
+  parentRetrieval ParentRetrieval? @relation(fields: [parent_retrieval_id], references: [id])
+
+  @@unique([retrieval_id, reservation_id])
+  @@index([retrieval_id])
+  @@index([property_id])
+  @@index([reservation_id])
+  @@index([confirmation_number])
+  @@index([retrieval_id, property_id])
+  @@index([guest_name])
+  @@index([check_in_date])
+  @@index([reservation_status])
+  @@map("retrieval_items")
+}
+
+model DbData {
+  id                            String     @id @default(auto()) @map("_id") @db.ObjectId
+  job_id                        String     @db.ObjectId
+  property_name                 String
+  property_id                   String
+  date_range                    DateRange?
+  reservation_ids               String[]   @default([])
+  gearbox_queue_ids             String[]   @default([])
+  total_invoice_amount          Float?
+  total_invoice_amount_currency String?
+  created_at                    DateTime   @default(now())
+  updated_at                    DateTime   @updatedAt
+
+  job       Job       @relation(fields: [job_id], references: [id], onDelete: Cascade)
+  dbEntries DbEntry[]
+
+  @@index([job_id])
+  @@index([property_id])
+  @@index([job_id, property_id])
+  @@index([created_at])
+  @@map("db_datas")
+}
+
+model DbEntry {
+  id                               String   @id @default(auto()) @map("_id") @db.ObjectId
+  job_id                           String   @db.ObjectId
+  property_name                    String
+  property_id                      String
+  db_data_id                       String   @db.ObjectId
+  reservation_id                   String
+  invoice_id                       String
+  guest_name                       String
+  check_in_date                    DateTime
+  check_out_date                   DateTime
+  previously_paid_amount           Float
+  previously_paid_amount_currency  String
+  maximum_billable_amount          Float
+  maximum_billable_amount_currency String
+  requested_booking_amount         Float
+  requested_taxes                  Float
+  requested_total                  Float
+  requested_total_currency         String
+  gearbox_queue_ids                String[] @default([])
+  created_at                       DateTime @default(now())
+  updated_at                       DateTime @updatedAt
+
+  job    Job    @relation(fields: [job_id], references: [id], onDelete: Cascade)
+  dbData DbData @relation(fields: [db_data_id], references: [id], onDelete: Cascade)
+
+  @@index([job_id])
+  @@index([property_id])
+  @@index([db_data_id])
+  @@index([reservation_id])
+  @@index([invoice_id])
+  @@index([guest_name])
+  @@index([check_in_date])
+  @@index([check_out_date])
+  @@index([previously_paid_amount])
+  @@index([previously_paid_amount_currency])
+  @@index([maximum_billable_amount])
+  @@index([maximum_billable_amount_currency])
+  @@index([requested_booking_amount])
+  @@index([requested_taxes])
+  @@index([requested_total])
+  @@index([requested_total_currency])
+  @@map("db_entries")
+}
+
+model Notification {
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  user_id   String    @db.ObjectId
+  title     String?
+  message   String
+  type      String?
+  metadata  Json?
+  is_read   Boolean   @default(false)
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user User? @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, is_read])
+  @@map("notifications")
+}
+
+model Server {
+  id                  String       @id @default(auto()) @map("_id") @db.ObjectId
+  name                String       @unique
+  url                 String
+  platform            OtpPlatform?
+  job_count           Int          @default(0) // Deprecated: kept for backward compatibility
+  max_concurrent_jobs Int          @default(200)
+  is_active           Boolean      @default(true)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  jobs           Job[]
+  dailySchedules ServerDailySchedule[]
+
+  @@map("servers")
+}
+
+model ServerDailySchedule {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  server_id     String   @db.ObjectId
+  date          String // Format: YYYY-MM-DD
+  assigned_jobs Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  server Server @relation(fields: [server_id], references: [id], onDelete: Cascade)
+
+  @@unique([server_id, date])
+  @@index([date])
+  @@index([server_id])
+  @@map("server_daily_schedules")
+}
+
+model ScheduledJob {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  date          String // Format: YYYY-MM-DD
+  job_ids       String[] @db.ObjectId // Array of job IDs
+  retrieval_ids String[] @default([]) @db.ObjectId // Array of retrieval IDs
+  comment       String   @default("")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([date])
+  @@map("scheduled_jobs")
+}
+
+enum QaPanelStatus {
+  Processing
+  Success
+  Failed
+}
+
+type QaPanelFailedReason {
+  row_number Int
+  reason       String
+}
+
+model QaPanel {
+  id                 String                @id @default(auto()) @map("_id") @db.ObjectId
+  file_url           String
+  converted_file_url String?
+  file_name          String
+  status             QaPanelStatus
+  failed_reasons     QaPanelFailedReason[]
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  @@map("qa_panels")
+}
+
+model QaPanelOtaPost {
+  id                 String                @id @default(auto()) @map("_id") @db.ObjectId
+  file_url           String
+  converted_file_url String?
+  file_name          String
+  status             QaPanelStatus
+  failed_reasons     QaPanelFailedReason[]
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  @@map("qa_panel_ota_posts")
+}
+
+enum OtaPostPreChargingStatus {
+  Processing
+  Completed
+  Failed
+}
+
+enum OtaPostPreChargingDelivery {
+  Response
+  Email
+}
+
+model OtaPostPreCharging {
+  id                 String                     @id @default(auto()) @map("_id") @db.ObjectId
+  user_id            String                     @db.ObjectId
+  original_file_url  String
+  converted_file_url String?
+  file_name          String
+  row_count          Int
+  delivery           OtaPostPreChargingDelivery
+  status             OtaPostPreChargingStatus
+  error_message      String?
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+
+  @@map("ota_post_pre_chargings")
+}
+
+model BookingScraperUrl {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  url       String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("booking_scraper_urls")
 }

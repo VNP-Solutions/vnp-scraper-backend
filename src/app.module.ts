@@ -1,17 +1,34 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ActivityLoggerMiddleware } from './common/middleware/activity-logger.middleware';
+import { ActivityLogExportModule } from './module/activity-log-export/activity-log-export.module';
 import { ActivityLogModule } from './module/activity-log/activity-log.module';
+import { AgodaModule } from './module/agoda/agoda.module';
 import { AuthModule } from './module/auth/auth.module';
+import { BookingScraperUrlModule } from './module/booking-scraper-url/booking-scraper-url.module';
 import { DatabaseModule } from './module/database/database.module';
+import { DbDataModule } from './module/db-data/db-data.module';
+import { EncryptionModule } from './module/encryption/encryption.module';
+import { GoogleOAuthModule } from './module/google-oauth/google-oauth.module';
 import { JobModule } from './module/job/job.module';
+import { NotificationModule } from './module/notification/notification.module';
+import { OtaPostPreChargingModule } from './module/ota-post-pre-charging/ota-post-pre-charging.module';
 import { OtpLogModule } from './module/otp-log/otp-log.module';
+import { OtpStatusModule } from './module/otp-status/otp-status.module';
+import { PhoneNumberSlotModule } from './module/phone-number-slot/phone-number-slot.module';
 import { PortfolioModule } from './module/portfolio/portfolio.module';
 import { PropertyCredentialsModule } from './module/property-credentials/property-credentials.module';
 import { PropertyModule } from './module/property/property.module';
+import { QaPanelModule } from './module/qa-panel/qa-panel.module';
+import { QaPanelOtaPostModule } from './module/qa-panel-ota-post/qa-panel-ota-post.module';
+import { RecurringJobModule } from './module/recurring-job/recurring-job.module';
+import { ReportsModule } from './module/reports/reports.module';
+import { RetrievalModule } from './module/retrieval/retrieval.module';
 import { ScraperModule } from './module/scraper/scraper.module';
+import { ServerModule } from './module/server/server.module';
 import { SubPortfolioModule } from './module/sub-portfolio/sub-portfolio.module';
 import { UploadModule } from './module/upload/upload.module';
 import { UserFeatureAccessPermissionModule } from './module/user-feature-access-permission/user-feature-access-permission.module';
@@ -23,20 +40,37 @@ import { UserModule } from './module/user/user.module';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    ScheduleModule.forRoot(),
     DatabaseModule,
     AuthModule,
+    BookingScraperUrlModule,
     UserModule,
     PortfolioModule,
     PropertyCredentialsModule,
     PropertyModule,
     SubPortfolioModule,
     JobModule,
+    RecurringJobModule,
+    ServerModule,
     UploadModule,
+    QaPanelOtaPostModule,
+    QaPanelModule,
+    OtaPostPreChargingModule,
     UserFeatureAccessPermissionModule,
     UserInvitationModule,
     ActivityLogModule,
+    ActivityLogExportModule,
     OtpLogModule,
     ScraperModule,
+    AgodaModule,
+    OtpStatusModule,
+    PhoneNumberSlotModule,
+    RetrievalModule,
+    ReportsModule,
+    DbDataModule,
+    NotificationModule,
+    GoogleOAuthModule,
+    EncryptionModule,
   ],
   controllers: [AppController],
   providers: [AppService],

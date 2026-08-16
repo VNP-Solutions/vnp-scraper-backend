@@ -1,10 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { OTAProvider } from '@prisma/client';
 
 export class CreatePropertyDto {
   @ApiProperty({
     description: 'Property name',
   })
   name: string;
+
+  @ApiPropertyOptional({
+    description: 'Parent property ID',
+  })
+  parent_id?: string;
 
   @ApiPropertyOptional({
     description: 'Portfolio ID',
@@ -15,6 +21,14 @@ export class CreatePropertyDto {
     description: 'Sub Portfolio ID',
   })
   sub_portfolio_id?: string;
+
+  @ApiPropertyOptional({ description: 'Portfolio name (for sync resolution)' })
+  portfolio_name?: string;
+
+  @ApiPropertyOptional({
+    description: 'Sub Portfolio name (for sync resolution)',
+  })
+  sub_portfolio_name?: string;
 
   @ApiPropertyOptional({
     description: 'Expedia ID',
@@ -46,17 +60,21 @@ export class CreatePropertyDto {
   })
   agoda_status?: string;
 
-  @ApiProperty({
-    description: 'User email for property access',
-    example: 'user@example.com',
+  @ApiPropertyOptional({
+    description: 'Assigned phone number (often matches linked PhoneNumberSlot)',
   })
-  user_email: string;
+  phone_number?: string;
 
-  @ApiProperty({
-    description: 'User password for property access (will be encrypted)',
-    example: 'securePassword123',
+  @ApiPropertyOptional({
+    description: 'Slot index (often matches linked PhoneNumberSlot.slot)',
   })
-  user_password: string;
+  slot?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'PhoneNumberSlot document id — which pool row this property uses',
+  })
+  phone_number_slot_id?: string;
 }
 
 export class UpdatePropertyDto {
@@ -67,6 +85,11 @@ export class UpdatePropertyDto {
   name?: string;
 
   @ApiPropertyOptional({
+    description: 'Parent property ID',
+  })
+  parent_id?: string;
+
+  @ApiPropertyOptional({
     description: 'Portfolio ID',
   })
   portfolio_id?: string;
@@ -107,16 +130,20 @@ export class UpdatePropertyDto {
   agoda_status?: string;
 
   @ApiPropertyOptional({
-    description: 'User email for property access',
-    example: 'user@example.com',
+    description: 'Assigned phone number (often matches linked PhoneNumberSlot)',
   })
-  user_email?: string;
+  phone_number?: string;
 
   @ApiPropertyOptional({
-    description: 'User password for property access (will be encrypted)',
-    example: 'securePassword123',
+    description: 'Slot index (often matches linked PhoneNumberSlot.slot)',
   })
-  user_password?: string;
+  slot?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'PhoneNumberSlot document id — which pool row this property uses',
+  })
+  phone_number_slot_id?: string;
 }
 
 export class ImportPropertiesResponseDto {
@@ -185,11 +212,266 @@ export class ImportPropertiesResponseDto {
         name: { type: 'string' },
         portfolio_id: { type: 'string' },
         sub_portfolio_id: { type: 'string' },
-        user_email: { type: 'string' },
         createdAt: { type: 'string', format: 'date-time' },
         updatedAt: { type: 'string', format: 'date-time' },
       },
     },
   })
   properties: any[];
+}
+
+export class ImportExpediaCredentialsFailureDto {
+  @ApiProperty({
+    description: '1-based Excel row number (includes header row)',
+  })
+  row: number;
+
+  @ApiPropertyOptional({
+    description: 'Expedia ID from the row when parseable',
+  })
+  expediaId?: number;
+
+  @ApiProperty({ description: 'Why this row was skipped or failed' })
+  reason: string;
+}
+
+export class ImportExpediaCredentialsResponseDto {
+  @ApiProperty({
+    description:
+      'Successful credential updates (one per property; a single Excel row can match multiple properties with the same Expedia ID)',
+    example: 10,
+  })
+  updated: number;
+
+  @ApiProperty({
+    description: 'Rows whose Expedia ID did not match any property',
+    example: 2,
+  })
+  propertyNotFound: number;
+
+  @ApiProperty({
+    description:
+      'Rows skipped (missing/invalid Expedia ID, or both username and password empty)',
+    example: 1,
+  })
+  rowsSkippedInvalid: number;
+
+  @ApiProperty({
+    description: 'Per-row issues (skipped or update errors)',
+    type: [ImportExpediaCredentialsFailureDto],
+  })
+  failures: ImportExpediaCredentialsFailureDto[];
+}
+
+export class UpdateOtaCredentialsDto {
+  @ApiProperty({
+    description: 'Mongo ObjectId of the property',
+    example: '507f1f77bcf86cd799439011',
+  })
+  property_id: string;
+
+  @ApiProperty({ enum: OTAProvider })
+  ota_provider: OTAProvider;
+
+  @ApiPropertyOptional({
+    description: 'Login username for that OTA on property_credentials',
+  })
+  username?: string;
+
+  @ApiPropertyOptional({
+    description: 'Login password for that OTA (stored encrypted)',
+  })
+  password?: string;
+}
+
+export class UpdateOtaCredentialsFailureDto {
+  @ApiPropertyOptional({
+    description: 'Property id when a per-property credential update failed',
+  })
+  property_id?: string;
+
+  @ApiProperty({ description: 'Error detail' })
+  reason: string;
+}
+
+export class UpdateOtaCredentialsResponseDto {
+  @ApiProperty({
+    description: '1 if credentials were updated, 0 otherwise',
+    example: 1,
+  })
+  updated: number;
+
+  @ApiProperty({
+    description: 'True when no property exists with the given property_id',
+    example: false,
+  })
+  propertyNotFound: boolean;
+
+  @ApiProperty({
+    description: 'Per-property update errors (empty when all succeeded)',
+    type: [UpdateOtaCredentialsFailureDto],
+  })
+  failures: UpdateOtaCredentialsFailureDto[];
+}
+
+export class RevealOtaCredentialsDto {
+  @ApiProperty({
+    description: 'Mongo ObjectId of the property',
+    example: '507f1f77bcf86cd799439011',
+  })
+  property_id: string;
+
+  @ApiProperty({ enum: OTAProvider })
+  ota_provider: OTAProvider;
+}
+
+export class RevealOtaCredentialsResponseDto {
+  @ApiProperty({
+    description: 'True when no property exists with the given property_id',
+  })
+  propertyNotFound: boolean;
+
+  @ApiProperty({
+    description:
+      'True when the property exists but has no property_credentials row yet',
+  })
+  credentialsNotFound: boolean;
+
+  @ApiProperty({
+    description: 'Plaintext username for the requested OTA (empty if unset)',
+  })
+  username: string;
+
+  @ApiProperty({
+    description:
+      'Decrypted password for the requested OTA (empty if unset or decryption failed)',
+  })
+  password: string;
+}
+
+export class SyncUpsertPropertyDto {
+  @ApiProperty({
+    example: 'dbms-portfolio-123',
+    description: 'DBMS portfolio id (resolves portfolio)',
+  })
+  portfolio_parent_id: string;
+
+  @ApiProperty({ example: 'Grand Hotel', description: 'Property name' })
+  name: string;
+
+  @ApiPropertyOptional({ example: 123456 }) expedia_id?: number;
+  @ApiPropertyOptional({ example: 654321 }) booking_id?: number;
+  @ApiPropertyOptional({ example: 111222 }) agoda_id?: number;
+
+  @ApiPropertyOptional() expedia_username?: string;
+  @ApiPropertyOptional() expedia_password?: string;
+  @ApiPropertyOptional() agoda_username?: string;
+  @ApiPropertyOptional() agoda_password?: string;
+  @ApiPropertyOptional() booking_username?: string;
+  @ApiPropertyOptional() booking_password?: string;
+}
+
+export class SyncBulkUpsertPropertyItemDto {
+  @ApiProperty({
+    example: 2,
+    description: 'Source row number for the sync report',
+  })
+  row: number;
+
+  @ApiProperty({
+    example: 'dbms-property-123',
+    description: 'DBMS property id (upsert key)',
+  })
+  parent_id: string;
+
+  @ApiProperty({
+    example: 'dbms-portfolio-123',
+    description: 'DBMS portfolio id (resolves portfolio)',
+  })
+  portfolio_parent_id: string;
+
+  @ApiProperty({ example: 'Grand Hotel', description: 'Property name' })
+  name: string;
+
+  @ApiPropertyOptional({ example: 123456 }) expedia_id?: number;
+  @ApiPropertyOptional({ example: 654321 }) booking_id?: number;
+  @ApiPropertyOptional({ example: 111222 }) agoda_id?: number;
+
+  @ApiPropertyOptional() expedia_username?: string;
+  @ApiPropertyOptional() expedia_password?: string;
+  @ApiPropertyOptional() agoda_username?: string;
+  @ApiPropertyOptional() agoda_password?: string;
+  @ApiPropertyOptional() booking_username?: string;
+  @ApiPropertyOptional() booking_password?: string;
+}
+
+export class SyncBulkUpsertPropertyResultDto {
+  @ApiProperty({ example: 10 }) totalRows: number;
+  @ApiProperty({ example: 4 }) createdCount: number;
+  @ApiProperty({ example: 4 }) updatedCount: number;
+  @ApiProperty({ example: 2 }) failureCount: number;
+  @ApiProperty() errors: Array<{
+    row: number;
+    parent_id: string;
+    error: string;
+  }>;
+  @ApiProperty() successfulUpserts: Array<{
+    parent_id: string;
+    action: 'created' | 'updated';
+  }>;
+}
+
+/// Wrapper for the sync-bulk-upsert endpoint. When `batchId` is present the
+/// endpoint returns immediately and processes the items in the background,
+/// POSTing the result back to `callbackUrl` (the DBMS). When `batchId` is
+/// absent the endpoint behaves synchronously as before.
+export class SyncBulkUpsertRequestDto {
+  @ApiProperty({ type: [SyncBulkUpsertPropertyItemDto] })
+  items: SyncBulkUpsertPropertyItemDto[];
+
+  @ApiPropertyOptional({
+    description:
+      'If present, process asynchronously and call back with the result',
+  })
+  batchId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'DBMS endpoint to POST the result back to (required when batchId is set)',
+  })
+  callbackUrl?: string;
+}
+
+export class SyncDeleteDto {
+  expedia_id?: number | null;
+  booking_id?: number | null;
+  agoda_id?: number | null;
+}
+
+export class SyncBulkCreateDto {
+  items: CreatePropertyDto[];
+}
+
+export class SyncBulkDeletePropertyItemDto {
+  @ApiProperty({
+    example: 'dbms-property-123',
+    description: 'DBMS property id (delete key)',
+  })
+  parent_id: string;
+}
+
+export class SyncBulkDeletePropertyDto {
+  @ApiProperty({ type: [SyncBulkDeletePropertyItemDto] })
+  items: SyncBulkDeletePropertyItemDto[];
+}
+
+/** @deprecated Use SyncBulkDeletePropertyDto */
+export class SyncBulkDeleteDto extends SyncBulkDeletePropertyDto {}
+
+export class SyncBulkDeletePropertyResultDto {
+  @ApiProperty({ example: 2 }) totalCount: number;
+  @ApiProperty({ example: 1 }) deletedCount: number;
+  @ApiProperty({ example: 1 }) failureCount: number;
+  @ApiProperty() errors: Array<{ parent_id: string; error: string }>;
+  @ApiProperty() successfulDeletes: Array<{ parent_id: string }>;
 }

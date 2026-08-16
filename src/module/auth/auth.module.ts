@@ -2,6 +2,7 @@ import { Module, Logger } from '@nestjs/common';
 import { PassportModule } from '@nestjs/passport';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import type { SignOptions } from 'jsonwebtoken';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -13,10 +14,11 @@ import { AuthRepository } from './auth.repository';
     PassportModule,
     JwtModule.registerAsync({
       inject: [ConfigService],
-      useFactory: async (configService: ConfigService) => ({
+      useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('SECRET_KEY'),
-        signOptions: { 
-          expiresIn: configService.get<string>('JWT_EXPIRES_IN') || '2d'
+        signOptions: {
+          expiresIn: (configService.get<string>('JWT_EXPIRES_IN') ??
+            '2d') as NonNullable<SignOptions['expiresIn']>,
         },
       }),
     }),
