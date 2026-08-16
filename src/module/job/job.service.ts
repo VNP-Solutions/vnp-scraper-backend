@@ -11,8 +11,13 @@ import {
   IPropertyRepository,
   IPropertyService,
 } from '../property/property.interface';
-import { Batch, Job, JobStatus, OTAProvider, PostingType } from '@prisma/client';
-import * as archiver from 'archiver';
+import {
+  Batch,
+  Job,
+  JobStatus,
+  OTAProvider,
+  PostingType,
+} from '@prisma/client';
 import { firstValueFrom } from 'rxjs';
 import { PassThrough, Writable } from 'stream';
 import * as XLSX from 'xlsx';

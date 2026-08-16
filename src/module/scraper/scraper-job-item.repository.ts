@@ -113,15 +113,22 @@ export class ScraperJobItemRepository implements IScraperJobItemRepository {
         };
       }
 
+      // Build the base filters. `filters` is the rest of `query` after the
+      // named params are destructured off, and also carries `createdAt` from
+      // the start_date/end_date range above — it must be spread in or those
+      // filters silently stop applying.
       let allFilters: any = {
         job_id: jobId,
         ...filters,
       };
 
+      // Handle reasonForCharge filter
       if (reason_for_charge) {
         allFilters.card_info = {
           is: {
-            reason_for_charge: reason_for_charge,
+            reason_for_charge: {
+              equals: reason_for_charge,
+            },
           },
         };
       }
@@ -144,23 +151,20 @@ export class ScraperJobItemRepository implements IScraperJobItemRepository {
       }
 
       if (search) {
-        allFilters = {
-          ...allFilters,
-          OR: [
-            {
-              guest_name: {
-                contains: search,
-                mode: 'insensitive',
-              },
+        allFilters.OR = [
+          {
+            guest_name: {
+              contains: search,
+              mode: 'insensitive',
             },
-            {
-              reservation_id: {
-                contains: search,
-                mode: 'insensitive',
-              },
+          },
+          {
+            reservation_id: {
+              contains: search,
+              mode: 'insensitive',
             },
-          ],
-        };
+          },
+        ];
       }
 
       const [jobItems, totalDocuments] = await Promise.all([
