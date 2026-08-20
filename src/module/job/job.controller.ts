@@ -153,6 +153,7 @@ export class JobController {
               start_date: '2026-08-01',
               end_date: '2026-08-31',
               priority: 0,
+              booking_otp_number: '+1 555 0100',
             },
             {
               parent_id: 'dbms-property-id',
