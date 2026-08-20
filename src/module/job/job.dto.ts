@@ -119,6 +119,18 @@ export class CreateJobDto {
       'Count of reservations after booking VCCs filter (optional metadata)',
   })
   booking_vccs_filtered_reservation_count?: number;
+
+  @ApiProperty({
+    required: false,
+    description: 'Assigned phone number (matches the linked PhoneNumberSlot)',
+  })
+  phone_number?: string;
+
+  @ApiProperty({
+    required: false,
+    description: 'Slot index of the assigned PhoneNumberSlot',
+  })
+  slot?: number;
 }
 
 export class BulkCreateJobFromDbmsItemDto {
@@ -157,6 +169,15 @@ export class BulkCreateJobFromDbmsItemDto {
     description: 'Job priority (0 = Normal, 1 = High)',
   })
   priority?: number;
+
+  @ApiProperty({
+    example: '+1 555 0100',
+    required: false,
+    description:
+      'Booking OTP phone number from DBMS. Stored on the job as phone_number, ' +
+      'and matched against the PhoneNumberSlot pool to resolve the job slot.',
+  })
+  booking_otp_number?: string;
 }
 
 export class BulkCreateJobFromDbmsDto {

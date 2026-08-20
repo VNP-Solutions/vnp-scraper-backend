@@ -802,6 +802,46 @@ export class JobRepository implements IJobRepository {
     }
   }
 
+  /**
+   * Resolves a phone number against the PhoneNumberSlot pool.
+   *
+   * Tries an exact match first, then falls back to comparing digits only, so a
+   * DBMS-entered "+1 (555) 0100" still finds a pool row stored as "15550100".
+   * Returns null when the pool has no match — callers keep the phone number and
+   * leave the slot unset rather than failing.
+   */
+  async findPhoneNumberSlotByPhone(
+    phoneNumber: string,
+  ): Promise<{ phone_number: string; slot: number } | null> {
+    try {
+      const raw = (phoneNumber ?? '').trim();
+      if (!raw) return null;
+
+      const exact = await this.db.phoneNumberSlot.findFirst({
+        where: { phone_number: raw },
+        select: { phone_number: true, slot: true },
+      });
+      if (exact) return exact;
+
+      const digits = raw.replace(/\D/g, '');
+      if (!digits) return null;
+
+      const all = await this.db.phoneNumberSlot.findMany({
+        select: { phone_number: true, slot: true },
+      });
+      return (
+        all.find((row) => row.phone_number.replace(/\D/g, '') === digits) ??
+        null
+      );
+    } catch (error) {
+      this.logger.error(
+        `Error resolving phone number slot for "${phoneNumber}":`,
+        error,
+      );
+      throw error;
+    }
+  }
+
   async findLatestCheckoutDateByJobId(
     jobId: string,
   ): Promise<{ check_out_date: Date } | null> {

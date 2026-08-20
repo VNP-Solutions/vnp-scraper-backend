@@ -160,6 +160,10 @@ export class JobService implements IJobService {
         const otaProvider = this.mapOtaType(item.ota_type);
         const billingType = this.mapBillingTypeFromOtaType(item.ota_type);
         const priority = this.mapDbmsPriority(item.priority);
+        const phoneSlot = await this.resolveDbmsPhoneSlot(
+          item.booking_otp_number,
+          parentId,
+        );
 
         const job = await this.repository.create({
           user_id: userId,
@@ -181,6 +185,8 @@ export class JobService implements IJobService {
           priority,
           queue_name: 'default',
           job_status: JobStatus.Pending,
+          phone_number: phoneSlot.phone_number,
+          slot: phoneSlot.slot,
         } as CreateJobDto);
 
         result.createdCount++;
@@ -207,6 +213,30 @@ export class JobService implements IJobService {
     );
 
     return result;
+  }
+
+  /**
+   * Turns the DBMS-supplied booking OTP number into the { phone_number, slot }
+   * pair stored on the job. The slot comes from the PhoneNumberSlot pool; an
+   * unknown number is still recorded, just without a slot, so a missing pool
+   * row never fails job creation.
+   */
+  private async resolveDbmsPhoneSlot(
+    bookingOtpNumber: string | undefined,
+    parentId: string,
+  ): Promise<{ phone_number?: string; slot?: number }> {
+    const phoneNumber = (bookingOtpNumber ?? '').trim();
+    if (!phoneNumber) return {};
+
+    const match = await this.repository.findPhoneNumberSlotByPhone(phoneNumber);
+    if (!match) {
+      this.logger.warn(
+        `DBMS bulk create: no PhoneNumberSlot matches booking_otp_number="${phoneNumber}" (parent_id=${parentId}); saving phone number without a slot`,
+      );
+      return { phone_number: phoneNumber };
+    }
+
+    return { phone_number: match.phone_number, slot: match.slot };
   }
 
   private mapOtaType(otaType: string): OTAProvider {

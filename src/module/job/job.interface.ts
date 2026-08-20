@@ -30,6 +30,9 @@ export interface IJobRepository {
   findLatestCheckoutDateByJobId(
     jobId: string,
   ): Promise<{ check_out_date: Date } | null>;
+  findPhoneNumberSlotByPhone(
+    phoneNumber: string,
+  ): Promise<{ phone_number: string; slot: number } | null>;
   getJobStatisticsByUserId(
     userId: string,
     isAdmin: boolean,
