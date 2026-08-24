@@ -9,6 +9,7 @@ import {
 import { PhoneNumberSlot, Prisma } from '@prisma/client';
 import {
   CreatePhoneNumberSlotDto,
+  OccupiedPhoneNumbersResponseDto,
   UpdatePhoneNumberSlotDto,
 } from './phone-number-slot.dto';
 import {
@@ -82,6 +83,22 @@ export class PhoneNumberSlotService implements IPhoneNumberSlotService {
     } catch (error) {
       this.logger.error(
         `Error listing phone number slots: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async getOccupiedPhoneNumbers(): Promise<OccupiedPhoneNumbersResponseDto> {
+    try {
+      const occupiedSlots = await this.repository.findOccupied();
+      return {
+        total_occupied: occupiedSlots.length,
+        occupied_phone_numbers: occupiedSlots,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error getting occupied phone numbers: ${error.message}`,
         error.stack,
       );
       throw error;

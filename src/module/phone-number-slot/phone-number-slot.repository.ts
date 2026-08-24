@@ -34,6 +34,13 @@ export class PhoneNumberSlotRepository implements IPhoneNumberSlotRepository {
     });
   }
 
+  async findOccupied(): Promise<PhoneNumberSlot[]> {
+    return this.db.phoneNumberSlot.findMany({
+      where: { status: PhoneNumberSlotStatus.Occupied },
+      orderBy: [{ slot: 'asc' }, { phone_number: 'asc' }],
+    });
+  }
+
   async update(
     id: string,
     data: UpdatePhoneNumberSlotDto,
