@@ -91,6 +91,31 @@ export class PhoneNumberSlotController {
     );
   }
 
+  @Get('/occupied')
+  @ApiOperation({
+    summary: 'Get occupied phone numbers',
+    description:
+      'Returns count and list of phone numbers with status "Occupied"',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Occupied phone numbers retrieved successfully',
+  })
+  async getOccupied(@Res() response: Response) {
+    return ResponseHandler.handler(
+      response,
+      async () => {
+        const data = await this.phoneNumberSlotService.getOccupiedPhoneNumbers();
+        return {
+          statusCode: 200,
+          message: 'Occupied phone numbers retrieved successfully',
+          data,
+        };
+      },
+      this.logger,
+    );
+  }
+
   @Put(':id')
   @ApiOperation({
     summary: 'Update phone number and slot',
