@@ -1264,7 +1264,7 @@ export class PropertyRepository implements IPropertyRepository {
    * Expected Excel format:
    * - Required columns: "Property Name"
    * - Optional columns: "Portfolio", "Sub Portfolio", "email", "password"
-   * - Optional MFA pool: "Phone Number"; optional "Slot" — with slot: match by last 3 digits + slot or create pool row; phone only: find existing PhoneNumberSlot by last 3 digits (exact digit match preferred if several)
+   * - Optional MFA pool: "Phone Number"; optional "Slot" — with slot: match by last 3 digits + slot or create pool row; phone only: find existing PhoneNumberSlot by last 3 digits (exact digit match preferred if several). On re-import, empty Phone Number/Slot cells unassign phone/slot from that property only (pool row in PhoneNumberSlot is kept).
    * - OTA columns: "Expedia ID", "Expedia Status", "Booking ID", "Booking Status", "Agoda ID", "Agoda Status"
    * - Credential columns: "Expedia Username", "Expedia Password", "Agoda Username", "Agoda Password", "Booking Username", "Booking Password", "Expedia Email Associated", "Property Contact Email", "Portfolio Contact Email"
    *
@@ -1301,6 +1301,17 @@ export class PropertyRepository implements IPropertyRepository {
       if (!data || data.length === 0) {
         throw new Error('Excel file is empty or invalid');
       }
+
+      // Header row from the sheet (empty cells in data rows omit keys in sheet_to_json)
+      const headerRow = (
+        (XLSX.utils.sheet_to_json(worksheet, { header: 1 })[0] as unknown[]) ||
+        []
+      );
+      const sheetColumnNames = new Set(
+        headerRow.map((h) => String(h ?? '').trim()).filter(Boolean),
+      );
+      const hasPhoneNumberColumn = sheetColumnNames.has('Phone Number');
+      const hasSlotColumn = sheetColumnNames.has('Slot');
 
       // Get headers from first row
       const headers = Object.keys(data[0] as any);
@@ -1739,6 +1750,18 @@ export class PropertyRepository implements IPropertyRepository {
                   `Phone slot link skipped for existing property ${existingProperty.name}: ${phoneSlotError?.message}`,
                 );
               }
+            } else if (hasPhoneNumberColumn || hasSlotColumn) {
+              // Excel has Phone Number/Slot columns but this row is blank →
+              // unassign phone/slot from this property only. The PhoneNumberSlot
+              // pool row is left in place; only this property is unlinked.
+              propertyUpdateData.phone_number = null;
+              propertyUpdateData.slot = null;
+              if (existingProperty.phone_number_slot_id) {
+                propertyUpdateData.phoneNumberSlot = { disconnect: true };
+              }
+              this.logger.log(
+                `Unassigned phone/slot from existing property: ${existingProperty.name}`,
+              );
             }
 
             // Update property if there are IDs to update

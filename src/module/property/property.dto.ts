@@ -128,18 +128,21 @@ export class UpdatePropertyDto {
 
   @ApiPropertyOptional({
     description: 'Assigned phone number (often matches linked PhoneNumberSlot)',
+    nullable: true,
   })
-  phone_number?: string;
+  phone_number?: string | null;
 
   @ApiPropertyOptional({
     description: 'Slot index (often matches linked PhoneNumberSlot.slot)',
+    nullable: true,
   })
-  slot?: number;
+  slot?: number | null;
 
   @ApiPropertyOptional({
     description: 'PhoneNumberSlot document id — which pool row this property uses',
+    nullable: true,
   })
-  phone_number_slot_id?: string;
+  phone_number_slot_id?: string | null;
 }
 
 export class ImportPropertiesResponseDto {
