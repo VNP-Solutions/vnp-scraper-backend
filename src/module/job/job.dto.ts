@@ -131,6 +131,20 @@ export class CreateJobDto {
     description: 'Slot index of the assigned PhoneNumberSlot',
   })
   slot?: number;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Current case status of the job (e.g. the Agoda case state the scraper is working through)',
+  })
+  case_status?: string;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Screenshot step the scraper is currently on, matching JobScreenshotUrl.step',
+  })
+  current_ss_step?: string;
 }
 
 export class BulkCreateJobFromDbmsItemDto {
@@ -272,6 +286,20 @@ export class UpdateJobDto implements Partial<CreateJobDto> {
       'Count of reservations after booking VCCs filter (optional metadata)',
   })
   booking_vccs_filtered_reservation_count?: number;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Current case status of the job (e.g. the Agoda case state the scraper is working through)',
+  })
+  case_status?: string;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Screenshot step the scraper is currently on, matching JobScreenshotUrl.step',
+  })
+  current_ss_step?: string;
 }
 
 export class ImportJobsResponseDto {

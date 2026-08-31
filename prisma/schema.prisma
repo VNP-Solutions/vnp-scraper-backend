@@ -201,6 +201,7 @@ model Portfolio {
   userFeatureAccessPermissions UserFeatureAccessPermission[]
   property                     Property[]
   recurringJobs                RecurringJob[]
+  agodaCaseItems               AgodaCaseItem[]
 
   @@index([parent_id])
   @@map("portfolios")
@@ -270,6 +271,8 @@ model Job {
   booking_vccs_filtered_reservation_count Int?
   phone_number                            String?
   slot                                    Int?
+  case_status                             String?
+  current_ss_step                         String?
   is_archived                             Boolean            @default(false)
   createdAt                               DateTime           @default(now())
   updatedAt                               DateTime           @updatedAt
@@ -287,6 +290,7 @@ model Job {
   phoneNumberSlots      PhoneNumberSlot[]
   dbData                DbData[]
   dbEntries             DbEntry[]
+  agodaEmails           AgodaEmail[]
 
   @@map("jobs")
 }
@@ -368,6 +372,7 @@ model Property {
   userFeatureAccessPermissions UserFeatureAccessPermission[]
   jobItem                      JobItem[]
   recurringJobs                RecurringJob[]
+  agodaCaseItems               AgodaCaseItem[]
 
   @@index([phone_number_slot_id])
   @@index([parent_id])
@@ -610,8 +615,9 @@ model Batch {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  jobs       Job[]
-  retrievals Retrieval[]
+  jobs           Job[]
+  retrievals     Retrieval[]
+  agodaCaseItems AgodaCaseItem[]
 
   @@map("batches")
 }
@@ -868,7 +874,7 @@ enum QaPanelStatus {
 
 type QaPanelFailedReason {
   row_number Int
-  reason       String
+  reason     String
 }
 
 model QaPanel {
@@ -931,4 +937,57 @@ model BookingScraperUrl {
   updatedAt DateTime @updatedAt
 
   @@map("booking_scraper_urls")
+}
+
+model AgodaEmail {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  job_id      String   @db.ObjectId
+  email_id    String
+  subject     String?
+  email_body  String?
+  from        String?
+  to          String?
+  screenshots String[] @default([])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  job Job @relation(fields: [job_id], references: [id], onDelete: Cascade)
+
+  @@index([job_id])
+  @@index([email_id])
+  @@map("agoda_emails")
+}
+
+model AgodaCaseItem {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  property_id      String?  @db.ObjectId
+  batch_id         String?  @db.ObjectId
+  portfolio_id     String?  @db.ObjectId
+  reservation_id   String?
+  client_name      String?
+  check_in         String? // Format: YYYY-MM-DD
+  check_out        String? // Format: YYYY-MM-DD
+  amount           String?
+  currency         String?
+  amount_to_charge String?
+  charge_status    String?
+  vcc_card_number  String?
+  card_expire      String?
+  card_cvv         String?
+  is_missing       Boolean  @default(false)
+  case_status      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  property  Property?  @relation(fields: [property_id], references: [id], onDelete: Cascade)
+  batch     Batch?     @relation(fields: [batch_id], references: [id], onDelete: Cascade)
+  portfolio Portfolio? @relation(fields: [portfolio_id], references: [id], onDelete: Cascade)
+
+  @@index([property_id])
+  @@index([batch_id])
+  @@index([portfolio_id])
+  @@index([reservation_id])
+  @@index([charge_status])
+  @@index([case_status])
+  @@map("agoda_case_items")
 }

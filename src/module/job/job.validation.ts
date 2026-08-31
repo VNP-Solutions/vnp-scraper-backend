@@ -59,6 +59,10 @@ export const createJobSchema = z.object({
     .int()
     .optional()
     .nullable(),
+  phone_number: z.string().optional().nullable(),
+  slot: z.number().int().optional().nullable(),
+  case_status: z.string().optional().nullable(),
+  current_ss_step: z.string().optional().nullable(),
 });
 
 export const updateJobSchema = createJobSchema.partial();
