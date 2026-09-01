@@ -1,0 +1,200 @@
+/**
+ * Shared types for the Agoda Partner Support email scraper
+ * (POST /api/agoda/retrive-case-email).
+ */
+
+/** Sender Agoda replies always come from; anything else is ignored. */
+export const AGODA_PARTNER_SUPPORT_ADDRESS = 'partnersupport@agoda.com';
+
+/** How far back to search Gmail when the caller does not specify a window. */
+export const DEFAULT_LOOKBACK_DAYS = 10;
+
+/**
+ * Gmail label holding the Agoda correspondence, both directions. Scoping the
+ * search to it keeps unrelated mail that happens to mention the Agoda ID out
+ * of the candidate set. Override with `AGODA_SUPPORT_EMAIL_LABEL`.
+ */
+export const DEFAULT_SUPPORT_EMAIL_LABEL = 'agoda-responses';
+
+export interface SupportEmailHeaders {
+  from: string;
+  to: string | null;
+  subject: string | null;
+  date: string | null;
+}
+
+export type AttachmentFormat = 'csv' | 'xlsx' | 'unknown';
+
+/** Which of the two Agoda report layouts an attachment turned out to be. */
+export type SheetType =
+  /** Type 1 — has `Payment Status`, amount lives in `LP(USD)`. */
+  | 'payment_status'
+  /** Type 2 — has `Booking Matched Status Name`, amount in `USD Total Include GST`. */
+  | 'booking_matched_status'
+  | 'unknown';
+
+export type RowAction =
+  /** Amount is known and above the minimum; the property can charge it. */
+  | 'COLLECT'
+  /** Amount cannot be determined, so the case has to go back to Agoda. */
+  | 'REOPEN'
+  /** Nothing to do for this row. */
+  | 'SKIP';
+
+export interface EvaluatedRow {
+  bookingId: string;
+  action: RowAction;
+  /** Parsed USD amount; null when the column is absent or unreadable. */
+  amount: number | null;
+  reason: string;
+  checkoutDate: string | null;
+  row: Record<string, string>;
+}
+
+export interface ReopenRuleOptions {
+  /** Injectable clock, used by tests. */
+  now?: Date;
+}
+
+export interface ReopenDecision {
+  sheetType: SheetType;
+  /** True when at least one row came back as REOPEN. */
+  shouldReopen: boolean;
+  /** Rows the property can charge directly. */
+  collect: EvaluatedRow[];
+  /** Rows that need the case reopened with Agoda. */
+  reopen: EvaluatedRow[];
+  /** Rows that need no action, each with the reason it was dropped. */
+  skipped: EvaluatedRow[];
+  /** Which column each rule input was read from, for troubleshooting. */
+  detectedColumns: Record<string, string | null>;
+}
+
+export interface ParsedAttachment {
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  format: AttachmentFormat;
+  /** Column names in the order they appear in the file. */
+  columns: string[];
+  rows: Record<string, string>[];
+  rowCount: number;
+  /** Set when the file was downloaded but could not be parsed. */
+  parseError?: string;
+  /** Verdict from the reopen rules; absent for attachments that were skipped. */
+  reopenDecision?: ReopenDecision;
+  /** Where the original file was archived; null when the upload failed. */
+  s3Url?: string | null;
+  s3Key?: string | null;
+  /** Why the archive upload failed, when it did. */
+  uploadError?: string;
+}
+
+export interface ParsedSupportEmailBody {
+  caseId: string | null;
+  propertyId: string | null;
+  propertyName: string | null;
+  city: string | null;
+  country: string | null;
+  /** Reservation numbers Agoda listed as still having a pending balance. */
+  reservationIds: string[];
+  /** The accommodation partner email Agoda echoes back at the end of the reply. */
+  partnerEmail: string | null;
+  /** Plain-text rendering of the message, useful for debugging a failed parse. */
+  text: string;
+}
+
+/** Roll-up of the per-attachment decisions for a single email. */
+export interface ReopenSummary {
+  shouldReopen: boolean;
+  reason: string;
+  /** Bookings needing the case reopened, deduplicated across attachments. */
+  reopenBookingIds: string[];
+  /** Bookings the property can charge directly, deduplicated. */
+  collectBookingIds: string[];
+}
+
+/** Which way a message in the labelled conversation was travelling. */
+export type SupportEmailMessageDirection = 'incoming' | 'outgoing';
+
+/**
+ * In-memory shape of one parsed Gmail message. Named `ParsedSupportEmail`
+ * (not `SupportEmail`) to stay distinct from the Prisma `SupportEmail`
+ * persistence model it eventually gets mapped into.
+ */
+export interface ParsedSupportEmail {
+  messageId: string;
+  threadId: string | null;
+  /** Derived from Gmail's `SENT` label rather than the sender address. */
+  direction: SupportEmailMessageDirection;
+  /** Gmail internalDate as an ISO string. */
+  receivedAt: string | null;
+  headers: SupportEmailHeaders;
+  body: ParsedSupportEmailBody;
+  attachments: ParsedAttachment[];
+  /** Combined reopen verdict across every attachment on this email. */
+  reopen: ReopenSummary;
+}
+
+/** What persisting the parsed email did, or why it was not attempted. */
+export interface SupportEmailStorage {
+  /** True when this run was the one that wrote the record. */
+  stored: boolean;
+  /** True when the message was already captured by an earlier run. */
+  duplicate: boolean;
+  recordId: string | null;
+  /**
+   * The rest of the labelled conversation — our own submissions and any
+   * older replies — captured alongside the message the rules ran against.
+   */
+  conversationStored: number;
+  conversationDuplicates: number;
+}
+
+export type SupportEmailOutcome =
+  /** Latest matching message was from Agoda Partner Support and was parsed. */
+  | { status: 'parsed'; email: ParsedSupportEmail; storage: SupportEmailStorage }
+  /** Messages matched the Agoda ID but the newest one came from someone else. */
+  | {
+      status: 'not_from_partner_support';
+      from: string;
+      receivedAt: string | null;
+    }
+  /** No message mentioning the Agoda ID within the lookback window. */
+  | { status: 'no_email_found' };
+
+export interface ScrapeSupportEmailOptions {
+  /**
+   * Only consider messages received after this moment, instead of the
+   * rolling day window. Callers pass the job's `updatedAt` so a run sees
+   * just what has arrived since the job was last touched. Takes precedence
+   * over `lookbackDays`.
+   */
+  since?: Date;
+  /** Lookback window in days, used when `since` is not given. */
+  lookbackDays?: number;
+  /** How many Gmail search hits to consider when picking the newest message. */
+  maxCandidates?: number;
+  /** Skip downloading and parsing CSV/XLSX attachments. */
+  includeAttachments?: boolean;
+  /** Overrides for the reopen thresholds. */
+  reopenRules?: ReopenRuleOptions;
+  /** Recorded on the stored email as the run that first captured it. */
+  jobId?: string;
+  propertyId?: string;
+  /** Skip writing the email to the database. Defaults to storing it. */
+  persist?: boolean;
+}
+
+/** Per-job result for the bulk endpoint. */
+export interface JobSupportEmailResult {
+  jobId: string;
+  agodaId: string;
+  outcome: SupportEmailOutcome;
+}
+
+export interface BulkSupportEmailResults {
+  processed: JobSupportEmailResult[];
+  invalid: Array<{ jobId: string; reason: string; currentStatus?: string }>;
+  errors: Array<{ jobId: string; error: string }>;
+}

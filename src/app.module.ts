@@ -32,6 +32,7 @@ import { RetrievalModule } from './module/retrieval/retrieval.module';
 import { ScraperModule } from './module/scraper/scraper.module';
 import { ServerModule } from './module/server/server.module';
 import { SubPortfolioModule } from './module/sub-portfolio/sub-portfolio.module';
+import { SupportEmailModule } from './module/support-email/support-email.module';
 import { UploadModule } from './module/upload/upload.module';
 import { UserFeatureAccessPermissionModule } from './module/user-feature-access-permission/user-feature-access-permission.module';
 import { UserInvitationModule } from './module/user-invitation/user-invitation.module';
@@ -75,6 +76,7 @@ import { UserModule } from './module/user/user.module';
     NotificationModule,
     GoogleOAuthModule,
     EncryptionModule,
+    SupportEmailModule,
   ],
   controllers: [AppController],
   providers: [AppService],

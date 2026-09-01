@@ -1,4 +1,4 @@
-import { Batch, DbEntry, Job } from '@prisma/client';
+import { Batch, DbEntry, Job, ReplyStatus } from '@prisma/client';
 import { Writable } from 'stream';
 import {
   BulkCreateJobFromDbmsItemDto,
@@ -126,6 +126,12 @@ export interface IJobRepository {
     recurringId: string,
     bucketId: string,
   ): Promise<string[]>;
+  /**
+   * Records how Agoda answered, derived from the newest Partner Support
+   * reply. Used by the support-email-run-job flow; returns null (rather than
+   * throwing) when the job id doesn't exist.
+   */
+  updateReplyStatus(jobId: string, replyStatus: ReplyStatus): Promise<Job | null>;
 }
 
 export interface IJobService {
@@ -252,4 +258,10 @@ export interface IJobService {
     bucketId: string,
   ): Promise<{ buffer: Buffer; fileName: string }>;
   triggerLambdaForPlatform(platform: string): Promise<void>;
+  /**
+   * Records how Agoda answered, derived from the newest Partner Support
+   * reply. Used by the support-email-run-job flow; returns null (rather than
+   * throwing) when the job id doesn't exist.
+   */
+  updateReplyStatus(jobId: string, replyStatus: ReplyStatus): Promise<Job | null>;
 }

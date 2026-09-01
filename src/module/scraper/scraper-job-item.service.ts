@@ -13,6 +13,7 @@ import {
 } from '../job/job-item-derived.util';
 import { DatabaseService } from '../database/database.service';
 import { readOtaIdFromPropertyRecord } from '../job/ota-property-id.util';
+import { buildReplyWaitFields } from '../job/reply-status.util';
 import {
   DerivedFieldsUpdate,
   IScraperJobItemRepository,
@@ -474,7 +475,12 @@ export class ScraperJobItemService implements IScraperJobItemService {
     );
 
     try {
-      const result = await this.persistRows(rows, jobId, property.id);
+      const result = await this.persistRows(
+        rows,
+        jobId,
+        property.id,
+        job.ota_provider,
+      );
       this.logger.log(
         `Single job-items import finished — file="${fileLabel}", job_id=${jobId}, ` +
           `status=success, totalRows=${rows.length}, created=${result.created}, ` +
@@ -621,6 +627,7 @@ export class ScraperJobItemService implements IScraperJobItemService {
           groupRows,
           group.job.id,
           group.property.id,
+          group.job.ota_provider,
         );
         created += result.created;
         updated += result.updated;
@@ -1228,6 +1235,7 @@ export class ScraperJobItemService implements IScraperJobItemService {
     rows: Record<string, string>[],
     jobId: string,
     propertyId: string,
+    otaProvider?: OTAProvider,
   ): Promise<JobItemUploadResult> {
     let created = 0;
     let updated = 0;
@@ -1256,7 +1264,7 @@ export class ScraperJobItemService implements IScraperJobItemService {
 
     await this.db.job.update({
       where: { id: jobId },
-      data: { job_status: 'Completed' },
+      data: { job_status: 'Completed', ...buildReplyWaitFields(otaProvider) },
     });
 
     this.logger.log(

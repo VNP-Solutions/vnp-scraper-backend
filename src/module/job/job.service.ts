@@ -17,6 +17,7 @@ import {
   JobStatus,
   OTAProvider,
   PostingType,
+  ReplyStatus,
 } from '@prisma/client';
 import { firstValueFrom } from 'rxjs';
 import { PassThrough, Writable } from 'stream';
@@ -55,6 +56,7 @@ import {
 } from './dashboard-export.util';
 import { writeDashboardXlsxToStream } from './dashboard-export-stream.util';
 import { triggerLambda } from '../../helpers/lambdaHelper';
+import { buildReplyWaitFields } from './reply-status.util';
 
 @Injectable()
 export class JobService implements IJobService {
@@ -361,7 +363,12 @@ export class JobService implements IJobService {
         }
       }
       
-      const job = await this.repository.update(id, data);
+      const job = await this.repository.update(id, {
+        ...data,
+        ...(data.job_status === JobStatus.Completed
+          ? buildReplyWaitFields(existingJob.ota_provider)
+          : {}),
+      });
 
       // When status is set to Completed, notify DBMS so it can update
       // the property's historical run date window for this OTA.
@@ -2084,4 +2091,18 @@ export class JobService implements IJobService {
     }
   }
 
+  async updateReplyStatus(
+    jobId: string,
+    replyStatus: ReplyStatus,
+  ): Promise<Job | null> {
+    try {
+      return await this.repository.updateReplyStatus(jobId, replyStatus);
+    } catch (error) {
+      this.logger.error(
+        `Error updating reply_status for job ${jobId}: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
 }

@@ -32,6 +32,17 @@ enum JobStatus {
   Manual
 }
 
+/// Where a job stands with Agoda Partner Support, judged from the newest
+/// reply to land after the property run. Only meaningful for Agoda jobs.
+enum ReplyStatus {
+  /// Nothing back from Agoda yet. Past `reply_deadline_at` it is overdue.
+  NoReplied
+  /// Agoda replied and at least one booking needs the case reopened.
+  RepliedRed
+  /// Agoda replied and nothing needs reopening — the balance is collectable.
+  RepliedGreen
+}
+
 /// Identifies which "kind" of evaluation a JobTagEntry represents.
 /// Add new values here as new tag kinds are introduced.
 ///   - over_160: whether (today − check_out_date) > 160 days majority on
@@ -274,6 +285,12 @@ model Job {
   replay_status                           String?
   current_ss_step                         String?
   is_archived                             Boolean            @default(false)
+  /// How Agoda Partner Support answered this run. Agoda jobs only —
+  /// (re)set to NoReplied whenever the job completes; see reply-status.util.ts.
+  reply_status                            ReplyStatus?       @default(NoReplied)
+  /// Completion time + 48h. Past this, NoReplied means overdue rather than
+  /// merely "too early". Rewritten every time the job completes.
+  reply_deadline_at                       DateTime?
   createdAt                               DateTime           @default(now())
   updatedAt                               DateTime           @updatedAt
 
@@ -958,6 +975,89 @@ model AgodaEmail {
   @@index([job_id])
   @@index([email_id])
   @@map("agoda_emails")
+}
+
+enum SupportEmailDirection {
+  incoming
+  outgoing
+}
+
+enum SupportEmailAttachmentFormat {
+  csv
+  xlsx
+  unknown
+}
+
+/// Metadata for one CSV / XLSX file Agoda attached to its reply. The parsed
+/// rows are deliberately not kept here: the untouched original is archived to
+/// S3, and rows stored here would be an unindexable second copy that goes
+/// stale as soon as the reopen rules change.
+type SupportEmailAttachment {
+  filename      String
+  mime_type     String
+  size_bytes    Int                          @default(0)
+  format        SupportEmailAttachmentFormat
+  /// Header names exactly as they appear in the file.
+  columns       String[]                     @default([])
+  /// How many rows the file held. The rows themselves live in S3, not here.
+  row_count     Int                          @default(0)
+  /// Which report layout the reopen rules recognised.
+  sheet_type    String?
+  parse_error   String?
+  /// Archived copy of the original file Agoda sent.
+  s3_url        String?
+  s3_key        String?
+  /// Why the archive upload failed, when it did.
+  upload_error  String?
+}
+
+/// One message from the labelled Agoda Partner Support conversation — Agoda's
+/// replies and our own submissions alike — captured from Gmail and kept so
+/// the same message is never processed twice. `message_id` is Gmail's own
+/// immutable ID and is the deduplication key. Only the newest incoming reply
+/// drives the reopen rules; the rest are stored purely as a record of the
+/// exchange. See POST /api/agoda/retrive-case-email.
+model SupportEmail {
+  id           String                @id @default(auto()) @map("_id") @db.ObjectId
+  message_id   String                @unique
+  thread_id    String?
+  /// `outgoing` when Gmail marked the message as sent by us.
+  direction    SupportEmailDirection @default(incoming)
+  agoda_id     String
+  /// Job whose run first captured this email. Not a Prisma relation on
+  /// purpose — this record must outlive the job it was captured for.
+  job_id       String?               @db.ObjectId
+  property_id  String?               @db.ObjectId
+
+  from_address String
+  to_address   String?
+  subject      String?
+  /// Raw `Date` header as Agoda sent it.
+  date_header  String?
+  /// Gmail `internalDate`, i.e. when the message actually arrived.
+  received_at  DateTime?
+
+  body_text        String   @default("")
+  case_id          String?
+  property_name    String?
+  city             String?
+  country          String?
+  reservation_ids  String[] @default([])
+  partner_email    String?
+
+  attachments SupportEmailAttachment[]
+
+  should_reopen       Boolean  @default(false)
+  reopen_booking_ids   String[] @default([])
+  collect_booking_ids  String[] @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([agoda_id, received_at])
+  @@index([case_id])
+  @@index([job_id])
+  @@map("support_emails")
 }
 
 model AgodaCaseItem {

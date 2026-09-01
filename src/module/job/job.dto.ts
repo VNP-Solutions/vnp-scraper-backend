@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { JobStatus, OTAProvider, PostingType } from '@prisma/client';
+import { JobStatus, OTAProvider, PostingType, ReplyStatus } from '@prisma/client';
 
 export class CreateJobDto {
   @ApiProperty({ required: false })
@@ -299,6 +299,23 @@ export class UpdateJobDto implements Partial<CreateJobDto> {
       'Screenshot step the scraper is currently on, matching JobScreenshotUrl.step',
   })
   current_ss_step?: string;
+
+  @ApiProperty({
+    required: false,
+    enum: ReplyStatus,
+    description:
+      'How Agoda Partner Support answered this run (Agoda jobs only). ' +
+      'Written by the support-email-run-job flow — not intended to be set directly.',
+  })
+  reply_status?: ReplyStatus;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Completion time + 48h grace period. Written automatically whenever ' +
+      'an Agoda job completes — not intended to be set directly.',
+  })
+  reply_deadline_at?: Date | null;
 }
 
 export class ImportJobsResponseDto {
