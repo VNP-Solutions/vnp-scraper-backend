@@ -135,9 +135,9 @@ export class CreateJobDto {
   @ApiProperty({
     required: false,
     description:
-      'Current case status of the job (e.g. the Agoda case state the scraper is working through)',
+      'Current replay status of the job',
   })
-  case_status?: string;
+  replay_status?: string;
 
   @ApiProperty({
     required: false,
@@ -289,10 +289,9 @@ export class UpdateJobDto implements Partial<CreateJobDto> {
 
   @ApiProperty({
     required: false,
-    description:
-      'Current case status of the job (e.g. the Agoda case state the scraper is working through)',
+    description: 'Current replay status of the job',
   })
-  case_status?: string;
+  replay_status?: string;
 
   @ApiProperty({
     required: false,

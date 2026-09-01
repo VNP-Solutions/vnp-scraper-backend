@@ -27,7 +27,8 @@ export const createAgodaCaseItemSchema = z.object({
   card_expire: z.string().optional().nullable(),
   card_cvv: z.string().optional().nullable(),
   is_missing: z.boolean().optional().default(false),
-  case_status: z.string().optional().nullable(),
+  retrival_status: z.string().optional().nullable(),
+  createdBy: z.string().optional().nullable(),
 });
 
 export const updateAgodaCaseItemSchema = createAgodaCaseItemSchema.partial();

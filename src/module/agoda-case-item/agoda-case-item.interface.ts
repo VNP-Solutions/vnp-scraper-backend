@@ -9,7 +9,7 @@ export interface AgodaCaseItemFilters {
   property_id?: string;
   batch_id?: string;
   portfolio_id?: string;
-  case_status?: string;
+  retrival_status?: string;
   charge_status?: string;
   is_missing?: boolean;
   page?: number;

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -22,6 +23,7 @@ import {
 import { Response } from 'express';
 import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
+import { normalizeDateToYyyyMmDd } from 'src/common/utils/normalize-date.util';
 import { ResponseHandler } from 'src/common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
@@ -86,6 +88,13 @@ export class AgodaEmailController {
     description: 'Filter by job ID',
   })
   @ApiQuery({
+    name: 'date',
+    required: false,
+    description:
+      'Filter by email date. Accepted date formats are normalized to YYYY-MM-DD.',
+    example: '09/01/2026',
+  })
+  @ApiQuery({
     name: 'page',
     required: false,
     type: Number,
@@ -119,10 +128,17 @@ export class AgodaEmailController {
       response,
       async () => {
         const filters: AgodaEmailFilters = {};
-        const { search, job_id, page, limit, order } = query;
+        const { search, job_id, date, page, limit, order } = query;
 
         if (search) filters.search = search;
         if (job_id) filters.job_id = job_id;
+        if (date !== undefined && date !== null && date !== '') {
+          const normalizedDate = normalizeDateToYyyyMmDd(date);
+          if (!normalizedDate) {
+            throw new BadRequestException('Invalid date');
+          }
+          filters.date = normalizedDate;
+        }
         if (page) filters.page = page;
         if (limit) filters.limit = limit;
         if (order) filters.order = order;

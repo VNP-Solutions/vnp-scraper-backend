@@ -69,7 +69,9 @@ export class AgodaCaseItemRepository implements IAgodaCaseItemRepository {
       if (filters?.property_id) where.property_id = filters.property_id;
       if (filters?.batch_id) where.batch_id = filters.batch_id;
       if (filters?.portfolio_id) where.portfolio_id = filters.portfolio_id;
-      if (filters?.case_status) where.case_status = filters.case_status;
+      if (filters?.retrival_status) {
+        where.retrival_status = filters.retrival_status;
+      }
       if (filters?.charge_status) where.charge_status = filters.charge_status;
       if (filters?.is_missing !== undefined) {
         where.is_missing = filters.is_missing;

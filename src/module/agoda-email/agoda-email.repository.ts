@@ -44,6 +44,10 @@ export class AgodaEmailRepository implements IAgodaEmailRepository {
         where.job_id = filters.job_id;
       }
 
+      if (filters?.date) {
+        where.date = filters.date;
+      }
+
       if (filters?.search) {
         const searchTerm = filters.search.toString().trim();
         const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(searchTerm);

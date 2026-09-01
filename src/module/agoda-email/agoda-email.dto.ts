@@ -29,6 +29,17 @@ export class CreateAgodaEmailDto implements CreateAgodaEmailType {
   @ApiProperty({ required: false, description: 'Recipient address' })
   to?: string;
 
+  @ApiProperty({ required: false, description: 'Point processing status' })
+  point_status?: string;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Email date in any recognized format; stored as YYYY-MM-DD. Ambiguous numeric dates use MM/DD/YYYY.',
+    example: '09/01/2026',
+  })
+  date?: string;
+
   @ApiProperty({
     required: false,
     type: [String],
@@ -57,6 +68,15 @@ export class UpdateAgodaEmailDto implements UpdateAgodaEmailType {
   @ApiProperty({ required: false })
   to?: string;
 
+  @ApiProperty({ required: false })
+  point_status?: string;
+
+  @ApiProperty({
+    required: false,
+    description: 'Any recognized date format; stored as YYYY-MM-DD',
+  })
+  date?: string;
+
   @ApiProperty({ required: false, type: [String] })
   screenshots?: string[];
 }
@@ -82,6 +102,12 @@ export class AgodaEmailResponseDto {
 
   @ApiProperty({ required: false })
   to?: string;
+
+  @ApiProperty({ required: false })
+  point_status?: string;
+
+  @ApiProperty({ required: false, description: 'YYYY-MM-DD' })
+  date?: string;
 
   @ApiProperty({ type: [String] })
   screenshots: string[];

@@ -107,9 +107,9 @@ export class AgodaCaseItemController {
     description: 'Filter by portfolio ID',
   })
   @ApiQuery({
-    name: 'case_status',
+    name: 'retrival_status',
     required: false,
-    description: 'Filter by case status',
+    description: 'Filter by retrieval status',
   })
   @ApiQuery({
     name: 'charge_status',
@@ -161,7 +161,7 @@ export class AgodaCaseItemController {
           property_id,
           batch_id,
           portfolio_id,
-          case_status,
+          retrival_status,
           charge_status,
           is_missing,
           page,
@@ -173,7 +173,7 @@ export class AgodaCaseItemController {
         if (property_id) filters.property_id = property_id;
         if (batch_id) filters.batch_id = batch_id;
         if (portfolio_id) filters.portfolio_id = portfolio_id;
-        if (case_status) filters.case_status = case_status;
+        if (retrival_status) filters.retrival_status = retrival_status;
         if (charge_status) filters.charge_status = charge_status;
         if (is_missing !== undefined)
           filters.is_missing = is_missing === true || is_missing === 'true';

@@ -1,8 +1,23 @@
 import { z } from 'zod';
+import { normalizeDateToYyyyMmDd } from '../../common/utils/normalize-date.util';
 
 // MongoDB ObjectId validation
 const objectIdSchema = z.string().regex(/^[0-9a-fA-F]{24}$/, {
   message: 'Invalid ObjectId format. Must be a 24-character hex string.',
+});
+
+const dateStringSchema = z.unknown().transform((value, context) => {
+  const normalizedDate = normalizeDateToYyyyMmDd(value);
+
+  if (!normalizedDate) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Invalid date',
+    });
+    return z.NEVER;
+  }
+
+  return normalizedDate;
 });
 
 export const createAgodaEmailSchema = z.object({
@@ -12,6 +27,8 @@ export const createAgodaEmailSchema = z.object({
   email_body: z.string().optional().nullable(),
   from: z.string().optional().nullable(),
   to: z.string().optional().nullable(),
+  point_status: z.string().optional().nullable(),
+  date: dateStringSchema.optional().nullable(),
   screenshots: z.array(z.string()).optional(),
 });
 

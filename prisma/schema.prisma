@@ -271,7 +271,7 @@ model Job {
   booking_vccs_filtered_reservation_count Int?
   phone_number                            String?
   slot                                    Int?
-  case_status                             String?
+  replay_status                           String?
   current_ss_step                         String?
   is_archived                             Boolean            @default(false)
   createdAt                               DateTime           @default(now())
@@ -940,16 +940,18 @@ model BookingScraperUrl {
 }
 
 model AgodaEmail {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  job_id      String   @db.ObjectId
-  email_id    String
-  subject     String?
-  email_body  String?
-  from        String?
-  to          String?
-  screenshots String[] @default([])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  job_id       String   @db.ObjectId
+  email_id     String
+  subject      String?
+  email_body   String?
+  from         String?
+  to           String?
+  point_status String?
+  date         String? // Format: YYYY-MM-DD
+  screenshots  String[] @default([])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   job Job @relation(fields: [job_id], references: [id], onDelete: Cascade)
 
@@ -975,7 +977,8 @@ model AgodaCaseItem {
   card_expire      String?
   card_cvv         String?
   is_missing       Boolean  @default(false)
-  case_status      String?
+  retrival_status  String?
+  createdBy        String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -988,6 +991,6 @@ model AgodaCaseItem {
   @@index([portfolio_id])
   @@index([reservation_id])
   @@index([charge_status])
-  @@index([case_status])
+  @@index([retrival_status])
   @@map("agoda_case_items")
 }

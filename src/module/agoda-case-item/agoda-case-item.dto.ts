@@ -75,7 +75,10 @@ export class CreateAgodaCaseItemDto implements CreateAgodaCaseItemType {
   is_missing?: boolean;
 
   @ApiProperty({ required: false, example: 'Open' })
-  case_status?: string;
+  retrival_status?: string;
+
+  @ApiProperty({ required: false, description: 'Creator identifier' })
+  createdBy?: string;
 }
 
 export class UpdateAgodaCaseItemDto implements UpdateAgodaCaseItemType {
@@ -125,7 +128,10 @@ export class UpdateAgodaCaseItemDto implements UpdateAgodaCaseItemType {
   is_missing?: boolean;
 
   @ApiProperty({ required: false })
-  case_status?: string;
+  retrival_status?: string;
+
+  @ApiProperty({ required: false })
+  createdBy?: string;
 }
 
 export class AgodaCaseItemResponseDto {
@@ -178,7 +184,10 @@ export class AgodaCaseItemResponseDto {
   is_missing: boolean;
 
   @ApiProperty({ required: false })
-  case_status?: string;
+  retrival_status?: string;
+
+  @ApiProperty({ required: false })
+  createdBy?: string;
 
   @ApiProperty({ description: 'Created timestamp' })
   createdAt: Date;

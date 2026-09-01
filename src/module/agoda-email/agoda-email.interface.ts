@@ -4,6 +4,7 @@ import { CreateAgodaEmailDto, UpdateAgodaEmailDto } from './agoda-email.dto';
 export interface AgodaEmailFilters {
   search?: string;
   job_id?: string;
+  date?: string;
   page?: number;
   limit?: number;
   order?: 'asc' | 'desc';
