@@ -14,3 +14,11 @@ export const reopenAllReservationsSchema = z.object({
 export type ReopenAllReservationsType = z.infer<
   typeof reopenAllReservationsSchema
 >;
+
+export const reopenCaseRunJobSchema = z.object({
+  job_ids: z.array(objectIdSchema).min(1, {
+    message: 'job_ids must be a non-empty array of job ObjectIds',
+  }),
+});
+
+export type ReopenCaseRunJobType = z.infer<typeof reopenCaseRunJobSchema>;
