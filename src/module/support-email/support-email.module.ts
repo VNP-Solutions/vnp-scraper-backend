@@ -33,6 +33,10 @@ import { SupportEmailService } from './support-email.service';
     DatabaseService,
     Logger,
   ],
-  exports: ['ISupportEmailService', 'ISupportEmailScraperService'],
+  exports: [
+    'ISupportEmailService',
+    'ISupportEmailScraperService',
+    'ISupportEmailRepository',
+  ],
 })
 export class SupportEmailModule {}

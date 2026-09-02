@@ -20,6 +20,7 @@ import { JobStatus } from '@prisma/client';
 import { google, type gmail_v1 } from 'googleapis';
 import { GoogleOAuthConfig } from '../google-oauth/google-oauth.config';
 import { GoogleOAuthService } from '../google-oauth/google-oauth.service';
+import { resolveAgodaIdForJob } from '../job/agoda-id.util';
 import { IJobRepository } from '../job/job.interface';
 import { IPropertyRepository } from '../property/property.interface';
 import { AttachmentParserService } from './attachment-parser.service';
@@ -101,19 +102,13 @@ export class SupportEmailScraperService implements ISupportEmailScraperService {
     });
   }
 
-  /**
-   * Resolves the property's Agoda ID for a job. `agoda_id` on `properties`
-   * is a nullable number; `0`/`null`/`undefined` all mean "unset".
-   */
   private async getAgodaIdFromJob(jobId: string): Promise<{ agodaId: string } | null> {
     try {
       const job = await this.jobRepository.findById(jobId);
-      if (!job?.property_id) return null;
+      if (!job) return null;
 
-      const property = await this.propertyRepository.findById(job.property_id);
-      if (!property?.agoda_id) return null;
-
-      return { agodaId: String(property.agoda_id) };
+      const agodaId = await resolveAgodaIdForJob(job, this.propertyRepository);
+      return agodaId ? { agodaId } : null;
     } catch (error) {
       this.logger.error(`Error getting agoda_id for job ${jobId}:`, error);
       return null;

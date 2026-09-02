@@ -1,3 +1,4 @@
+import type { SupportEmail } from '@prisma/client';
 import type {
   BulkSupportEmailResults,
   ParsedSupportEmail,
@@ -25,6 +26,16 @@ export interface ISupportEmailRepository {
     email: ParsedSupportEmail,
     context: StoreSupportEmailContext,
   ): Promise<StoreSupportEmailResult>;
+  /**
+   * Newest inbound Partner Support reply already on record for a property,
+   * optionally restricted to after a cutoff. Read by
+   * `POST /api/agoda/send-to-retrieval` so it acts on the same reply the
+   * capture endpoint stored, without going back to Gmail.
+   */
+  findLatestPartnerSupportReply(
+    agodaId: string,
+    options?: { since?: Date | null },
+  ): Promise<SupportEmail | null>;
 }
 
 /** Gmail search + parse orchestration for one Agoda ID or a batch of jobs. */

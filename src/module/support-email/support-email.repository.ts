@@ -7,13 +7,14 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, SupportEmail, SupportEmailDirection } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import {
   ISupportEmailRepository,
   StoreSupportEmailContext,
   StoreSupportEmailResult,
 } from './support-email.interface';
+import { AGODA_PARTNER_SUPPORT_ADDRESS } from './support-email.types';
 import type { ParsedSupportEmail } from './support-email.types';
 
 /**
@@ -129,5 +130,31 @@ export class SupportEmailRepository implements ISupportEmailRepository {
       );
       return { stored: false, recordId: null, duplicate: false };
     }
+  }
+
+  /**
+   * Only inbound Partner Support mail counts: our own submissions are
+   * stored under the same `agoda_id` and are frequently newer, so without
+   * the `direction` filter the newest record would be our own outgoing mail
+   * with no booking IDs on it.
+   */
+  async findLatestPartnerSupportReply(
+    agodaId: string,
+    options: { since?: Date | null } = {},
+  ): Promise<SupportEmail | null> {
+    return this.db.supportEmail.findFirst({
+      where: {
+        agoda_id: agodaId,
+        direction: SupportEmailDirection.incoming,
+        // `from_address` is the raw header, e.g. `Agoda <PartnerSupport@agoda.com>`.
+        from_address: {
+          contains: AGODA_PARTNER_SUPPORT_ADDRESS,
+          mode: 'insensitive',
+        },
+        ...(options.since ? { received_at: { gt: options.since } } : {}),
+      },
+      // Served by the { agoda_id, received_at } index.
+      orderBy: { received_at: 'desc' },
+    });
   }
 }

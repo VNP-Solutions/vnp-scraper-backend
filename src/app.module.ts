@@ -30,6 +30,7 @@ import { RecurringJobModule } from './module/recurring-job/recurring-job.module'
 import { ReportsModule } from './module/reports/reports.module';
 import { RetrievalModule } from './module/retrieval/retrieval.module';
 import { ScraperModule } from './module/scraper/scraper.module';
+import { SendToRetrievalModule } from './module/send-to-retrieval/send-to-retrieval.module';
 import { ServerModule } from './module/server/server.module';
 import { SubPortfolioModule } from './module/sub-portfolio/sub-portfolio.module';
 import { SupportEmailModule } from './module/support-email/support-email.module';
@@ -77,6 +78,7 @@ import { UserModule } from './module/user/user.module';
     GoogleOAuthModule,
     EncryptionModule,
     SupportEmailModule,
+    SendToRetrievalModule,
   ],
   controllers: [AppController],
   providers: [AppService],
