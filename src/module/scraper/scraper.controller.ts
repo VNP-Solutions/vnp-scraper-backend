@@ -56,6 +56,7 @@ import {
   removeJobIdsFromAllScheduledJobsSchema,
   removeJobsFromScheduledJobSchema,
 } from './scheduled-job.validation';
+import { reopenAllReservationsSchema } from './agoda-reopen.validation';
 import { IScraperJobItemService } from './scraper-job-item.interface';
 import { pushJobsToQueue } from '../../helpers/sqsHelper';
 import { triggerLambda } from '../../helpers/lambdaHelper';
@@ -76,6 +77,8 @@ import {
   PauseResumeStopResponseDto,
   PropertyRunJobRequestDto,
   PropertyRunJobResponseDto,
+  ReopenAllReservationsRequestDto,
+  ReopenAllReservationsResponseDto,
   RemoveJobIdsFromAllScheduledJobsDto,
   RemoveJobIdsFromAllScheduledJobsResponseDto,
   RemoveJobsFromScheduledJobDto,
@@ -1453,6 +1456,87 @@ export class ScraperController {
         message: 'Job server is down',
       };
       console.log(`${tag} <<< ${status} (error path)`);
+      return res.status(status).json(data);
+    }
+  }
+
+  @Post('/api/agoda/reopen-all-reservations')
+  @ValidateBody(reopenAllReservationsSchema)
+  @ApiOperation({
+    summary: 'Reopen all Agoda reservations for the given jobs',
+    description:
+      'Fire-and-forget: forwards the given job IDs to the Agoda scraper server, which queues each eligible job to re-run its Need Help step and re-attach the reservation file, and responds immediately with what got submitted vs. rejected. A job is only submitted if it exists, is not currently Running/InQueue, has a need_help_file_url on record, its property has a valid agoda_id, and it has valid Agoda credentials — otherwise it is reported under results.invalid and skipped (the rest of the array still gets processed). This call does not wait for the browser run to finish; poll the job by _id (job_status, failed_reason, need_help_file_url, screenshot_urls) to track progress.',
+  })
+  @ApiBody({ type: ReopenAllReservationsRequestDto })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Always returned once validation/queueing finishes, even if some jobs were invalid (this is not per-job success, just per-job submission)',
+    type: ReopenAllReservationsResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'job_ids missing/empty',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 503,
+    description: 'Agoda scraper URL not configured',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Unexpected server error',
+    type: ErrorResponseDto,
+  })
+  async reopenAllReservations(
+    @Res() res: Response,
+    @Body() body: ReopenAllReservationsRequestDto,
+  ) {
+    const reqId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const tag = `[reopenAllReservations ${reqId}]`;
+
+    try {
+      const agodaUrl = this.getUrlByOtaProvider('Agoda');
+
+      if (!agodaUrl) {
+        this.logger.warn(`${tag} No AGODA_SERVER_URL configured`);
+        return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message: 'No scraper URL configured for OTA provider: Agoda',
+          error: 'Scraper URL not configured',
+        });
+      }
+
+      this.logger.log(
+        `${tag} POST ${agodaUrl}/api/agoda/reopen-all-reservations-run-job for ${body.job_ids.length} job(s)`,
+      );
+
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${agodaUrl}/api/agoda/reopen-all-reservations-run-job`,
+          { job_ids: body.job_ids },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            timeout: 300000,
+          },
+        ),
+      );
+
+      this.logger.log(`${tag} upstream responded with status ${response.status}`);
+      return res.status(response.status).json(response.data);
+    } catch (error: any) {
+      this.logger.error(
+        `${tag} failed: ${error?.message}`,
+        error?.stack,
+      );
+      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
+      const data = error.response?.data || {
+        message: 'Agoda job server is down',
+      };
       return res.status(status).json(data);
     }
   }

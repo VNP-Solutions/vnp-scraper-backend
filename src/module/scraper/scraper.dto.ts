@@ -749,6 +749,69 @@ export class BulkUploadJobItemsAcceptedDto {
   };
 }
 
+export class ReopenAllReservationsRequestDto {
+  @ApiProperty({
+    type: [String],
+    description:
+      'MongoDB _ids of jobs to re-run. Must be non-empty. A job is only ' +
+      'submitted if it is not already Running/InQueue, has a ' +
+      'need_help_file_url on record, its property has a valid agoda_id, ' +
+      'and it has valid Agoda credentials — otherwise it is reported under ' +
+      'results.invalid.',
+    example: ['507f1f77bcf86cd799439011', '507f1f77bcf86cd799439012'],
+  })
+  job_ids: string[];
+}
+
+export class ReopenAllReservationsSubmittedDto {
+  @ApiProperty({ example: '507f1f77bcf86cd799439011' })
+  jobId: string;
+
+  @ApiProperty({ example: '123456' })
+  agodaId: string;
+
+  @ApiProperty({ example: 'submitted' })
+  status: string;
+}
+
+export class ReopenAllReservationsInvalidDto {
+  @ApiProperty({ example: '507f1f77bcf86cd799439012' })
+  jobId: string;
+
+  @ApiProperty({
+    example:
+      'Job 507f1f77bcf86cd799439012 has no need_help_file_url on record — nothing to re-attach. A property run must complete successfully first.',
+  })
+  reason: string;
+
+  @ApiProperty({ example: 'Pending' })
+  currentStatus: string;
+}
+
+export class ReopenAllReservationsResultsDto {
+  @ApiProperty({ type: [ReopenAllReservationsSubmittedDto] })
+  submitted: ReopenAllReservationsSubmittedDto[];
+
+  @ApiProperty({ type: [ReopenAllReservationsInvalidDto] })
+  invalid: ReopenAllReservationsInvalidDto[];
+
+  @ApiProperty({ type: [Object], description: 'Per-job errors, if any' })
+  errors: any[];
+}
+
+export class ReopenAllReservationsResponseDto {
+  @ApiProperty({ example: 200 })
+  status: number;
+
+  @ApiProperty({
+    example: 'Processed 2 jobs. 1 submitted, 1 invalid, 0 with errors.',
+  })
+  message: string;
+
+  @ApiProperty({ type: ReopenAllReservationsResultsDto })
+  results: ReopenAllReservationsResultsDto;
+}
+
 export class BulkUploadJobItemsSyncResultDto {
   @ApiProperty({ example: 200 })
   statusCode: number;
