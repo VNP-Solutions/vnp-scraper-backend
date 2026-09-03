@@ -308,4 +308,63 @@ export class AgodaCaseItemRepository implements IAgodaCaseItemRepository {
       throw error;
     }
   }
+
+  async bulkCreate(data: CreateAgodaCaseItemDto[]): Promise<AgodaCaseItem[]> {
+    try {
+      // Convert to relation input format
+      const createData = data.map((item) => this.toRelationInput(item));
+      
+      // Use createMany for bulk insert (faster but doesn't return created records)
+      // Then fetch the created records
+      await this.db.agodaCaseItem.createMany({
+        data: createData,
+      });
+
+      // Return empty array since createMany doesn't return created records
+      // If you need the created records, you'd need to create them one by one
+      return [];
+    } catch (error) {
+      this.logger.error('Error bulk creating agoda case items:', error);
+      throw error;
+    }
+  }
+
+  async findPropertyByAgodaId(agodaId: string): Promise<{ id: string } | null> {
+    try {
+      const property = await this.db.property.findFirst({
+        where: { agoda_id: agodaId },
+        select: { id: true },
+      });
+      return property;
+    } catch (error) {
+      this.logger.error(`Error finding property by agoda_id ${agodaId}:`, error);
+      throw error;
+    }
+  }
+
+  async findBatchByName(batchName: string): Promise<{ id: string } | null> {
+    try {
+      const batch = await this.db.batch.findFirst({
+        where: { name: batchName },
+        select: { id: true },
+      });
+      return batch;
+    } catch (error) {
+      this.logger.error(`Error finding batch by name ${batchName}:`, error);
+      throw error;
+    }
+  }
+
+  async findPortfolioByName(portfolioName: string): Promise<{ id: string } | null> {
+    try {
+      const portfolio = await this.db.portfolio.findFirst({
+        where: { name: portfolioName },
+        select: { id: true },
+      });
+      return portfolio;
+    } catch (error) {
+      this.logger.error(`Error finding portfolio by name ${portfolioName}:`, error);
+      throw error;
+    }
+  }
 }

@@ -77,6 +77,18 @@ export interface IAgodaCaseItemRepository {
   /** Sets charge_status: 'declined' and is_declined: true on every given id. Returns how many rows matched. */
   declineByIds(ids: string[]): Promise<number>;
 
+  /** Bulk create multiple AgodaCaseItems. Returns array of created items. */
+  bulkCreate(data: CreateAgodaCaseItemDto[]): Promise<AgodaCaseItem[]>;
+
+  /** Find property by agoda_id */
+  findPropertyByAgodaId(agodaId: string): Promise<{ id: string } | null>;
+
+  /** Find batch by name */
+  findBatchByName(batchName: string): Promise<{ id: string } | null>;
+
+  /** Find portfolio by name */
+  findPortfolioByName(portfolioName: string): Promise<{ id: string } | null>;
+
   propertyExists(propertyId: string): Promise<boolean>;
 
   batchExists(batchId: string): Promise<boolean>;
@@ -115,4 +127,19 @@ export interface IAgodaCaseItemService {
    * and is_declined to true.
    */
   bulkDecline(ids: string[]): Promise<number>;
+
+  /**
+   * Import AgodaCaseItems from Excel file for declined items.
+   * @param file - Excel file buffer
+   * @param archive - Whether to set is_archived to true
+   */
+  importWipDeclined(
+    file: Express.Multer.File,
+    archive: boolean,
+  ): Promise<{
+    successCount: number;
+    failedCount: number;
+    totalRows: number;
+    errors: string[];
+  }>;
 }

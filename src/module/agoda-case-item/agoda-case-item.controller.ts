@@ -8,8 +8,11 @@ import {
   Param,
   Post,
   Put,
+  Query,
   Res,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
   UsePipes,
 } from '@nestjs/common';
 import {
@@ -25,6 +28,7 @@ import { PostingType } from '@prisma/client';
 import { Response } from 'express';
 import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
+import { ExcelFileInterceptor } from 'src/common/interceptors/excel-file.interceptor';
 import { ZodValidationPipe } from 'src/common/pipes/validation.pipe';
 import { ResponseHandler } from 'src/common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -35,6 +39,7 @@ import {
   BulkDeclineAgodaCaseItemsResponseDto,
   CreateAgodaCaseItemDto,
   ExportSelectedAgodaCaseItemsDto,
+  ImportWipDeclinedResponseDto,
   UpdateAgodaCaseItemDto,
 } from './agoda-case-item.dto';
 import {
@@ -411,6 +416,48 @@ export class AgodaCaseItemController {
     return {
       declinedCount,
       message: `Successfully marked ${declinedCount} item(s) as declined`,
+    };
+  }
+
+  @Post('import-wip-declined')
+  @UseInterceptors(ExcelFileInterceptor)
+  @ApiOperation({
+    summary: 'Import AgodaCaseItems from WIP Excel file for declined items',
+    description:
+      'Upload an Excel file with the same format as the WIP export. All imported items will have is_declined=true and retrieval_status="pending". Use ?archive=true to also set is_archived=true.',
+  })
+  @ApiQuery({
+    name: 'archive',
+    required: false,
+    type: Boolean,
+    description: 'Set to true to mark imported items as archived (default: false)',
+    example: false,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Import completed successfully',
+    type: ImportWipDeclinedResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad Request - Invalid file or data',
+  })
+  async importWipDeclined(
+    @UploadedFile() file: Express.Multer.File,
+    @Query('archive') archive: string,
+  ): Promise<ImportWipDeclinedResponseDto> {
+    const isArchive = archive === 'true';
+    const result = await this.agodaCaseItemService.importWipDeclined(
+      file,
+      isArchive,
+    );
+
+    return {
+      successCount: result.successCount,
+      failedCount: result.failedCount,
+      totalRows: result.totalRows,
+      errors: result.errors,
+      message: `Successfully imported ${result.successCount} item(s), ${result.failedCount} failed`,
     };
   }
 

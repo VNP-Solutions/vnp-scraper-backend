@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AgodaCaseItem } from '@prisma/client';
+import * as XLSX from 'xlsx';
 import { IPropertyCredentialsService } from '../property-credentials/property-credentials.interface';
 import { buildAgodaCaseItemWipWorkbook } from './agoda-case-item-wip-export.util';
 import {
@@ -231,6 +232,186 @@ export class AgodaCaseItemService implements IAgodaCaseItemService {
       return declinedCount;
     } catch (error) {
       this.logger.error('Error marking agoda case items as declined:', error);
+      throw error;
+    }
+  }
+
+  async importWipDeclined(
+    file: Express.Multer.File,
+    archive: boolean,
+  ): Promise<{
+    successCount: number;
+    failedCount: number;
+    totalRows: number;
+    errors: string[];
+  }> {
+    try {
+      const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const rows: any[] = XLSX.utils.sheet_to_json(worksheet);
+
+      this.logger.log(`Processing ${rows.length} rows from Excel file`);
+
+      const itemsToCreate: CreateAgodaCaseItemDto[] = [];
+      const errors: string[] = [];
+      let rowIndex = 2; // Start at 2 because Excel row 1 is header
+
+      for (const row of rows) {
+        try {
+          // Required fields validation
+          const hotelId = row['Hotel ID']?.toString().trim();
+          const reservationId = row['Reservation ID']?.toString().trim();
+          const guestName = row['Name']?.toString().trim();
+          const checkIn = row['Check In']?.toString().trim();
+          const checkOut = row['Check Out']?.toString().trim();
+          const postingType = row['Posting Type']?.toString().trim();
+          const otaProvider = row['OTA Provider']?.toString().trim();
+          const currency = row['Currency']?.toString().trim();
+          const amountToCharge = row['Amount to charge']?.toString().trim();
+          const cardFirst4 = row['Card first 4']?.toString().trim();
+          const cardLast12 = row['Card last 12']?.toString().trim();
+          const cardExpire = row['Card Expire']?.toString().trim();
+          const cardCvv = row['Card CVV']?.toString().trim();
+
+          // Validate required fields
+          if (!hotelId) {
+            errors.push(`Row ${rowIndex}: Missing Hotel ID`);
+            rowIndex++;
+            continue;
+          }
+          if (!reservationId) {
+            errors.push(`Row ${rowIndex}: Missing Reservation ID`);
+            rowIndex++;
+            continue;
+          }
+          if (!guestName) {
+            errors.push(`Row ${rowIndex}: Missing Guest Name`);
+            rowIndex++;
+            continue;
+          }
+          if (!checkIn) {
+            errors.push(`Row ${rowIndex}: Missing Check In date`);
+            rowIndex++;
+            continue;
+          }
+          if (!checkOut) {
+            errors.push(`Row ${rowIndex}: Missing Check Out date`);
+            rowIndex++;
+            continue;
+          }
+          if (!currency) {
+            errors.push(`Row ${rowIndex}: Missing Currency`);
+            rowIndex++;
+            continue;
+          }
+          if (!amountToCharge) {
+            errors.push(`Row ${rowIndex}: Missing Amount to charge`);
+            rowIndex++;
+            continue;
+          }
+          if (!cardFirst4 || !cardLast12) {
+            errors.push(`Row ${rowIndex}: Missing Card Number (first 4 or last 12)`);
+            rowIndex++;
+            continue;
+          }
+          if (!cardExpire) {
+            errors.push(`Row ${rowIndex}: Missing Card Expire`);
+            rowIndex++;
+            continue;
+          }
+          if (!cardCvv) {
+            errors.push(`Row ${rowIndex}: Missing Card CVV`);
+            rowIndex++;
+            continue;
+          }
+
+          // Lookup property by agoda_id
+          const property = await this.repository.findPropertyByAgodaId(hotelId);
+          if (!property) {
+            errors.push(`Row ${rowIndex}: Property not found for Hotel ID: ${hotelId}`);
+            rowIndex++;
+            continue;
+          }
+
+          // Optional lookups
+          let batchId: string | undefined;
+          const batchName = row['Batch']?.toString().trim();
+          if (batchName) {
+            const batch = await this.repository.findBatchByName(batchName);
+            if (batch) {
+              batchId = batch.id;
+            }
+          }
+
+          let portfolioId: string | undefined;
+          const portfolioName = row['Portfolio']?.toString().trim();
+          if (portfolioName) {
+            const portfolio = await this.repository.findPortfolioByName(portfolioName);
+            if (portfolio) {
+              portfolioId = portfolio.id;
+            }
+          }
+
+          // Combine card number
+          const vccCardNumber = cardFirst4 + cardLast12;
+
+          // Parse isMissing
+          const isMissingValue = row['isMissing']?.toString().trim().toLowerCase();
+          const isMissing = isMissingValue === 'yes' || isMissingValue === 'true';
+
+          // Create item DTO
+          const item: CreateAgodaCaseItemDto = {
+            property_id: property.id,
+            batch_id: batchId,
+            portfolio_id: portfolioId,
+            reservation_id: reservationId,
+            guest_name: guestName,
+            check_in: checkIn,
+            check_out: checkOut,
+            currency: currency,
+            amount_to_charge: amountToCharge,
+            vcc_card_number: vccCardNumber,
+            card_expire: cardExpire,
+            card_cvv: cardCvv,
+            is_missing: isMissing,
+            charge_status: row['Charge Status']?.toString().trim() || undefined,
+            retrival_status: 'pending',
+            ota_provider: otaProvider as any || 'Agoda',
+            posting_type: postingType as any,
+            is_declined: true,
+            is_archived: archive,
+            // createdBy not set - will be null
+          };
+
+          itemsToCreate.push(item);
+        } catch (error) {
+          errors.push(`Row ${rowIndex}: ${error.message}`);
+        }
+
+        rowIndex++;
+      }
+
+      // Bulk create items
+      if (itemsToCreate.length > 0) {
+        await this.repository.bulkCreate(itemsToCreate);
+      }
+
+      const successCount = itemsToCreate.length;
+      const failedCount = rows.length - successCount;
+
+      this.logger.log(
+        `Import completed: ${successCount} succeeded, ${failedCount} failed`,
+      );
+
+      return {
+        successCount,
+        failedCount,
+        totalRows: rows.length,
+        errors,
+      };
+    } catch (error) {
+      this.logger.error('Error importing WIP declined items:', error);
       throw error;
     }
   }

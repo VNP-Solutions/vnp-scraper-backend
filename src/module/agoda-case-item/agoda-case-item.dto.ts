@@ -320,3 +320,36 @@ export class BulkDeclineAgodaCaseItemsResponseDto {
   })
   message: string;
 }
+
+export class ImportWipDeclinedResponseDto {
+  @ApiProperty({
+    description: 'Number of items successfully imported',
+    example: 25,
+  })
+  successCount: number;
+
+  @ApiProperty({
+    description: 'Number of items that failed to import',
+    example: 2,
+  })
+  failedCount: number;
+
+  @ApiProperty({
+    description: 'Total number of rows processed',
+    example: 27,
+  })
+  totalRows: number;
+
+  @ApiProperty({
+    description: 'Array of error messages for failed rows',
+    example: ['Row 3: Property not found for Hotel ID: 12345', 'Row 5: Missing required field: Reservation ID'],
+    type: [String],
+  })
+  errors: string[];
+
+  @ApiProperty({
+    description: 'Success message',
+    example: 'Successfully imported 25 item(s), 2 failed',
+  })
+  message: string;
+}
