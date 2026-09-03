@@ -370,6 +370,7 @@ export class JobRepository implements IJobRepository {
         property_id,
         ota_provider,
         priority,
+        reply_status,
         ...filters
       } = query || {};
       let allFilters: any = { ...filters };
@@ -522,6 +523,13 @@ export class JobRepository implements IJobRepository {
       // Filter by priority (0 = Normal, 1 = High)
       if (priority !== undefined && priority !== null && priority !== '') {
         allFilters.priority = parseInt(priority.toString(), 10);
+      }
+
+      // Filter by reply_status (Agoda Partner Support reply outcome:
+      // NoReplied / RepliedRed / RepliedGreen). Only Agoda jobs ever have
+      // this set — filtering by it implicitly narrows to Agoda jobs.
+      if (reply_status) {
+        allFilters.reply_status = reply_status.toString();
       }
 
       const skip = page

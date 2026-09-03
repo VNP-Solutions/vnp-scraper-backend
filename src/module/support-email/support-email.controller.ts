@@ -1,9 +1,11 @@
 import {
   Body,
   Controller,
+  Get,
   HttpStatus,
   Inject,
   Logger,
+  Param,
   Post,
   Res,
   UseGuards,
@@ -12,13 +14,20 @@ import {
   ApiBearerAuth,
   ApiBody,
   ApiOperation,
+  ApiParam,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import { Response } from 'express';
 import { ValidateBody } from '../../common/decorators/validate.decorator';
+import { ResponseHandler } from '../../common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RunSupportEmailJobDto, RunSupportEmailJobResponseDto } from './support-email.dto';
+import {
+  RunSupportEmailJobDto,
+  RunSupportEmailJobResponseDto,
+  SupportEmailByIdResponseDto,
+  SupportEmailForJobResponseDto,
+} from './support-email.dto';
 import { ISupportEmailService } from './support-email.interface';
 import { runSupportEmailJobSchema } from './support-email.validation';
 
@@ -84,5 +93,75 @@ export class SupportEmailController {
         error: error?.message || String(error),
       });
     }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/jobs/:jobId/support-email')
+  @ApiOperation({
+    summary: 'Get every stored Agoda Partner Support email captured for a job',
+    description:
+      "Reads every support_emails document whose job_id matches this job (newest first) — nothing is fetched from Gmail here. Capture it first with POST /api/agoda/retrive-case-email. `data.emails` is `[]` when nothing has been captured yet for this job.",
+  })
+  @ApiParam({ name: 'jobId', description: 'MongoDB ObjectId of the job' })
+  @ApiResponse({
+    status: 200,
+    description: 'Lookup completed (emails may be an empty array)',
+    type: SupportEmailForJobResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Job not found' })
+  async getSupportEmailForJob(
+    @Param('jobId') jobId: string,
+    @Res() res: Response,
+  ) {
+    return ResponseHandler.handler(
+      res,
+      async () => {
+        const result =
+          await this.supportEmailService.getSupportEmailsForJob(jobId);
+
+        const message = result.emails.length
+          ? `${result.emails.length} support email(s) retrieved successfully`
+          : 'No stored Agoda Partner Support email captured for this job yet — capture it with POST /api/agoda/retrive-case-email first.';
+
+        return {
+          statusCode: HttpStatus.OK,
+          message,
+          data: result,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/support-email/:id')
+  @ApiOperation({
+    summary: 'Get a single stored support email by its own id',
+    description:
+      "Fetches one support_emails document directly by its _id — for a detail view once the frontend already has an id (e.g. picked from a list). Doesn't scrape Gmail.",
+  })
+  @ApiParam({ name: 'id', description: 'MongoDB ObjectId of the support_emails document' })
+  @ApiResponse({
+    status: 200,
+    description: 'Support email retrieved successfully',
+    type: SupportEmailByIdResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Support email not found' })
+  async getSupportEmailById(
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    return ResponseHandler.handler(
+      res,
+      async () => {
+        const email = await this.supportEmailService.getSupportEmailById(id);
+        return {
+          statusCode: HttpStatus.OK,
+          message: 'Support email retrieved successfully',
+          data: email,
+        };
+      },
+      this.logger,
+    );
   }
 }

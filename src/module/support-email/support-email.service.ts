@@ -7,14 +7,16 @@
  * charging a booking is somebody else's job.
  */
 
-import { Inject, Injectable, Logger } from '@nestjs/common';
-import { ReplyStatus } from '@prisma/client';
+import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ReplyStatus, SupportEmail } from '@prisma/client';
 import { IJobRepository } from '../job/job.interface';
 import {
+  ISupportEmailRepository,
   ISupportEmailScraperService,
   ISupportEmailService,
   RunSupportEmailJobReplyStatusEntry,
   RunSupportEmailJobResult,
+  SupportEmailsForJobResult,
 } from './support-email.interface';
 
 @Injectable()
@@ -26,6 +28,8 @@ export class SupportEmailService implements ISupportEmailService {
     private readonly scraperService: ISupportEmailScraperService,
     @Inject('IJobRepository')
     private readonly jobRepository: IJobRepository,
+    @Inject('ISupportEmailRepository')
+    private readonly supportEmailRepository: ISupportEmailRepository,
   ) {}
 
   /**
@@ -102,5 +106,31 @@ export class SupportEmailService implements ISupportEmailService {
       message,
       results: { ...results, replyStatuses },
     };
+  }
+
+  /**
+   * Read-only lookup for the dashboard — never talks to Gmail. Returns
+   * every stored email whose `job_id` matches this job (newest first), not
+   * just the latest matching reply.
+   */
+  async getSupportEmailsForJob(
+    jobId: string,
+  ): Promise<SupportEmailsForJobResult> {
+    const job = await this.jobRepository.findById(jobId);
+    if (!job) {
+      throw new NotFoundException(`Job with ID ${jobId} not found`);
+    }
+
+    const emails = await this.supportEmailRepository.findAllByJobId(jobId);
+
+    return { jobId, emails };
+  }
+
+  async getSupportEmailById(id: string): Promise<SupportEmail> {
+    const email = await this.supportEmailRepository.findById(id);
+    if (!email) {
+      throw new NotFoundException(`Support email with ID ${id} not found`);
+    }
+    return email;
   }
 }

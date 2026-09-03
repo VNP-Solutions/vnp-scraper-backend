@@ -28,3 +28,79 @@ export class RunSupportEmailJobResponseDto {
   })
   results: Record<string, any>;
 }
+
+export class SupportEmailForJobResponseDto {
+  @ApiProperty({ example: 200 })
+  statusCode: number;
+
+  @ApiProperty({ example: '2 support email(s) retrieved successfully' })
+  message: string;
+
+  @ApiProperty({
+    description:
+      '`emails` is `[]` when nothing has been captured yet for this job. ' +
+      'Each item is a full stored support_emails record (subject, ' +
+      'body_text, case_id, reservation_ids, attachments with s3_url, ' +
+      'should_reopen, reopen_booking_ids, collect_booking_ids, ' +
+      'received_at, etc.), newest first.',
+    example: {
+      jobId: '507f1f77bcf86cd799439011',
+      emails: [
+        {
+          id: '664f1a2b3c4d5e6f7a8b9c0d',
+          message_id: '18f2a3b4c5d6e7f8',
+          direction: 'incoming',
+          agoda_id: '2462187',
+          job_id: '507f1f77bcf86cd799439011',
+          from_address: 'Agoda <PartnerSupport@agoda.com>',
+          subject: 'RE: Case CS123456789',
+          case_id: 'CS123456789',
+          body_text: '...',
+          reservation_ids: ['1234567890'],
+          should_reopen: true,
+          reopen_booking_ids: ['1234567890'],
+          collect_booking_ids: [],
+          attachments: [],
+          received_at: '2026-08-30T10:15:00.000Z',
+        },
+      ],
+    },
+  })
+  data: {
+    jobId: string;
+    emails: Record<string, any>[];
+  };
+}
+
+export class SupportEmailByIdResponseDto {
+  @ApiProperty({ example: 200 })
+  statusCode: number;
+
+  @ApiProperty({ example: 'Support email retrieved successfully' })
+  message: string;
+
+  @ApiProperty({
+    description:
+      'The full stored support_emails record (subject, body_text, case_id, ' +
+      'reservation_ids, attachments with s3_url, should_reopen, ' +
+      'reopen_booking_ids, collect_booking_ids, received_at, etc.)',
+    example: {
+      id: '664f1a2b3c4d5e6f7a8b9c0d',
+      message_id: '18f2a3b4c5d6e7f8',
+      direction: 'incoming',
+      agoda_id: '2462187',
+      job_id: '507f1f77bcf86cd799439011',
+      from_address: 'Agoda <PartnerSupport@agoda.com>',
+      subject: 'RE: Case CS123456789',
+      case_id: 'CS123456789',
+      body_text: '...',
+      reservation_ids: ['1234567890'],
+      should_reopen: true,
+      reopen_booking_ids: ['1234567890'],
+      collect_booking_ids: [],
+      attachments: [],
+      received_at: '2026-08-30T10:15:00.000Z',
+    },
+  })
+  data: Record<string, any>;
+}

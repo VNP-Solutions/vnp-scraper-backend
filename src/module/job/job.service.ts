@@ -313,6 +313,12 @@ export class JobService implements IJobService {
           screenshot_urls: Array.isArray(job.screenshot_urls)
             ? job.screenshot_urls
             : [],
+          // Older documents (created before reply_status existed, or
+          // non-Agoda jobs which never set it) may not have this field at
+          // all in Mongo — default it to null instead of letting it be
+          // silently dropped from the JSON response.
+          reply_status: job.reply_status ?? null,
+          reply_deadline_at: job.reply_deadline_at ?? null,
         };
       });
       return { ...result, data };

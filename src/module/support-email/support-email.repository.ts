@@ -157,4 +157,16 @@ export class SupportEmailRepository implements ISupportEmailRepository {
       orderBy: { received_at: 'desc' },
     });
   }
+
+  async findById(id: string): Promise<SupportEmail | null> {
+    return this.db.supportEmail.findUnique({ where: { id } });
+  }
+
+  async findAllByJobId(jobId: string): Promise<SupportEmail[]> {
+    return this.db.supportEmail.findMany({
+      where: { job_id: jobId },
+      // Served by the job_id index; newest first for display.
+      orderBy: { received_at: 'desc' },
+    });
+  }
 }
