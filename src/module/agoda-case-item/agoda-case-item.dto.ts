@@ -101,6 +101,13 @@ export class CreateAgodaCaseItemDto implements CreateAgodaCaseItemType {
 
   @ApiProperty({
     required: false,
+    default: false,
+    description: 'Whether Agoda declined this case item',
+  })
+  is_declined?: boolean;
+
+  @ApiProperty({
+    required: false,
     description: 'MongoDB ObjectId of the user who created this item',
     example: '65f0a3c4e2b7a1d2c3e4f5a6',
   })
@@ -166,6 +173,9 @@ export class UpdateAgodaCaseItemDto implements UpdateAgodaCaseItemType {
   is_archived?: boolean;
 
   @ApiProperty({ required: false })
+  is_declined?: boolean;
+
+  @ApiProperty({ required: false })
   createdBy?: string;
 }
 
@@ -229,6 +239,9 @@ export class AgodaCaseItemResponseDto {
 
   @ApiProperty({ default: false })
   is_archived: boolean;
+
+  @ApiProperty({ default: false })
+  is_declined: boolean;
 
   @ApiProperty({ required: false })
   createdBy?: string;

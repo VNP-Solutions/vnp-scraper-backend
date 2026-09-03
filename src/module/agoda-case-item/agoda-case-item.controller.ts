@@ -87,7 +87,7 @@ export class AgodaCaseItemController {
   @ApiOperation({
     summary: 'Get all agoda case items with pagination, search and filters',
     description:
-      'Filterable by charge_status, ota_provider, createdBy (user), portfolio_id, property_id, batch_id and is_archived. ' +
+      'Filterable by charge_status, ota_provider, createdBy (user), portfolio_id, property_id, batch_id, is_archived and is_declined. ' +
       'search matches against id, reservation_id, guest_name or vcc_card_number.',
   })
   @ApiQuery({
@@ -144,6 +144,12 @@ export class AgodaCaseItemController {
     description: 'Filter by archived flag (defaults to no filter — returns both)',
   })
   @ApiQuery({
+    name: 'is_declined',
+    required: false,
+    type: Boolean,
+    description: 'Filter by declined flag (defaults to no filter — returns both)',
+  })
+  @ApiQuery({
     name: 'page',
     required: false,
     type: Number,
@@ -188,6 +194,7 @@ export class AgodaCaseItemController {
           ota_provider,
           createdBy,
           is_archived,
+          is_declined,
           page,
           limit,
           order,
@@ -205,6 +212,8 @@ export class AgodaCaseItemController {
         if (createdBy) filters.createdBy = createdBy;
         if (is_archived !== undefined)
           filters.is_archived = is_archived === true || is_archived === 'true';
+        if (is_declined !== undefined)
+          filters.is_declined = is_declined === true || is_declined === 'true';
         if (page) filters.page = page;
         if (limit) filters.limit = limit;
         if (order) filters.order = order;

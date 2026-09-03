@@ -1073,6 +1073,9 @@ model AgodaCaseItem {
   /// Soft-archive flag for the GET list endpoint. Defaults to false; never
   /// deletes the row.
   is_archived      Boolean      @default(false)
+  /// True when Agoda declined this case item (e.g. the charge/collection was
+  /// rejected). Defaults to false.
+  is_declined      Boolean      @default(false)
   createdBy        String?      @db.ObjectId
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
@@ -1093,5 +1096,6 @@ model AgodaCaseItem {
   @@index([createdBy])
   @@index([ota_provider])
   @@index([is_archived])
+  @@index([is_declined])
   @@map("agoda_case_items")
 }

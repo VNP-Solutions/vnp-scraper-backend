@@ -16,6 +16,7 @@ export interface AgodaCaseItemFilters {
   /** Filter by the user who created the item (`createdBy` on the model). */
   createdBy?: string;
   is_archived?: boolean;
+  is_declined?: boolean;
   page?: number;
   limit?: number;
   order?: 'asc' | 'desc';

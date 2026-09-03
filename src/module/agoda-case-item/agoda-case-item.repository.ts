@@ -90,6 +90,9 @@ export class AgodaCaseItemRepository implements IAgodaCaseItemRepository {
       if (filters?.is_archived !== undefined) {
         where.is_archived = filters.is_archived;
       }
+      if (filters?.is_declined !== undefined) {
+        where.is_declined = filters.is_declined;
+      }
 
       if (filters?.search) {
         const searchTerm = filters.search.toString().trim();

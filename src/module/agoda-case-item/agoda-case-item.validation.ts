@@ -32,6 +32,7 @@ export const createAgodaCaseItemSchema = z.object({
   retrival_status: z.string().optional().nullable(),
   ota_provider: z.nativeEnum(OTAProvider).optional().nullable(),
   is_archived: z.boolean().optional().default(false),
+  is_declined: z.boolean().optional().default(false),
   createdBy: objectIdSchema.optional().nullable(),
 });
 
