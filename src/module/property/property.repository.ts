@@ -986,23 +986,31 @@ export class PropertyRepository implements IPropertyRepository {
     try {
       const updatePayload: any = {};
 
+      // A null password means the caller is clearing it (a DBMS sync of a
+      // property whose password was emptied), so it must not go through the
+      // cipher — that would store ciphertext for the word "null".
+      const encryptOrClear = (password: string | null) =>
+        password === null
+          ? null
+          : this.encryptionUtil.encryptPassword(password);
+
       // Add credential fields if they exist (encrypt passwords)
       if (credentialsData.expediaUsername !== undefined)
         updatePayload.expediaUsername = credentialsData.expediaUsername;
       if (credentialsData.expediaPassword !== undefined)
-        updatePayload.expediaPassword = this.encryptionUtil.encryptPassword(
+        updatePayload.expediaPassword = encryptOrClear(
           credentialsData.expediaPassword,
         );
       if (credentialsData.agodaUsername !== undefined)
         updatePayload.agodaUsername = credentialsData.agodaUsername;
       if (credentialsData.agodaPassword !== undefined)
-        updatePayload.agodaPassword = this.encryptionUtil.encryptPassword(
+        updatePayload.agodaPassword = encryptOrClear(
           credentialsData.agodaPassword,
         );
       if (credentialsData.bookingUsername !== undefined)
         updatePayload.bookingUsername = credentialsData.bookingUsername;
       if (credentialsData.bookingPassword !== undefined)
-        updatePayload.bookingPassword = this.encryptionUtil.encryptPassword(
+        updatePayload.bookingPassword = encryptOrClear(
           credentialsData.bookingPassword,
         );
       if (credentialsData.expediaEmailAssociated !== undefined)
