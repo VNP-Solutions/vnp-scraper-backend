@@ -1,4 +1,4 @@
-import { OTAProvider } from '@prisma/client';
+import { OTAProvider, PostingType } from '@prisma/client';
 import { z } from 'zod';
 
 // MongoDB ObjectId validation
@@ -6,11 +6,11 @@ const objectIdSchema = z.string().regex(/^[0-9a-fA-F]{24}$/, {
   message: 'Invalid ObjectId format. Must be a 24-character hex string.',
 });
 
-// Dates on this model are stored as plain YYYY-MM-DD strings, not DateTime,
+// Dates on this model are stored as plain MM/DD/YYYY strings, not DateTime,
 // because they come straight off the Agoda case page.
 const dateStringSchema = z
   .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format');
+  .regex(/^\d{2}\/\d{2}\/\d{4}$/, 'Date must be in MM/DD/YYYY format');
 
 export const createAgodaCaseItemSchema = z.object({
   property_id: objectIdSchema.optional().nullable(),
@@ -31,6 +31,7 @@ export const createAgodaCaseItemSchema = z.object({
   is_missing: z.boolean().optional().default(false),
   retrival_status: z.string().optional().nullable(),
   ota_provider: z.nativeEnum(OTAProvider).optional().nullable(),
+  posting_type: z.nativeEnum(PostingType).optional().nullable(),
   is_archived: z.boolean().optional().default(false),
   is_declined: z.boolean().optional().default(false),
   createdBy: objectIdSchema.optional().nullable(),
@@ -38,5 +39,14 @@ export const createAgodaCaseItemSchema = z.object({
 
 export const updateAgodaCaseItemSchema = createAgodaCaseItemSchema.partial();
 
+export const exportSelectedAgodaCaseItemsSchema = z.object({
+  ids: z.array(objectIdSchema).min(1, {
+    message: 'ids must be a non-empty array of AgodaCaseItem ObjectIds',
+  }),
+});
+
 export type CreateAgodaCaseItemType = z.infer<typeof createAgodaCaseItemSchema>;
 export type UpdateAgodaCaseItemType = z.infer<typeof updateAgodaCaseItemSchema>;
+export type ExportSelectedAgodaCaseItemsType = z.infer<
+  typeof exportSelectedAgodaCaseItemsSchema
+>;

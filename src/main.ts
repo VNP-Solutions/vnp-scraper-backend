@@ -33,7 +33,7 @@ process.on('unhandledRejection', (reason) => {
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.enableCors({
-    exposedHeaders: ['Content-Disposition'],
+    exposedHeaders: ['Content-Disposition', 'X-Archived-Count'],
   });
 
   // Raise the Express body-parser limits. The defaults (100 kb) are too

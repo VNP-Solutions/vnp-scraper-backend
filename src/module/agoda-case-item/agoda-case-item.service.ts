@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AgodaCaseItem } from '@prisma/client';
+import { buildAgodaCaseItemWipWorkbook } from './agoda-case-item-wip-export.util';
 import {
   CreateAgodaCaseItemDto,
   UpdateAgodaCaseItemDto,
@@ -131,6 +132,43 @@ export class AgodaCaseItemService implements IAgodaCaseItemService {
       };
     } catch (error) {
       this.logger.error(`Error deleting agoda case item ${id}:`, error);
+      throw error;
+    }
+  }
+
+  async exportWip(
+    filters?: AgodaCaseItemFilters,
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    try {
+      const items = await this.repository.findAllForExport(filters);
+      this.logger.log(`Exporting ${items.length} agoda case item(s) as WIP xlsx`);
+      return buildAgodaCaseItemWipWorkbook(items);
+    } catch (error) {
+      this.logger.error('Error exporting agoda case items as WIP xlsx:', error);
+      throw error;
+    }
+  }
+
+  async exportWipAndArchive(
+    filters?: AgodaCaseItemFilters,
+  ): Promise<{ buffer: Buffer; fileName: string; archivedCount: number }> {
+    try {
+      const items = await this.repository.findAllForExport(filters);
+      const { buffer, fileName } = buildAgodaCaseItemWipWorkbook(items);
+
+      const ids = items.map((item) => item.id);
+      const archivedCount = await this.repository.archiveByIds(ids);
+
+      this.logger.log(
+        `Exported ${items.length} agoda case item(s) as WIP xlsx and archived ${archivedCount} of them`,
+      );
+
+      return { buffer, fileName, archivedCount };
+    } catch (error) {
+      this.logger.error(
+        'Error exporting and archiving agoda case items as WIP xlsx:',
+        error,
+      );
       throw error;
     }
   }

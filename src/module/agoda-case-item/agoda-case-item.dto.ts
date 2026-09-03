@@ -1,7 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { OTAProvider } from '@prisma/client';
+import { OTAProvider, PostingType } from '@prisma/client';
 import {
   CreateAgodaCaseItemType,
+  ExportSelectedAgodaCaseItemsType,
   UpdateAgodaCaseItemType,
 } from './agoda-case-item.validation';
 
@@ -42,15 +43,15 @@ export class CreateAgodaCaseItemDto implements CreateAgodaCaseItemType {
 
   @ApiProperty({
     required: false,
-    description: 'Check-in date in YYYY-MM-DD format',
-    example: '2026-09-01',
+    description: 'Check-in date in MM/DD/YYYY format',
+    example: '09/01/2026',
   })
   check_in?: string;
 
   @ApiProperty({
     required: false,
-    description: 'Check-out date in YYYY-MM-DD format',
-    example: '2026-09-05',
+    description: 'Check-out date in MM/DD/YYYY format',
+    example: '09/05/2026',
   })
   check_out?: string;
 
@@ -94,6 +95,13 @@ export class CreateAgodaCaseItemDto implements CreateAgodaCaseItemType {
 
   @ApiProperty({
     required: false,
+    enum: PostingType,
+    description: 'Copied from the originating job at creation time',
+  })
+  posting_type?: PostingType;
+
+  @ApiProperty({
+    required: false,
     default: false,
     description: 'Soft-archive flag',
   })
@@ -133,10 +141,10 @@ export class UpdateAgodaCaseItemDto implements UpdateAgodaCaseItemType {
   @ApiProperty({ required: false })
   guest_name?: string;
 
-  @ApiProperty({ required: false, description: 'YYYY-MM-DD' })
+  @ApiProperty({ required: false, description: 'MM/DD/YYYY' })
   check_in?: string;
 
-  @ApiProperty({ required: false, description: 'YYYY-MM-DD' })
+  @ApiProperty({ required: false, description: 'MM/DD/YYYY' })
   check_out?: string;
 
   @ApiProperty({ required: false })
@@ -168,6 +176,9 @@ export class UpdateAgodaCaseItemDto implements UpdateAgodaCaseItemType {
 
   @ApiProperty({ required: false, enum: OTAProvider })
   ota_provider?: OTAProvider;
+
+  @ApiProperty({ required: false, enum: PostingType })
+  posting_type?: PostingType;
 
   @ApiProperty({ required: false })
   is_archived?: boolean;
@@ -201,10 +212,10 @@ export class AgodaCaseItemResponseDto {
   @ApiProperty({ required: false })
   guest_name?: string;
 
-  @ApiProperty({ required: false, description: 'YYYY-MM-DD' })
+  @ApiProperty({ required: false, description: 'MM/DD/YYYY' })
   check_in?: string;
 
-  @ApiProperty({ required: false, description: 'YYYY-MM-DD' })
+  @ApiProperty({ required: false, description: 'MM/DD/YYYY' })
   check_out?: string;
 
   @ApiProperty({ required: false })
@@ -237,6 +248,9 @@ export class AgodaCaseItemResponseDto {
   @ApiProperty({ required: false, enum: OTAProvider })
   ota_provider?: OTAProvider;
 
+  @ApiProperty({ required: false, enum: PostingType })
+  posting_type?: PostingType;
+
   @ApiProperty({ default: false })
   is_archived: boolean;
 
@@ -268,4 +282,15 @@ export class AgodaCaseItemListResponseDto {
 
   @ApiProperty({ description: 'Items per page' })
   limit: number;
+}
+
+export class ExportSelectedAgodaCaseItemsDto
+  implements ExportSelectedAgodaCaseItemsType
+{
+  @ApiProperty({
+    type: [String],
+    description: 'AgodaCaseItem ids to include in the WIP export',
+    example: ['65f0a3c4e2b7a1d2c3e4f5a6', '65f0a3c4e2b7a1d2c3e4f5a7'],
+  })
+  ids: string[];
 }

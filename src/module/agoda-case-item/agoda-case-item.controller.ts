@@ -13,13 +13,14 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiOperation,
   ApiParam,
   ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { OTAProvider } from '@prisma/client';
+import { PostingType } from '@prisma/client';
 import { Response } from 'express';
 import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
@@ -29,6 +30,7 @@ import {
   AgodaCaseItemListResponseDto,
   AgodaCaseItemResponseDto,
   CreateAgodaCaseItemDto,
+  ExportSelectedAgodaCaseItemsDto,
   UpdateAgodaCaseItemDto,
 } from './agoda-case-item.dto';
 import {
@@ -37,6 +39,7 @@ import {
 } from './agoda-case-item.interface';
 import {
   createAgodaCaseItemSchema,
+  exportSelectedAgodaCaseItemsSchema,
   updateAgodaCaseItemSchema,
 } from './agoda-case-item.validation';
 
@@ -51,6 +54,57 @@ export class AgodaCaseItemController {
     @Inject('IAgodaCaseItemService')
     private readonly agodaCaseItemService: IAgodaCaseItemService,
   ) {}
+
+  /** Shared between GET / and GET /export/wip so the two never drift apart. */
+  private buildFiltersFromQuery(
+    query: Record<string, any>,
+  ): AgodaCaseItemFilters {
+    const filters: AgodaCaseItemFilters = {};
+    const {
+      search,
+      ids,
+      property_id,
+      batch_id,
+      portfolio_id,
+      retrival_status,
+      charge_status,
+      is_missing,
+      posting_type,
+      createdBy,
+      is_archived,
+      is_declined,
+      page,
+      limit,
+      order,
+    } = query;
+
+    if (search) filters.search = search;
+    if (ids) {
+      // Accepts either a comma-separated string (?ids=a,b,c) or repeated
+      // params (?ids=a&ids=b), depending on how the frontend serializes it.
+      const idList = Array.isArray(ids) ? ids : String(ids).split(',');
+      const cleaned = idList.map((id) => id.trim()).filter(Boolean);
+      if (cleaned.length > 0) filters.ids = cleaned;
+    }
+    if (property_id) filters.property_id = property_id;
+    if (batch_id) filters.batch_id = batch_id;
+    if (portfolio_id) filters.portfolio_id = portfolio_id;
+    if (retrival_status) filters.retrival_status = retrival_status;
+    if (charge_status) filters.charge_status = charge_status;
+    if (is_missing !== undefined)
+      filters.is_missing = is_missing === true || is_missing === 'true';
+    if (posting_type) filters.posting_type = posting_type;
+    if (createdBy) filters.createdBy = createdBy;
+    if (is_archived !== undefined)
+      filters.is_archived = is_archived === true || is_archived === 'true';
+    if (is_declined !== undefined)
+      filters.is_declined = is_declined === true || is_declined === 'true';
+    if (page) filters.page = page;
+    if (limit) filters.limit = limit;
+    if (order) filters.order = order;
+
+    return filters;
+  }
 
   @Post()
   @ApiOperation({ summary: 'Create a new agoda case item' })
@@ -83,17 +137,17 @@ export class AgodaCaseItemController {
     );
   }
 
-  @Get()
+  @Get('export/wip')
   @ApiOperation({
-    summary: 'Get all agoda case items with pagination, search and filters',
+    summary: 'Export agoda case items as a WIP xlsx sheet',
     description:
-      'Filterable by charge_status, ota_provider, createdBy (user), portfolio_id, property_id, batch_id, is_archived and is_declined. ' +
-      'search matches against id, reservation_id, guest_name or vcc_card_number.',
+      'Exports every AgodaCaseItem matching the given filters (same filters as GET / — omit all of them to export everything) ' +
+      'as an .xlsx file for hand-off to whoever charges/collects each card. No pagination — always the full matching set.',
   })
   @ApiQuery({
     name: 'search',
     required: false,
-    description: 'Search by ID, reservation_id, guest_name or vcc_card_number',
+    description: 'Search by ID, reservation_id, guest_name, vcc_card_number, property name, or portfolio name',
   })
   @ApiQuery({
     name: 'property_id',
@@ -127,10 +181,255 @@ export class AgodaCaseItemController {
     description: 'Filter by missing flag',
   })
   @ApiQuery({
-    name: 'ota_provider',
+    name: 'posting_type',
     required: false,
-    enum: OTAProvider,
-    description: 'Filter by OTA provider',
+    enum: PostingType,
+    description: 'Filter by posting type',
+  })
+  @ApiQuery({
+    name: 'createdBy',
+    required: false,
+    description: 'Filter by the user (MongoDB ObjectId) who created the item',
+  })
+  @ApiQuery({
+    name: 'is_archived',
+    required: false,
+    type: Boolean,
+    description: 'Filter by archived flag (defaults to no filter — returns both)',
+  })
+  @ApiQuery({
+    name: 'is_declined',
+    required: false,
+    type: Boolean,
+    description: 'Filter by declined flag (defaults to no filter — returns both)',
+  })
+  @ApiResponse({ status: 200, description: 'xlsx file generated successfully' })
+  async exportWip(
+    @ParseQuery() query: Record<string, any>,
+    @Res() response: Response,
+  ) {
+    const filters = this.buildFiltersFromQuery(query);
+    const { buffer, fileName } =
+      await this.agodaCaseItemService.exportWip(filters);
+
+    response.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${fileName}"`,
+    );
+    response.send(buffer);
+  }
+
+  @Post('export/selected')
+  @ApiOperation({
+    summary: 'Export specific agoda case items (checked rows) as a WIP xlsx sheet',
+    description:
+      'For exporting a user-picked selection instead of a filtered set — send exactly the ids the frontend has checked. ' +
+      'Same xlsx shape as GET /export/wip, just scoped to these rows.',
+  })
+  @ApiBody({ type: ExportSelectedAgodaCaseItemsDto })
+  @ApiResponse({ status: 200, description: 'xlsx file generated successfully' })
+  @ApiResponse({ status: 400, description: 'ids missing, not an array, or empty' })
+  @ValidateBody(exportSelectedAgodaCaseItemsSchema)
+  async exportSelected(
+    @Body() body: ExportSelectedAgodaCaseItemsDto,
+    @Res() response: Response,
+  ) {
+    const { buffer, fileName } = await this.agodaCaseItemService.exportWip({
+      ids: body.ids,
+    });
+
+    response.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${fileName}"`,
+    );
+    response.send(buffer);
+  }
+
+  @Get('export/wip-archive')
+  @ApiOperation({
+    summary: 'Export agoda case items as a WIP xlsx sheet, then archive them',
+    description:
+      'Identical to GET /export/wip (same filters, omit all of them to export everything), except every row that ends up ' +
+      'in the file also gets is_archived set to true right after the file is built — so exporting doubles as archiving.',
+  })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    description: 'Search by ID, reservation_id, guest_name, vcc_card_number, property name, or portfolio name',
+  })
+  @ApiQuery({
+    name: 'property_id',
+    required: false,
+    description: 'Filter by property ID',
+  })
+  @ApiQuery({
+    name: 'batch_id',
+    required: false,
+    description: 'Filter by batch ID',
+  })
+  @ApiQuery({
+    name: 'portfolio_id',
+    required: false,
+    description: 'Filter by portfolio ID',
+  })
+  @ApiQuery({
+    name: 'retrival_status',
+    required: false,
+    description: 'Filter by retrieval status',
+  })
+  @ApiQuery({
+    name: 'charge_status',
+    required: false,
+    description: 'Filter by charge status',
+  })
+  @ApiQuery({
+    name: 'is_missing',
+    required: false,
+    type: Boolean,
+    description: 'Filter by missing flag',
+  })
+  @ApiQuery({
+    name: 'posting_type',
+    required: false,
+    enum: PostingType,
+    description: 'Filter by posting type',
+  })
+  @ApiQuery({
+    name: 'createdBy',
+    required: false,
+    description: 'Filter by the user (MongoDB ObjectId) who created the item',
+  })
+  @ApiQuery({
+    name: 'is_archived',
+    required: false,
+    type: Boolean,
+    description:
+      'Filter by archived flag (defaults to no filter — returns both). Note: whatever comes back WILL be set to true after export, regardless of its value going in.',
+  })
+  @ApiQuery({
+    name: 'is_declined',
+    required: false,
+    type: Boolean,
+    description: 'Filter by declined flag (defaults to no filter — returns both)',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'xlsx file generated successfully. X-Archived-Count response header carries how many rows were archived.',
+  })
+  async exportWipAndArchive(
+    @ParseQuery() query: Record<string, any>,
+    @Res() response: Response,
+  ) {
+    const filters = this.buildFiltersFromQuery(query);
+    const { buffer, fileName, archivedCount } =
+      await this.agodaCaseItemService.exportWipAndArchive(filters);
+
+    response.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${fileName}"`,
+    );
+    response.setHeader('X-Archived-Count', String(archivedCount));
+    response.send(buffer);
+  }
+
+  @Post('export/selected-archive')
+  @ApiOperation({
+    summary:
+      'Export specific agoda case items (checked rows) as a WIP xlsx sheet, then archive them',
+    description:
+      'Identical to POST /export/selected (send exactly the ids the frontend has checked), except every one of those ids ' +
+      'also gets is_archived set to true right after the file is built.',
+  })
+  @ApiBody({ type: ExportSelectedAgodaCaseItemsDto })
+  @ApiResponse({
+    status: 200,
+    description:
+      'xlsx file generated successfully. X-Archived-Count response header carries how many rows were archived.',
+  })
+  @ApiResponse({ status: 400, description: 'ids missing, not an array, or empty' })
+  @ValidateBody(exportSelectedAgodaCaseItemsSchema)
+  async exportSelectedAndArchive(
+    @Body() body: ExportSelectedAgodaCaseItemsDto,
+    @Res() response: Response,
+  ) {
+    const { buffer, fileName, archivedCount } =
+      await this.agodaCaseItemService.exportWipAndArchive({
+        ids: body.ids,
+      });
+
+    response.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${fileName}"`,
+    );
+    response.setHeader('X-Archived-Count', String(archivedCount));
+    response.send(buffer);
+  }
+
+  @Get()
+  @ApiOperation({
+    summary: 'Get all agoda case items with pagination, search and filters',
+    description:
+      'Filterable by charge_status, ota_provider, createdBy (user), portfolio_id, property_id, batch_id, is_archived and is_declined. ' +
+      'search matches against id, reservation_id, guest_name or vcc_card_number.',
+  })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    description: 'Search by ID, reservation_id, guest_name, vcc_card_number, property name, or portfolio name',
+  })
+  @ApiQuery({
+    name: 'property_id',
+    required: false,
+    description: 'Filter by property ID',
+  })
+  @ApiQuery({
+    name: 'batch_id',
+    required: false,
+    description: 'Filter by batch ID',
+  })
+  @ApiQuery({
+    name: 'portfolio_id',
+    required: false,
+    description: 'Filter by portfolio ID',
+  })
+  @ApiQuery({
+    name: 'retrival_status',
+    required: false,
+    description: 'Filter by retrieval status',
+  })
+  @ApiQuery({
+    name: 'charge_status',
+    required: false,
+    description: 'Filter by charge status',
+  })
+  @ApiQuery({
+    name: 'is_missing',
+    required: false,
+    type: Boolean,
+    description: 'Filter by missing flag',
+  })
+  @ApiQuery({
+    name: 'posting_type',
+    required: false,
+    enum: PostingType,
+    description: 'Filter by posting type',
   })
   @ApiQuery({
     name: 'createdBy',
@@ -182,41 +481,7 @@ export class AgodaCaseItemController {
     return ResponseHandler.handler(
       response,
       async () => {
-        const filters: AgodaCaseItemFilters = {};
-        const {
-          search,
-          property_id,
-          batch_id,
-          portfolio_id,
-          retrival_status,
-          charge_status,
-          is_missing,
-          ota_provider,
-          createdBy,
-          is_archived,
-          is_declined,
-          page,
-          limit,
-          order,
-        } = query;
-
-        if (search) filters.search = search;
-        if (property_id) filters.property_id = property_id;
-        if (batch_id) filters.batch_id = batch_id;
-        if (portfolio_id) filters.portfolio_id = portfolio_id;
-        if (retrival_status) filters.retrival_status = retrival_status;
-        if (charge_status) filters.charge_status = charge_status;
-        if (is_missing !== undefined)
-          filters.is_missing = is_missing === true || is_missing === 'true';
-        if (ota_provider) filters.ota_provider = ota_provider;
-        if (createdBy) filters.createdBy = createdBy;
-        if (is_archived !== undefined)
-          filters.is_archived = is_archived === true || is_archived === 'true';
-        if (is_declined !== undefined)
-          filters.is_declined = is_declined === true || is_declined === 'true';
-        if (page) filters.page = page;
-        if (limit) filters.limit = limit;
-        if (order) filters.order = order;
+        const filters = this.buildFiltersFromQuery(query);
 
         const result = await this.agodaCaseItemService.findAll(filters);
 

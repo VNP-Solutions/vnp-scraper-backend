@@ -1,4 +1,12 @@
-import { AgodaCaseItem, OTAProvider } from '@prisma/client';
+import {
+  AgodaCaseItem,
+  Batch,
+  Portfolio,
+  PostingType,
+  Property,
+  PropertyCredentials,
+  User,
+} from '@prisma/client';
 import {
   CreateAgodaCaseItemDto,
   UpdateAgodaCaseItemDto,
@@ -12,15 +20,29 @@ export interface AgodaCaseItemFilters {
   retrival_status?: string;
   charge_status?: string;
   is_missing?: boolean;
-  ota_provider?: OTAProvider;
+  posting_type?: PostingType;
   /** Filter by the user who created the item (`createdBy` on the model). */
   createdBy?: string;
   is_archived?: boolean;
   is_declined?: boolean;
+  /**
+   * Restrict to exactly these AgodaCaseItem ids — how "export selected
+   * rows" works: the frontend sends the checked ids here instead of (or on
+   * top of) the other filters.
+   */
+  ids?: string[];
   page?: number;
   limit?: number;
   order?: 'asc' | 'desc';
 }
+
+/** One row of the WIP export, with just enough of each relation resolved. */
+export type AgodaCaseItemForExport = AgodaCaseItem & {
+  property: (Property & { credentials: PropertyCredentials[] }) | null;
+  batch: Batch | null;
+  portfolio: Portfolio | null;
+  creator: User | null;
+};
 
 export interface PaginatedAgodaCaseItems {
   items: AgodaCaseItem[];
@@ -35,11 +57,22 @@ export interface IAgodaCaseItemRepository {
 
   findAll(filters?: AgodaCaseItemFilters): Promise<PaginatedAgodaCaseItems>;
 
+  /**
+   * Every matching row (no pagination), with property/batch/portfolio/
+   * creator resolved, for the WIP xlsx export.
+   */
+  findAllForExport(
+    filters?: AgodaCaseItemFilters,
+  ): Promise<AgodaCaseItemForExport[]>;
+
   findById(id: string): Promise<AgodaCaseItem | null>;
 
   update(id: string, data: UpdateAgodaCaseItemDto): Promise<AgodaCaseItem>;
 
   delete(id: string): Promise<AgodaCaseItem>;
+
+  /** Sets is_archived: true on every given id. Returns how many rows matched. */
+  archiveByIds(ids: string[]): Promise<number>;
 
   propertyExists(propertyId: string): Promise<boolean>;
 
@@ -60,4 +93,17 @@ export interface IAgodaCaseItemService {
   update(id: string, data: UpdateAgodaCaseItemDto): Promise<AgodaCaseItem>;
 
   delete(id: string): Promise<{ deletedCount: number; deletedId: string }>;
+
+  /** Builds the WIP xlsx export for the given filters (same filters as findAll, minus pagination). */
+  exportWip(
+    filters?: AgodaCaseItemFilters,
+  ): Promise<{ buffer: Buffer; fileName: string }>;
+
+  /**
+   * Same export as exportWip, but every row that ends up in the file also
+   * gets is_archived set to true — for "export and archive" in one step.
+   */
+  exportWipAndArchive(
+    filters?: AgodaCaseItemFilters,
+  ): Promise<{ buffer: Buffer; fileName: string; archivedCount: number }>;
 }

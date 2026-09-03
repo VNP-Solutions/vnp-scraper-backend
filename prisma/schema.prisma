@@ -1054,8 +1054,8 @@ model AgodaCaseItem {
   retrieval_id     String?      @db.ObjectId
   reservation_id   String?
   guest_name       String?
-  check_in         String? // Format: YYYY-MM-DD
-  check_out        String? // Format: YYYY-MM-DD
+  check_in         String? // Format: MM/DD/YYYY
+  check_out        String? // Format: MM/DD/YYYY
   amount           String?
   currency         String?
   amount_to_charge String?
@@ -1065,16 +1065,9 @@ model AgodaCaseItem {
   card_cvv         String?
   is_missing       Boolean      @default(false)
   retrival_status  String?
-  /// Which OTA this case item came from. Set at creation time (currently
-  /// always Agoda, since only the Agoda send-to-retrieval flow creates
-  /// these), kept as its own field rather than joining through `retrieval`
-  /// so the GET list endpoint can filter on it directly.
   ota_provider     OTAProvider?
-  /// Soft-archive flag for the GET list endpoint. Defaults to false; never
-  /// deletes the row.
+  posting_type     PostingType?
   is_archived      Boolean      @default(false)
-  /// True when Agoda declined this case item (e.g. the charge/collection was
-  /// rejected). Defaults to false.
   is_declined      Boolean      @default(false)
   createdBy        String?      @db.ObjectId
   createdAt        DateTime     @default(now())
