@@ -13,6 +13,8 @@
 
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Job, JobStatus, OTAProvider } from '@prisma/client';
+import { IAgodaCaseItemService } from '../agoda-case-item/agoda-case-item.interface';
+import { DatabaseService } from '../database/database.service';
 import { resolveAgodaIdForJob } from '../job/agoda-id.util';
 import { IJobRepository } from '../job/job.interface';
 import { REPLY_DEADLINE_HOURS } from '../job/reply-status.util';
@@ -57,6 +59,9 @@ export class SendToRetrievalService implements ISendToRetrievalService {
     private readonly supportEmailRepository: ISupportEmailRepository,
     @Inject('IRetrievalService')
     private readonly retrievalService: IRetrievalService,
+    @Inject('IAgodaCaseItemService')
+    private readonly agodaCaseItemService: IAgodaCaseItemService,
+    private readonly db: DatabaseService,
   ) {}
 
   /**
@@ -113,7 +118,90 @@ export class SendToRetrievalService implements ISendToRetrievalService {
       case_open: false,
     };
 
-    return this.retrievalService.createRetrieval(data);
+    // Create the retrieval first
+    const retrieval = await this.retrievalService.createRetrieval(data);
+
+    // Create AgodaCaseItems for each reservation
+    await this.createAgodaCaseItemsForRetrieval(job, reservations, retrieval.id);
+
+    return retrieval;
+  }
+
+  /**
+   * Creates AgodaCaseItem records for each reservation in the retrieval.
+   * Fetches JobItem data for each reservation and maps it to AgodaCaseItem fields.
+   */
+  private async createAgodaCaseItemsForRetrieval(
+    job: Job,
+    reservationIds: string[],
+    retrievalId: string,
+  ): Promise<void> {
+    try {
+      // Fetch JobItems for these reservations
+      const jobItems = await this.db.jobItem.findMany({
+        where: {
+          job_id: job.id,
+          reservation_id: {
+            in: reservationIds,
+          },
+        },
+      });
+
+      // Create AgodaCaseItem for each JobItem
+      for (const jobItem of jobItems) {
+        try {
+          await this.agodaCaseItemService.create({
+            property_id: job.property_id ?? undefined,
+            batch_id: job.batch_id ?? undefined,
+            portfolio_id: job.portfolio_id ?? undefined,
+            retrieval_id: retrievalId,
+            reservation_id: jobItem.reservation_id ?? undefined,
+            guest_name: jobItem.guest_name ?? undefined,
+            check_in: jobItem.check_in_date
+              ? jobItem.check_in_date.toISOString().split('T')[0]
+              : undefined,
+            check_out: jobItem.check_out_date
+              ? jobItem.check_out_date.toISOString().split('T')[0]
+              : undefined,
+            amount: jobItem.booking_amount?.toString() ?? undefined,
+            currency: undefined, // Not available in JobItem
+            amount_to_charge: jobItem.booking_amount?.toString() ?? undefined,
+            charge_status: undefined, // Will be updated later by retrieval process
+            vcc_card_number: undefined, // Will be filled by retrieval process
+            card_expire: undefined, // Will be filled by retrieval process
+            card_cvv: undefined, // Will be filled by retrieval process
+            is_missing: false,
+            retrival_status: 'Pending',
+            createdBy: job.user_id,
+          });
+
+          this.logger.log(
+            `✅ Created AgodaCaseItem for reservation ${jobItem.reservation_id} (retrievalId=${retrievalId})`,
+          );
+        } catch (error: any) {
+          this.logger.error(
+            `Failed to create AgodaCaseItem for reservation ${jobItem.reservation_id}:`,
+            error,
+          );
+          // Continue with other items even if one fails
+        }
+      }
+
+      // Log warning if some reservations don't have JobItems
+      if (jobItems.length < reservationIds.length) {
+        const foundIds = new Set(jobItems.map((item) => item.reservation_id));
+        const missingIds = reservationIds.filter((id) => !foundIds.has(id));
+        this.logger.warn(
+          `⚠️ ${missingIds.length} reservation(s) not found in JobItems: ${missingIds.join(', ')}`,
+        );
+      }
+    } catch (error: any) {
+      this.logger.error(
+        `Error creating AgodaCaseItems for retrieval ${retrievalId}:`,
+        error,
+      );
+      // Don't throw - let the retrieval be created even if case items fail
+    }
   }
 
   /**

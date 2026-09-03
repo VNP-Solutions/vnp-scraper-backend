@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
+import { AgodaCaseItemModule } from '../agoda-case-item/agoda-case-item.module';
+import { DatabaseModule } from '../database/database.module';
 import { JobModule } from '../job/job.module';
 import { PropertyModule } from '../property/property.module';
 import { RetrievalModule } from '../retrieval/retrieval.module';
@@ -16,6 +18,8 @@ import { SendToRetrievalService } from './send-to-retrieval.service';
     PropertyModule,
     SupportEmailModule,
     RetrievalModule,
+    AgodaCaseItemModule,
+    DatabaseModule,
   ],
   controllers: [SendToRetrievalController],
   providers: [

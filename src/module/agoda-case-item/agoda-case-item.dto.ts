@@ -26,6 +26,13 @@ export class CreateAgodaCaseItemDto implements CreateAgodaCaseItemType {
   })
   portfolio_id?: string;
 
+  @ApiProperty({
+    required: false,
+    description: 'Retrieval this case item belongs to',
+    example: '65f0a3c4e2b7a1d2c3e4f5a9',
+  })
+  retrieval_id?: string;
+
   @ApiProperty({ required: false, example: '1234567890' })
   reservation_id?: string;
 
@@ -96,6 +103,9 @@ export class UpdateAgodaCaseItemDto implements UpdateAgodaCaseItemType {
   portfolio_id?: string;
 
   @ApiProperty({ required: false })
+  retrieval_id?: string;
+
+  @ApiProperty({ required: false })
   reservation_id?: string;
 
   @ApiProperty({ required: false })
@@ -150,6 +160,9 @@ export class AgodaCaseItemResponseDto {
 
   @ApiProperty({ required: false })
   portfolio_id?: string;
+
+  @ApiProperty({ required: false })
+  retrieval_id?: string;
 
   @ApiProperty({ required: false })
   reservation_id?: string;

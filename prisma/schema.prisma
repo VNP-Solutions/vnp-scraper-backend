@@ -703,6 +703,7 @@ model Retrieval {
 
   parentRetrieval ParentRetrieval? @relation(fields: [parent_retrieval_id], references: [id])
   retrievalItems  RetrievalItem[]
+  agodaCaseItems  AgodaCaseItem[]
   batch           Batch?           @relation(fields: [batch_id], references: [id])
 
   @@map("retrievals")
@@ -1050,6 +1051,7 @@ model AgodaCaseItem {
   property_id      String?  @db.ObjectId
   batch_id         String?  @db.ObjectId
   portfolio_id     String?  @db.ObjectId
+  retrieval_id     String?  @db.ObjectId
   reservation_id   String?
   guest_name       String?
   check_in         String? // Format: YYYY-MM-DD
@@ -1070,11 +1072,13 @@ model AgodaCaseItem {
   property  Property?  @relation(fields: [property_id], references: [id], onDelete: Cascade)
   batch     Batch?     @relation(fields: [batch_id], references: [id], onDelete: Cascade)
   portfolio Portfolio? @relation(fields: [portfolio_id], references: [id], onDelete: Cascade)
+  retrieval Retrieval? @relation(fields: [retrieval_id], references: [id], onDelete: Cascade)
   creator   User?      @relation(fields: [createdBy], references: [id], onDelete: SetNull)
 
   @@index([property_id])
   @@index([batch_id])
   @@index([portfolio_id])
+  @@index([retrieval_id])
   @@index([reservation_id])
   @@index([charge_status])
   @@index([retrival_status])

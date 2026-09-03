@@ -15,6 +15,7 @@ export const createAgodaCaseItemSchema = z.object({
   property_id: objectIdSchema.optional().nullable(),
   batch_id: objectIdSchema.optional().nullable(),
   portfolio_id: objectIdSchema.optional().nullable(),
+  retrieval_id: objectIdSchema.optional().nullable(),
   reservation_id: z.string().optional().nullable(),
   guest_name: z.string().optional().nullable(),
   check_in: dateStringSchema.optional().nullable(),

@@ -25,19 +25,27 @@ export class AgodaCaseItemRepository implements IAgodaCaseItemRepository {
   private toRelationInput(
     data: CreateAgodaCaseItemDto | UpdateAgodaCaseItemDto,
   ): Prisma.AgodaCaseItemCreateInput {
-    const { property_id, batch_id, portfolio_id, createdBy, ...rest } = data;
+    const {
+      property_id,
+      batch_id,
+      portfolio_id,
+      retrieval_id,
+      createdBy,
+      ...rest
+    } = data;
 
     return {
       ...rest,
       ...this.relationWrite('property', property_id),
       ...this.relationWrite('batch', batch_id),
       ...this.relationWrite('portfolio', portfolio_id),
+      ...this.relationWrite('retrieval', retrieval_id),
       ...this.relationWrite('creator', createdBy),
     };
   }
 
   private relationWrite(
-    relation: 'property' | 'batch' | 'portfolio' | 'creator',
+    relation: 'property' | 'batch' | 'portfolio' | 'retrieval' | 'creator',
     id: string | null | undefined,
   ): Record<string, unknown> {
     if (id === undefined) return {};
