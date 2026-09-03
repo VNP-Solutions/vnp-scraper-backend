@@ -307,7 +307,7 @@ model Job {
   phoneNumberSlots      PhoneNumberSlot[]
   dbData                DbData[]
   dbEntries             DbEntry[]
-  agodaEmails           AgodaEmail[]
+  supportEmails         SupportEmail[]
 
   @@map("jobs")
 }
@@ -956,27 +956,6 @@ model BookingScraperUrl {
   @@map("booking_scraper_urls")
 }
 
-model AgodaEmail {
-  id           String   @id @default(auto()) @map("_id") @db.ObjectId
-  job_id       String   @db.ObjectId
-  email_id     String
-  subject      String?
-  email_body   String?
-  from         String?
-  to           String?
-  point_status String?
-  date         String? // Format: YYYY-MM-DD
-  screenshots  String[] @default([])
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  job Job @relation(fields: [job_id], references: [id], onDelete: Cascade)
-
-  @@index([job_id])
-  @@index([email_id])
-  @@map("agoda_emails")
-}
-
 enum SupportEmailDirection {
   incoming
   outgoing
@@ -993,22 +972,22 @@ enum SupportEmailAttachmentFormat {
 /// S3, and rows stored here would be an unindexable second copy that goes
 /// stale as soon as the reopen rules change.
 type SupportEmailAttachment {
-  filename      String
-  mime_type     String
-  size_bytes    Int                          @default(0)
-  format        SupportEmailAttachmentFormat
+  filename     String
+  mime_type    String
+  size_bytes   Int                          @default(0)
+  format       SupportEmailAttachmentFormat
   /// Header names exactly as they appear in the file.
-  columns       String[]                     @default([])
+  columns      String[]                     @default([])
   /// How many rows the file held. The rows themselves live in S3, not here.
-  row_count     Int                          @default(0)
+  row_count    Int                          @default(0)
   /// Which report layout the reopen rules recognised.
-  sheet_type    String?
-  parse_error   String?
+  sheet_type   String?
+  parse_error  String?
   /// Archived copy of the original file Agoda sent.
-  s3_url        String?
-  s3_key        String?
+  s3_url       String?
+  s3_key       String?
   /// Why the archive upload failed, when it did.
-  upload_error  String?
+  upload_error String?
 }
 
 /// One message from the labelled Agoda Partner Support conversation — Agoda's
@@ -1018,16 +997,15 @@ type SupportEmailAttachment {
 /// drives the reopen rules; the rest are stored purely as a record of the
 /// exchange. See POST /api/agoda/retrive-case-email.
 model SupportEmail {
-  id           String                @id @default(auto()) @map("_id") @db.ObjectId
-  message_id   String                @unique
-  thread_id    String?
+  id          String                @id @default(auto()) @map("_id") @db.ObjectId
+  message_id  String                @unique
+  thread_id   String?
   /// `outgoing` when Gmail marked the message as sent by us.
-  direction    SupportEmailDirection @default(incoming)
-  agoda_id     String
-  /// Job whose run first captured this email. Not a Prisma relation on
-  /// purpose — this record must outlive the job it was captured for.
-  job_id       String?               @db.ObjectId
-  property_id  String?               @db.ObjectId
+  direction   SupportEmailDirection @default(incoming)
+  agoda_id    String
+  /// Job whose run first captured this email.
+  job_id      String?               @db.ObjectId
+  property_id String?               @db.ObjectId
 
   from_address String
   to_address   String?
@@ -1037,22 +1015,24 @@ model SupportEmail {
   /// Gmail `internalDate`, i.e. when the message actually arrived.
   received_at  DateTime?
 
-  body_text        String   @default("")
-  case_id          String?
-  property_name    String?
-  city             String?
-  country          String?
-  reservation_ids  String[] @default([])
-  partner_email    String?
+  body_text       String   @default("")
+  case_id         String?
+  property_name   String?
+  city            String?
+  country         String?
+  reservation_ids String[] @default([])
+  partner_email   String?
 
   attachments SupportEmailAttachment[]
 
   should_reopen       Boolean  @default(false)
-  reopen_booking_ids   String[] @default([])
-  collect_booking_ids  String[] @default([])
+  reopen_booking_ids  String[] @default([])
+  collect_booking_ids String[] @default([])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  job Job? @relation(fields: [job_id], references: [id], onDelete: SetNull)
 
   @@index([agoda_id, received_at])
   @@index([case_id])
