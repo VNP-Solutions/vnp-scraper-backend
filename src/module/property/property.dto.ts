@@ -349,6 +349,12 @@ export class RevealOtaCredentialsResponseDto {
   password: string;
 }
 
+/**
+ * Every optional field below accepts the string 'NULL' from the DBMS, which
+ * clears the stored value — the DBMS omits keys it isn't changing, so an absent
+ * key can't mean "empty this out". The sub-portfolio keys are only read for that
+ * clear; a sync upsert never assigns a sub-portfolio.
+ */
 export class SyncUpsertPropertyDto {
   @ApiProperty({
     example: 'dbms-portfolio-123',
@@ -359,9 +365,13 @@ export class SyncUpsertPropertyDto {
   @ApiProperty({ example: 'Grand Hotel', description: 'Property name' })
   name: string;
 
-  @ApiPropertyOptional({ example: 123456 }) expedia_id?: number;
-  @ApiPropertyOptional({ example: 654321 }) booking_id?: number;
-  @ApiPropertyOptional({ example: 111222 }) agoda_id?: number;
+  @ApiPropertyOptional({ example: 'dbms-subportfolio-123' })
+  sub_portfolio_parent_id?: string;
+  @ApiPropertyOptional({ example: 'East Coast' }) sub_portfolio_name?: string;
+
+  @ApiPropertyOptional({ example: 123456 }) expedia_id?: number | 'NULL';
+  @ApiPropertyOptional({ example: 654321 }) booking_id?: number | 'NULL';
+  @ApiPropertyOptional({ example: 111222 }) agoda_id?: number | 'NULL';
 
   @ApiPropertyOptional() expedia_username?: string;
   @ApiPropertyOptional() expedia_password?: string;
@@ -371,6 +381,7 @@ export class SyncUpsertPropertyDto {
   @ApiPropertyOptional() booking_password?: string;
 }
 
+/** Same 'NULL' clearing rules as {@link SyncUpsertPropertyDto}. */
 export class SyncBulkUpsertPropertyItemDto {
   @ApiProperty({
     example: 2,
@@ -393,9 +404,13 @@ export class SyncBulkUpsertPropertyItemDto {
   @ApiProperty({ example: 'Grand Hotel', description: 'Property name' })
   name: string;
 
-  @ApiPropertyOptional({ example: 123456 }) expedia_id?: number;
-  @ApiPropertyOptional({ example: 654321 }) booking_id?: number;
-  @ApiPropertyOptional({ example: 111222 }) agoda_id?: number;
+  @ApiPropertyOptional({ example: 'dbms-subportfolio-123' })
+  sub_portfolio_parent_id?: string;
+  @ApiPropertyOptional({ example: 'East Coast' }) sub_portfolio_name?: string;
+
+  @ApiPropertyOptional({ example: 123456 }) expedia_id?: number | 'NULL';
+  @ApiPropertyOptional({ example: 654321 }) booking_id?: number | 'NULL';
+  @ApiPropertyOptional({ example: 111222 }) agoda_id?: number | 'NULL';
 
   @ApiPropertyOptional() expedia_username?: string;
   @ApiPropertyOptional() expedia_password?: string;

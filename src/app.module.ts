@@ -6,6 +6,7 @@ import { AppService } from './app.service';
 import { ActivityLoggerMiddleware } from './common/middleware/activity-logger.middleware';
 import { ActivityLogExportModule } from './module/activity-log-export/activity-log-export.module';
 import { ActivityLogModule } from './module/activity-log/activity-log.module';
+import { AgodaCaseItemModule } from './module/agoda-case-item/agoda-case-item.module';
 import { AgodaModule } from './module/agoda/agoda.module';
 import { AuthModule } from './module/auth/auth.module';
 import { BookingScraperUrlModule } from './module/booking-scraper-url/booking-scraper-url.module';
@@ -28,8 +29,10 @@ import { RecurringJobModule } from './module/recurring-job/recurring-job.module'
 import { ReportsModule } from './module/reports/reports.module';
 import { RetrievalModule } from './module/retrieval/retrieval.module';
 import { ScraperModule } from './module/scraper/scraper.module';
+import { SendToRetrievalModule } from './module/send-to-retrieval/send-to-retrieval.module';
 import { ServerModule } from './module/server/server.module';
 import { SubPortfolioModule } from './module/sub-portfolio/sub-portfolio.module';
+import { SupportEmailModule } from './module/support-email/support-email.module';
 import { UploadModule } from './module/upload/upload.module';
 import { UserFeatureAccessPermissionModule } from './module/user-feature-access-permission/user-feature-access-permission.module';
 import { UserInvitationModule } from './module/user-invitation/user-invitation.module';
@@ -63,6 +66,7 @@ import { UserModule } from './module/user/user.module';
     OtpLogModule,
     ScraperModule,
     AgodaModule,
+    AgodaCaseItemModule,
     OtpStatusModule,
     PhoneNumberSlotModule,
     RetrievalModule,
@@ -71,6 +75,8 @@ import { UserModule } from './module/user/user.module';
     NotificationModule,
     GoogleOAuthModule,
     EncryptionModule,
+    SupportEmailModule,
+    SendToRetrievalModule,
   ],
   controllers: [AppController],
   providers: [AppService],

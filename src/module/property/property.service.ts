@@ -11,6 +11,10 @@ import { Property } from '@prisma/client';
 import { EncryptionUtil } from 'src/common/utils/encryption.util';
 import { ColoredLogger } from 'src/common/utils/colored-logger.util';
 import {
+  isSyncNullToken,
+  resolveSyncedValue,
+} from 'src/common/utils/sync-null-token.util';
+import {
   CreatePropertyDto,
   SyncBulkDeletePropertyDto,
   SyncBulkDeletePropertyResultDto,
@@ -754,10 +758,20 @@ export class PropertyService implements IPropertyService {
       name: item.name,
       parent_id: parentId,
       portfolio_id: portfolio.id,
-      expedia_id: item.expedia_id,
-      booking_id: item.booking_id,
-      agoda_id: item.agoda_id,
+      expedia_id: resolveSyncedValue(item.expedia_id),
+      booking_id: resolveSyncedValue(item.booking_id),
+      agoda_id: resolveSyncedValue(item.agoda_id),
     };
+
+    // The DBMS clears a property's sub-portfolio by sending the token in either
+    // sub-portfolio key. Assigning one is still the create path's job, so only
+    // the clear is honored here.
+    if (
+      isSyncNullToken(item.sub_portfolio_parent_id) ||
+      isSyncNullToken(item.sub_portfolio_name)
+    ) {
+      propertyData.sub_portfolio_id = null;
+    }
 
     let propertyId: string;
     let action: 'created' | 'updated';
@@ -782,12 +796,12 @@ export class PropertyService implements IPropertyService {
     }
 
     await this.repository.updatePropertyCredentials(propertyId, {
-      expediaUsername: item.expedia_username,
-      expediaPassword: item.expedia_password,
-      agodaUsername: item.agoda_username,
-      agodaPassword: item.agoda_password,
-      bookingUsername: item.booking_username,
-      bookingPassword: item.booking_password,
+      expediaUsername: resolveSyncedValue(item.expedia_username),
+      expediaPassword: resolveSyncedValue(item.expedia_password),
+      agodaUsername: resolveSyncedValue(item.agoda_username),
+      agodaPassword: resolveSyncedValue(item.agoda_password),
+      bookingUsername: resolveSyncedValue(item.booking_username),
+      bookingPassword: resolveSyncedValue(item.booking_password),
     });
 
     return action;

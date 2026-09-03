@@ -1,5 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Batch, DbEntry, Job, OTAProvider, Prisma } from '@prisma/client';
+import {
+  Batch,
+  DbEntry,
+  Job,
+  OTAProvider,
+  Prisma,
+  ReplyStatus,
+} from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import {
   jobNeedsOtaPropertyIdEnrichment,
@@ -363,6 +370,7 @@ export class JobRepository implements IJobRepository {
         property_id,
         ota_provider,
         priority,
+        reply_status,
         ...filters
       } = query || {};
       let allFilters: any = { ...filters };
@@ -515,6 +523,13 @@ export class JobRepository implements IJobRepository {
       // Filter by priority (0 = Normal, 1 = High)
       if (priority !== undefined && priority !== null && priority !== '') {
         allFilters.priority = parseInt(priority.toString(), 10);
+      }
+
+      // Filter by reply_status (Agoda Partner Support reply outcome:
+      // NoReplied / RepliedRed / RepliedGreen). Only Agoda jobs ever have
+      // this set — filtering by it implicitly narrows to Agoda jobs.
+      if (reply_status) {
+        allFilters.reply_status = reply_status.toString();
       }
 
       const skip = page
@@ -714,6 +729,27 @@ export class JobRepository implements IJobRepository {
       return job;
     } catch (error) {
       this.logger.error(error);
+      throw error;
+    }
+  }
+
+  async updateReplyStatus(
+    jobId: string,
+    replyStatus: ReplyStatus,
+  ): Promise<Job | null> {
+    try {
+      return await this.db.job.update({
+        where: { id: jobId },
+        data: { reply_status: replyStatus },
+      });
+    } catch (error) {
+      // P2025 = record not found — treat as "nothing to update" rather than
+      // an unexpected failure.
+      if ((error as Prisma.PrismaClientKnownRequestError)?.code === 'P2025') {
+        this.logger.warn(`updateReplyStatus: job not found: ${jobId}`);
+        return null;
+      }
+      this.logger.error(`Error updating reply_status for job ${jobId}:`, error);
       throw error;
     }
   }

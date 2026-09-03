@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { JobStatus, OTAProvider, PostingType } from '@prisma/client';
+import { JobStatus, OTAProvider, PostingType, ReplyStatus } from '@prisma/client';
 
 export class CreateJobDto {
   @ApiProperty({ required: false })
@@ -131,6 +131,20 @@ export class CreateJobDto {
     description: 'Slot index of the assigned PhoneNumberSlot',
   })
   slot?: number;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Current replay status of the job',
+  })
+  replay_status?: string;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Screenshot step the scraper is currently on, matching JobScreenshotUrl.step',
+  })
+  current_ss_step?: string;
 }
 
 export class BulkCreateJobFromDbmsItemDto {
@@ -272,6 +286,46 @@ export class UpdateJobDto implements Partial<CreateJobDto> {
       'Count of reservations after booking VCCs filter (optional metadata)',
   })
   booking_vccs_filtered_reservation_count?: number;
+
+  @ApiProperty({
+    required: false,
+    description: 'Current replay status of the job',
+  })
+  replay_status?: string;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Screenshot step the scraper is currently on, matching JobScreenshotUrl.step',
+  })
+  current_ss_step?: string;
+
+  @ApiProperty({
+    required: false,
+    enum: ReplyStatus,
+    description:
+      'How Agoda Partner Support answered this run (Agoda jobs only). ' +
+      'Written by the support-email-run-job flow — not intended to be set directly.',
+  })
+  reply_status?: ReplyStatus;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Completion time + 48h grace period. Written automatically whenever ' +
+      'an Agoda job completes — not intended to be set directly.',
+  })
+  reply_deadline_at?: Date | null;
+
+  @ApiProperty({
+    required: false,
+    example: '09/03/2026',
+    description:
+      'Date the job last completed, as "mm/dd/yyyy" (all OTAs). Written ' +
+      'automatically whenever job_status is set to Completed — not ' +
+      'intended to be set directly.',
+  })
+  job_completed_date?: string | null;
 }
 
 export class ImportJobsResponseDto {
