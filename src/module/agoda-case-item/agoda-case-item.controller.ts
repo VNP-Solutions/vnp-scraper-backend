@@ -10,6 +10,7 @@ import {
   Put,
   Res,
   UseGuards,
+  UsePipes,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -24,11 +25,14 @@ import { PostingType } from '@prisma/client';
 import { Response } from 'express';
 import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
+import { ZodValidationPipe } from 'src/common/pipes/validation.pipe';
 import { ResponseHandler } from 'src/common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
   AgodaCaseItemListResponseDto,
   AgodaCaseItemResponseDto,
+  BulkDeclineAgodaCaseItemsDto,
+  BulkDeclineAgodaCaseItemsResponseDto,
   CreateAgodaCaseItemDto,
   ExportSelectedAgodaCaseItemsDto,
   UpdateAgodaCaseItemDto,
@@ -38,6 +42,7 @@ import {
   IAgodaCaseItemService,
 } from './agoda-case-item.interface';
 import {
+  bulkDeclineAgodaCaseItemsSchema,
   createAgodaCaseItemSchema,
   exportSelectedAgodaCaseItemsSchema,
   updateAgodaCaseItemSchema,
@@ -380,6 +385,33 @@ export class AgodaCaseItemController {
     );
     response.setHeader('X-Archived-Count', String(archivedCount));
     response.send(buffer);
+  }
+
+  @Post('bulk-decline')
+  @ApiOperation({
+    summary: 'Mark multiple agoda case items as declined',
+    description:
+      'Takes an array of AgodaCaseItem IDs and marks them as declined by setting charge_status to "declined" and is_declined to true.',
+  })
+  @ApiBody({ type: BulkDeclineAgodaCaseItemsDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Items successfully marked as declined',
+    type: BulkDeclineAgodaCaseItemsResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad Request - Invalid input',
+  })
+  @UsePipes(new ZodValidationPipe(bulkDeclineAgodaCaseItemsSchema))
+  async bulkDecline(
+    @Body() body: BulkDeclineAgodaCaseItemsDto,
+  ): Promise<BulkDeclineAgodaCaseItemsResponseDto> {
+    const declinedCount = await this.agodaCaseItemService.bulkDecline(body.ids);
+    return {
+      declinedCount,
+      message: `Successfully marked ${declinedCount} item(s) as declined`,
+    };
   }
 
   @Get()

@@ -74,6 +74,9 @@ export interface IAgodaCaseItemRepository {
   /** Sets is_archived: true on every given id. Returns how many rows matched. */
   archiveByIds(ids: string[]): Promise<number>;
 
+  /** Sets charge_status: 'declined' and is_declined: true on every given id. Returns how many rows matched. */
+  declineByIds(ids: string[]): Promise<number>;
+
   propertyExists(propertyId: string): Promise<boolean>;
 
   batchExists(batchId: string): Promise<boolean>;
@@ -106,4 +109,10 @@ export interface IAgodaCaseItemService {
   exportWipAndArchive(
     filters?: AgodaCaseItemFilters,
   ): Promise<{ buffer: Buffer; fileName: string; archivedCount: number }>;
+
+  /**
+   * Marks multiple items as declined by setting charge_status to 'declined'
+   * and is_declined to true.
+   */
+  bulkDecline(ids: string[]): Promise<number>;
 }

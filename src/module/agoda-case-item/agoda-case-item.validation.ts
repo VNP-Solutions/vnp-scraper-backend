@@ -45,8 +45,17 @@ export const exportSelectedAgodaCaseItemsSchema = z.object({
   }),
 });
 
+export const bulkDeclineAgodaCaseItemsSchema = z.object({
+  ids: z.array(objectIdSchema).min(1, {
+    message: 'ids must be a non-empty array of AgodaCaseItem ObjectIds',
+  }),
+});
+
 export type CreateAgodaCaseItemType = z.infer<typeof createAgodaCaseItemSchema>;
 export type UpdateAgodaCaseItemType = z.infer<typeof updateAgodaCaseItemSchema>;
 export type ExportSelectedAgodaCaseItemsType = z.infer<
   typeof exportSelectedAgodaCaseItemsSchema
+>;
+export type BulkDeclineAgodaCaseItemsType = z.infer<
+  typeof bulkDeclineAgodaCaseItemsSchema
 >;

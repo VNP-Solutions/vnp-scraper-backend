@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { OTAProvider, PostingType } from '@prisma/client';
 import {
+  BulkDeclineAgodaCaseItemsType,
   CreateAgodaCaseItemType,
   ExportSelectedAgodaCaseItemsType,
   UpdateAgodaCaseItemType,
@@ -293,4 +294,29 @@ export class ExportSelectedAgodaCaseItemsDto
     example: ['65f0a3c4e2b7a1d2c3e4f5a6', '65f0a3c4e2b7a1d2c3e4f5a7'],
   })
   ids: string[];
+}
+
+export class BulkDeclineAgodaCaseItemsDto
+  implements BulkDeclineAgodaCaseItemsType
+{
+  @ApiProperty({
+    type: [String],
+    description: 'AgodaCaseItem ids to mark as declined',
+    example: ['65f0a3c4e2b7a1d2c3e4f5a6', '65f0a3c4e2b7a1d2c3e4f5a7'],
+  })
+  ids: string[];
+}
+
+export class BulkDeclineAgodaCaseItemsResponseDto {
+  @ApiProperty({
+    description: 'Number of items successfully marked as declined',
+    example: 5,
+  })
+  declinedCount: number;
+
+  @ApiProperty({
+    description: 'Success message',
+    example: 'Successfully marked 5 item(s) as declined',
+  })
+  message: string;
 }

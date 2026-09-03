@@ -203,6 +203,23 @@ export class AgodaCaseItemRepository implements IAgodaCaseItemRepository {
     }
   }
 
+  async declineByIds(ids: string[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    try {
+      const result = await this.db.agodaCaseItem.updateMany({
+        where: { id: { in: ids } },
+        data: {
+          charge_status: 'declined',
+          is_declined: true,
+        },
+      });
+      return result.count;
+    } catch (error) {
+      this.logger.error('Error declining agoda case items:', error);
+      throw error;
+    }
+  }
+
   async findById(id: string): Promise<AgodaCaseItem | null> {
     try {
       return await this.db.agodaCaseItem.findUnique({

@@ -221,4 +221,17 @@ export class AgodaCaseItemService implements IAgodaCaseItemService {
       throw error;
     }
   }
+
+  async bulkDecline(ids: string[]): Promise<number> {
+    try {
+      const declinedCount = await this.repository.declineByIds(ids);
+      this.logger.log(
+        `Marked ${declinedCount} agoda case item(s) as declined`,
+      );
+      return declinedCount;
+    } catch (error) {
+      this.logger.error('Error marking agoda case items as declined:', error);
+      throw error;
+    }
+  }
 }
