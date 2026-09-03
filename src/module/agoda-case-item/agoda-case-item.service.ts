@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AgodaCaseItem } from '@prisma/client';
+import { IPropertyCredentialsService } from '../property-credentials/property-credentials.interface';
 import { buildAgodaCaseItemWipWorkbook } from './agoda-case-item-wip-export.util';
 import {
   CreateAgodaCaseItemDto,
@@ -19,6 +20,8 @@ export class AgodaCaseItemService implements IAgodaCaseItemService {
   constructor(
     @Inject('IAgodaCaseItemRepository')
     private readonly repository: IAgodaCaseItemRepository,
+    @Inject('IPropertyCredentialsService')
+    private readonly propertyCredentialsService: IPropertyCredentialsService,
   ) {}
 
   /**
@@ -142,7 +145,30 @@ export class AgodaCaseItemService implements IAgodaCaseItemService {
     try {
       const items = await this.repository.findAllForExport(filters);
       this.logger.log(`Exporting ${items.length} agoda case item(s) as WIP xlsx`);
-      return buildAgodaCaseItemWipWorkbook(items);
+      
+      // Decrypt passwords before exporting
+      const itemsWithDecryptedPasswords = items.map((item) => {
+        const credentials = item.property?.credentials?.[0];
+        if (credentials?.agodaPassword) {
+          return {
+            ...item,
+            property: {
+              ...item.property,
+              credentials: [
+                {
+                  ...credentials,
+                  agodaPassword: this.propertyCredentialsService.decryptPassword(
+                    credentials.agodaPassword,
+                  ),
+                },
+              ],
+            },
+          };
+        }
+        return item;
+      });
+      
+      return buildAgodaCaseItemWipWorkbook(itemsWithDecryptedPasswords);
     } catch (error) {
       this.logger.error('Error exporting agoda case items as WIP xlsx:', error);
       throw error;
@@ -154,7 +180,30 @@ export class AgodaCaseItemService implements IAgodaCaseItemService {
   ): Promise<{ buffer: Buffer; fileName: string; archivedCount: number }> {
     try {
       const items = await this.repository.findAllForExport(filters);
-      const { buffer, fileName } = buildAgodaCaseItemWipWorkbook(items);
+      
+      // Decrypt passwords before exporting
+      const itemsWithDecryptedPasswords = items.map((item) => {
+        const credentials = item.property?.credentials?.[0];
+        if (credentials?.agodaPassword) {
+          return {
+            ...item,
+            property: {
+              ...item.property,
+              credentials: [
+                {
+                  ...credentials,
+                  agodaPassword: this.propertyCredentialsService.decryptPassword(
+                    credentials.agodaPassword,
+                  ),
+                },
+              ],
+            },
+          };
+        }
+        return item;
+      });
+      
+      const { buffer, fileName } = buildAgodaCaseItemWipWorkbook(itemsWithDecryptedPasswords);
 
       const ids = items.map((item) => item.id);
       const archivedCount = await this.repository.archiveByIds(ids);
