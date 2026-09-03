@@ -316,6 +316,16 @@ export class UpdateJobDto implements Partial<CreateJobDto> {
       'an Agoda job completes — not intended to be set directly.',
   })
   reply_deadline_at?: Date | null;
+
+  @ApiProperty({
+    required: false,
+    example: '09/03/2026',
+    description:
+      'Date the job last completed, as "mm/dd/yyyy" (all OTAs). Written ' +
+      'automatically whenever job_status is set to Completed — not ' +
+      'intended to be set directly.',
+  })
+  job_completed_date?: string | null;
 }
 
 export class ImportJobsResponseDto {

@@ -292,6 +292,9 @@ model Job {
   /// Completion time + 48h. Past this, NoReplied means overdue rather than
   /// merely "too early". Rewritten every time the job completes.
   reply_deadline_at                       DateTime?
+  /// updatedAt keeps moving forward on later, unrelated edits (e.g. a
+  /// manual reply_status correction).
+  job_completed_date                      String?
   createdAt                               DateTime           @default(now())
   updatedAt                               DateTime           @updatedAt
 
@@ -1029,6 +1032,7 @@ model SupportEmail {
   should_reopen       Boolean  @default(false)
   reopen_booking_ids  String[] @default([])
   collect_booking_ids String[] @default([])
+  reply_status        ReplyStatus?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

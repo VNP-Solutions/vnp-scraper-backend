@@ -1,5 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { RunSupportEmailJobType } from './support-email.validation';
+import { ReplyStatus } from '@prisma/client';
+import {
+  RunSupportEmailJobType,
+  UpdateSupportEmailReplyStatusType,
+} from './support-email.validation';
 
 export class RunSupportEmailJobDto implements RunSupportEmailJobType {
   @ApiProperty({
@@ -60,6 +64,7 @@ export class SupportEmailForJobResponseDto {
           should_reopen: true,
           reopen_booking_ids: ['1234567890'],
           collect_booking_ids: [],
+          reply_status: 'RepliedRed',
           attachments: [],
           received_at: '2026-08-30T10:15:00.000Z',
         },
@@ -98,9 +103,53 @@ export class SupportEmailByIdResponseDto {
       should_reopen: true,
       reopen_booking_ids: ['1234567890'],
       collect_booking_ids: [],
+      reply_status: 'RepliedRed',
       attachments: [],
       received_at: '2026-08-30T10:15:00.000Z',
     },
   })
   data: Record<string, any>;
+}
+
+export class UpdateSupportEmailReplyStatusDto
+  implements UpdateSupportEmailReplyStatusType
+{
+  @ApiProperty({
+    enum: ReplyStatus,
+    example: ReplyStatus.RepliedGreen,
+    description:
+      'New reply_status for this support_emails document. Also written ' +
+      "onto the email's job (job_id) so the two never drift apart.",
+  })
+  reply_status: ReplyStatus;
+}
+
+export class UpdateSupportEmailReplyStatusResponseDto {
+  @ApiProperty({ example: 200 })
+  statusCode: number;
+
+  @ApiProperty({
+    example:
+      'reply_status updated to RepliedGreen on the support email and its job',
+  })
+  message: string;
+
+  @ApiProperty({
+    description:
+      'The updated support_emails record, plus whether a job was also updated ' +
+      '(false when the email has no job_id on record).',
+    example: {
+      email: {
+        id: '664f1a2b3c4d5e6f7a8b9c0d',
+        message_id: '18f2a3b4c5d6e7f8',
+        job_id: '507f1f77bcf86cd799439011',
+        reply_status: 'RepliedGreen',
+      },
+      jobUpdated: true,
+    },
+  })
+  data: {
+    email: Record<string, any>;
+    jobUpdated: boolean;
+  };
 }

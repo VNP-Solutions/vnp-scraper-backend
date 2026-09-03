@@ -1,3 +1,4 @@
+import { ReplyStatus } from '@prisma/client';
 import { z } from 'zod';
 
 const objectIdSchema = z
@@ -9,3 +10,15 @@ export const runSupportEmailJobSchema = z.object({
 });
 
 export type RunSupportEmailJobType = z.infer<typeof runSupportEmailJobSchema>;
+
+export const updateSupportEmailReplyStatusSchema = z.object({
+  reply_status: z.nativeEnum(ReplyStatus, {
+    errorMap: () => ({
+      message: `reply_status must be one of: ${Object.values(ReplyStatus).join(', ')}`,
+    }),
+  }),
+});
+
+export type UpdateSupportEmailReplyStatusType = z.infer<
+  typeof updateSupportEmailReplyStatusSchema
+>;

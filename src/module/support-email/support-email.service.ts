@@ -10,6 +10,7 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ReplyStatus, SupportEmail } from '@prisma/client';
 import { IJobRepository } from '../job/job.interface';
+import { deriveEmailReplyStatus } from '../job/reply-status.util';
 import {
   ISupportEmailRepository,
   ISupportEmailScraperService,
@@ -17,6 +18,7 @@ import {
   RunSupportEmailJobReplyStatusEntry,
   RunSupportEmailJobResult,
   SupportEmailsForJobResult,
+  UpdateSupportEmailReplyStatusResult,
 } from './support-email.interface';
 
 @Injectable()
@@ -41,11 +43,7 @@ export class SupportEmailService implements ISupportEmailService {
     outcome: RunSupportEmailJobResult['results']['processed'][number]['outcome'],
   ): ReplyStatus {
     if (outcome.status !== 'parsed') return ReplyStatus.NoReplied;
-
-    const { shouldReopen, reopenBookingIds } = outcome.email.reopen;
-    return shouldReopen && reopenBookingIds.length > 0
-      ? ReplyStatus.RepliedRed
-      : ReplyStatus.RepliedGreen;
+    return deriveEmailReplyStatus(outcome.email.reopen);
   }
 
   async runJob(jobIds: string[]): Promise<RunSupportEmailJobResult> {
@@ -65,6 +63,25 @@ export class SupportEmailService implements ISupportEmailService {
           `Failed to write reply_status=${replyStatus} for job ${result.jobId}:`,
           error,
         );
+      }
+
+      // Keep the stored email's own reply_status in step with the job's.
+      // `storeIfNew` only sets it at insert time, so without this a later
+      // run that re-finds the same message (duplicate: true) would update
+      // the job's reply_status but leave the existing support_emails row
+      // stuck with whatever it was first written as.
+      if (result.outcome.status === 'parsed' && result.outcome.storage.recordId) {
+        try {
+          await this.supportEmailRepository.updateReplyStatus(
+            result.outcome.storage.recordId,
+            replyStatus,
+          );
+        } catch (error: any) {
+          this.logger.error(
+            `Failed to sync reply_status=${replyStatus} onto support email ${result.outcome.storage.recordId} for job ${result.jobId}:`,
+            error,
+          );
+        }
       }
 
       replyStatuses.push({ jobId: result.jobId, replyStatus });
@@ -132,5 +149,41 @@ export class SupportEmailService implements ISupportEmailService {
       throw new NotFoundException(`Support email with ID ${id} not found`);
     }
     return email;
+  }
+
+  /**
+   * Manual override behind PATCH /support-email/:id/reply-status. A
+   * mirror-image of the automatic sync in `runJob`: there the job drives
+   * the email, here the email (as edited by a human) drives the job.
+   */
+  async updateSupportEmailReplyStatus(
+    id: string,
+    replyStatus: ReplyStatus,
+  ): Promise<UpdateSupportEmailReplyStatusResult> {
+    const email = await this.supportEmailRepository.updateReplyStatus(
+      id,
+      replyStatus,
+    );
+    if (!email) {
+      throw new NotFoundException(`Support email with ID ${id} not found`);
+    }
+
+    let jobUpdated = false;
+    if (email.job_id) {
+      try {
+        const job = await this.jobRepository.updateReplyStatus(
+          email.job_id,
+          replyStatus,
+        );
+        jobUpdated = Boolean(job);
+      } catch (error: any) {
+        this.logger.error(
+          `Failed to sync reply_status=${replyStatus} onto job ${email.job_id} from support email ${id}:`,
+          error,
+        );
+      }
+    }
+
+    return { email, jobUpdated };
   }
 }

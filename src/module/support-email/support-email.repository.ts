@@ -7,7 +7,12 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma, SupportEmail, SupportEmailDirection } from '@prisma/client';
+import {
+  Prisma,
+  ReplyStatus,
+  SupportEmail,
+  SupportEmailDirection,
+} from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import {
   ISupportEmailRepository,
@@ -106,12 +111,14 @@ export class SupportEmailRepository implements ISupportEmailRepository {
           should_reopen: email.reopen.shouldReopen,
           reopen_booking_ids: email.reopen.reopenBookingIds,
           collect_booking_ids: email.reopen.collectBookingIds,
+          reply_status: context.replyStatus ?? null,
         },
       });
 
       this.logger.log(
         `🗃️ Stored support email ${email.messageId} (agodaId=${context.agodaId}, jobId=${context.jobId ?? 'n/a'}, ` +
-          `direction=${email.direction}, caseId=${email.body.caseId}, attachments=${email.attachments.length}, recordId=${created.id})`,
+          `direction=${email.direction}, caseId=${email.body.caseId}, attachments=${email.attachments.length}, ` +
+          `replyStatus=${context.replyStatus ?? 'n/a'}, recordId=${created.id})`,
       );
 
       return { stored: true, recordId: created.id, duplicate: false };
@@ -168,5 +175,29 @@ export class SupportEmailRepository implements ISupportEmailRepository {
       // Served by the job_id index; newest first for display.
       orderBy: { received_at: 'desc' },
     });
+  }
+
+  async updateReplyStatus(
+    id: string,
+    replyStatus: ReplyStatus,
+  ): Promise<SupportEmail | null> {
+    try {
+      return await this.db.supportEmail.update({
+        where: { id },
+        data: { reply_status: replyStatus },
+      });
+    } catch (error: any) {
+      // P2025 = record not found — treat as "nothing to update" rather than
+      // an unexpected failure, same as JobRepository.updateReplyStatus.
+      if ((error as Prisma.PrismaClientKnownRequestError)?.code === 'P2025') {
+        this.logger.warn(`updateReplyStatus: support email not found: ${id}`);
+        return null;
+      }
+      this.logger.error(
+        `Error updating reply_status for support email ${id}:`,
+        error,
+      );
+      throw error;
+    }
   }
 }

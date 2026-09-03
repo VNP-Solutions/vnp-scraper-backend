@@ -319,6 +319,7 @@ export class JobService implements IJobService {
           // silently dropped from the JSON response.
           reply_status: job.reply_status ?? null,
           reply_deadline_at: job.reply_deadline_at ?? null,
+          job_completed_date: job.job_completed_date ?? null,
         };
       });
       return { ...result, data };

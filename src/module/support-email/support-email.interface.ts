@@ -1,4 +1,4 @@
-import type { SupportEmail } from '@prisma/client';
+import type { ReplyStatus, SupportEmail } from '@prisma/client';
 import type {
   BulkSupportEmailResults,
   ParsedSupportEmail,
@@ -10,6 +10,14 @@ export interface StoreSupportEmailContext {
   agodaId: string;
   jobId?: string;
   propertyId?: string;
+  /**
+   * RepliedRed / RepliedGreen verdict for this message, set only when it is
+   * "the" Partner Support reply a run evaluated (see
+   * `deriveEmailReplyStatus` in `reply-status.util.ts`). Left undefined for
+   * conversation messages and outgoing mail, which get stored with
+   * `reply_status: null`.
+   */
+  replyStatus?: ReplyStatus;
 }
 
 export interface StoreSupportEmailResult {
@@ -45,6 +53,17 @@ export interface ISupportEmailRepository {
    * first). Newest first.
    */
   findAllByJobId(jobId: string): Promise<SupportEmail[]>;
+  /**
+   * Syncs the verdict onto an already-stored row. `storeIfNew` only sets
+   * `reply_status` at insert time, so this is what keeps an existing
+   * duplicate row's verdict in step with the job's `reply_status` on a
+   * later run that re-finds the same message. Returns null (does not
+   * throw) when the id does not exist.
+   */
+  updateReplyStatus(
+    id: string,
+    replyStatus: ReplyStatus,
+  ): Promise<SupportEmail | null>;
 }
 
 /** Gmail search + parse orchestration for one Agoda ID or a batch of jobs. */
@@ -81,6 +100,16 @@ export interface SupportEmailsForJobResult {
   emails: SupportEmail[];
 }
 
+/**
+ * Result of a manual reply_status override (PATCH /support-email/:id/reply-status).
+ * `jobUpdated` is false when the email has no `job_id` on record, or the
+ * job it points to no longer exists.
+ */
+export interface UpdateSupportEmailReplyStatusResult {
+  email: SupportEmail;
+  jobUpdated: boolean;
+}
+
 /** Use-case layer behind POST /api/agoda/retrive-case-email. */
 export interface ISupportEmailService {
   runJob(jobIds: string[]): Promise<RunSupportEmailJobResult>;
@@ -98,4 +127,15 @@ export interface ISupportEmailService {
    * the id does not exist.
    */
   getSupportEmailById(id: string): Promise<SupportEmail>;
+  /**
+   * Manual override behind PATCH /support-email/:id/reply-status. Writes
+   * the given status onto the support_emails row, then — if it has a
+   * job_id — writes the same status onto that job's reply_status too, so a
+   * human correction never leaves the two out of sync. Throws
+   * NotFoundException when the email id does not exist.
+   */
+  updateSupportEmailReplyStatus(
+    id: string,
+    replyStatus: ReplyStatus,
+  ): Promise<UpdateSupportEmailReplyStatusResult>;
 }

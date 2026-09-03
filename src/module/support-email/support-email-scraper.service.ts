@@ -7,8 +7,10 @@
  * attachment.
  *
  * The window is either a rolling number of days or everything since a caller
- * supplied cutoff — the reply-status flow passes the job's `updatedAt` so it
- * only sees what has arrived since the job was last touched.
+ * supplied cutoff — the reply-status flow passes the job's
+ * `job_completed_date` (falling back to `updatedAt` for jobs completed
+ * before that field existed) so it only sees what has arrived since the job
+ * last completed.
  *
  * The captured email is persisted once per Gmail message; results are also
  * returned to the caller.
@@ -22,6 +24,10 @@ import { GoogleOAuthConfig } from '../google-oauth/google-oauth.config';
 import { GoogleOAuthService } from '../google-oauth/google-oauth.service';
 import { resolveAgodaIdForJob } from '../job/agoda-id.util';
 import { IJobRepository } from '../job/job.interface';
+import {
+  deriveEmailReplyStatus,
+  parseJobCompletedDate,
+} from '../job/reply-status.util';
 import { IPropertyRepository } from '../property/property.interface';
 import { AttachmentParserService } from './attachment-parser.service';
 import {
@@ -455,11 +461,14 @@ export class SupportEmailScraperService implements ISupportEmailScraperService {
     }
 
     // Gmail keeps returning the same message for the whole window, so the
-    // store is a no-op after the first sighting.
+    // store is a no-op after the first sighting. This is "the" reply the
+    // reopen rules ran against, so it's the one message that gets a
+    // reply_status verdict written onto its own row.
     const primaryStorage = await this.repository.storeIfNew(email, {
       agodaId,
       jobId: options.jobId,
       propertyId: options.propertyId,
+      replyStatus: deriveEmailReplyStatus(email.reopen),
     });
 
     const conversation = await this.captureRemainingConversation(
@@ -492,9 +501,12 @@ export class SupportEmailScraperService implements ISupportEmailScraperService {
    * Runs the scrape for a batch of job IDs, isolating per-job failures.
    *
    * Only jobs whose property run finished are worth looking at, and each is
-   * read from its own `updatedAt` so a run reports what has arrived since
-   * the job was last touched rather than re-reading mail an earlier run
-   * already saw.
+   * read from its own `job_completed_date` so a run reports what has
+   * arrived since the job last completed rather than re-reading mail an
+   * earlier run already saw. `job_completed_date` is a fixed snapshot taken
+   * at completion time, unlike `updatedAt`, which keeps moving forward on
+   * later, unrelated edits (e.g. a manual reply_status correction) — jobs
+   * completed before this field existed fall back to `updatedAt`.
    */
   async scrapeSupportEmailsForJobs(
     jobIds: string[],
@@ -533,10 +545,13 @@ export class SupportEmailScraperService implements ISupportEmailScraperService {
           continue;
         }
 
+        const since =
+          parseJobCompletedDate(job.job_completed_date) ?? job.updatedAt;
+
         const outcome = await this.scrapeAgodaSupportEmail(
           propertyData.agodaId,
           {
-            since: job.updatedAt,
+            since,
             ...options,
             jobId,
             propertyId: job.property_id?.toString(),

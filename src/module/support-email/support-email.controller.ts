@@ -6,6 +6,7 @@ import {
   Inject,
   Logger,
   Param,
+  Patch,
   Post,
   Res,
   UseGuards,
@@ -27,9 +28,14 @@ import {
   RunSupportEmailJobResponseDto,
   SupportEmailByIdResponseDto,
   SupportEmailForJobResponseDto,
+  UpdateSupportEmailReplyStatusDto,
+  UpdateSupportEmailReplyStatusResponseDto,
 } from './support-email.dto';
 import { ISupportEmailService } from './support-email.interface';
-import { runSupportEmailJobSchema } from './support-email.validation';
+import {
+  runSupportEmailJobSchema,
+  updateSupportEmailReplyStatusSchema,
+} from './support-email.validation';
 
 @ApiTags('Agoda Support Email')
 @ApiBearerAuth('JWT-auth')
@@ -159,6 +165,50 @@ export class SupportEmailController {
           statusCode: HttpStatus.OK,
           message: 'Support email retrieved successfully',
           data: email,
+        };
+      },
+      this.logger,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('/support-email/:id/reply-status')
+  @ValidateBody(updateSupportEmailReplyStatusSchema)
+  @ApiOperation({
+    summary: 'Manually update the reply_status on a support email',
+    description:
+      "Overrides reply_status on a support_emails document. If that email has a job_id, the same status is also written onto that job's reply_status, so a human correction here never leaves the two out of sync (mirrors the automatic sync POST /api/agoda/retrive-case-email already does in the other direction).",
+  })
+  @ApiParam({ name: 'id', description: 'MongoDB ObjectId of the support_emails document' })
+  @ApiBody({ type: UpdateSupportEmailReplyStatusDto })
+  @ApiResponse({
+    status: 200,
+    description: 'reply_status updated on the email, and on its job if it has one',
+    type: UpdateSupportEmailReplyStatusResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'reply_status missing or invalid' })
+  @ApiResponse({ status: 404, description: 'Support email not found' })
+  async updateSupportEmailReplyStatus(
+    @Param('id') id: string,
+    @Body() body: UpdateSupportEmailReplyStatusDto,
+    @Res() res: Response,
+  ) {
+    return ResponseHandler.handler(
+      res,
+      async () => {
+        const result = await this.supportEmailService.updateSupportEmailReplyStatus(
+          id,
+          body.reply_status,
+        );
+
+        const message = result.jobUpdated
+          ? `reply_status updated to ${body.reply_status} on the support email and its job`
+          : `reply_status updated to ${body.reply_status} on the support email (no linked job to update)`;
+
+        return {
+          statusCode: HttpStatus.OK,
+          message,
+          data: result,
         };
       },
       this.logger,
