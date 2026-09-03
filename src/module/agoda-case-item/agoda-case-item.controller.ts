@@ -19,6 +19,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { OTAProvider } from '@prisma/client';
 import { Response } from 'express';
 import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
@@ -84,7 +85,10 @@ export class AgodaCaseItemController {
 
   @Get()
   @ApiOperation({
-    summary: 'Get all agoda case items with pagination and search',
+    summary: 'Get all agoda case items with pagination, search and filters',
+    description:
+      'Filterable by charge_status, ota_provider, createdBy (user), portfolio_id, property_id, batch_id and is_archived. ' +
+      'search matches against id, reservation_id, guest_name or vcc_card_number.',
   })
   @ApiQuery({
     name: 'search',
@@ -121,6 +125,23 @@ export class AgodaCaseItemController {
     required: false,
     type: Boolean,
     description: 'Filter by missing flag',
+  })
+  @ApiQuery({
+    name: 'ota_provider',
+    required: false,
+    enum: OTAProvider,
+    description: 'Filter by OTA provider',
+  })
+  @ApiQuery({
+    name: 'createdBy',
+    required: false,
+    description: 'Filter by the user (MongoDB ObjectId) who created the item',
+  })
+  @ApiQuery({
+    name: 'is_archived',
+    required: false,
+    type: Boolean,
+    description: 'Filter by archived flag (defaults to no filter — returns both)',
   })
   @ApiQuery({
     name: 'page',
@@ -164,6 +185,9 @@ export class AgodaCaseItemController {
           retrival_status,
           charge_status,
           is_missing,
+          ota_provider,
+          createdBy,
+          is_archived,
           page,
           limit,
           order,
@@ -177,6 +201,10 @@ export class AgodaCaseItemController {
         if (charge_status) filters.charge_status = charge_status;
         if (is_missing !== undefined)
           filters.is_missing = is_missing === true || is_missing === 'true';
+        if (ota_provider) filters.ota_provider = ota_provider;
+        if (createdBy) filters.createdBy = createdBy;
+        if (is_archived !== undefined)
+          filters.is_archived = is_archived === true || is_archived === 'true';
         if (page) filters.page = page;
         if (limit) filters.limit = limit;
         if (order) filters.order = order;

@@ -1047,11 +1047,11 @@ model SupportEmail {
 }
 
 model AgodaCaseItem {
-  id               String   @id @default(auto()) @map("_id") @db.ObjectId
-  property_id      String?  @db.ObjectId
-  batch_id         String?  @db.ObjectId
-  portfolio_id     String?  @db.ObjectId
-  retrieval_id     String?  @db.ObjectId
+  id               String       @id @default(auto()) @map("_id") @db.ObjectId
+  property_id      String?      @db.ObjectId
+  batch_id         String?      @db.ObjectId
+  portfolio_id     String?      @db.ObjectId
+  retrieval_id     String?      @db.ObjectId
   reservation_id   String?
   guest_name       String?
   check_in         String? // Format: YYYY-MM-DD
@@ -1063,11 +1063,19 @@ model AgodaCaseItem {
   vcc_card_number  String?
   card_expire      String?
   card_cvv         String?
-  is_missing       Boolean  @default(false)
+  is_missing       Boolean      @default(false)
   retrival_status  String?
-  createdBy        String?  @db.ObjectId
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  /// Which OTA this case item came from. Set at creation time (currently
+  /// always Agoda, since only the Agoda send-to-retrieval flow creates
+  /// these), kept as its own field rather than joining through `retrieval`
+  /// so the GET list endpoint can filter on it directly.
+  ota_provider     OTAProvider?
+  /// Soft-archive flag for the GET list endpoint. Defaults to false; never
+  /// deletes the row.
+  is_archived      Boolean      @default(false)
+  createdBy        String?      @db.ObjectId
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
   property  Property?  @relation(fields: [property_id], references: [id], onDelete: Cascade)
   batch     Batch?     @relation(fields: [batch_id], references: [id], onDelete: Cascade)
@@ -1083,5 +1091,7 @@ model AgodaCaseItem {
   @@index([charge_status])
   @@index([retrival_status])
   @@index([createdBy])
+  @@index([ota_provider])
+  @@index([is_archived])
   @@map("agoda_case_items")
 }

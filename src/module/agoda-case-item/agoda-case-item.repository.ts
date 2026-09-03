@@ -85,6 +85,11 @@ export class AgodaCaseItemRepository implements IAgodaCaseItemRepository {
       if (filters?.is_missing !== undefined) {
         where.is_missing = filters.is_missing;
       }
+      if (filters?.ota_provider) where.ota_provider = filters.ota_provider;
+      if (filters?.createdBy) where.createdBy = filters.createdBy;
+      if (filters?.is_archived !== undefined) {
+        where.is_archived = filters.is_archived;
+      }
 
       if (filters?.search) {
         const searchTerm = filters.search.toString().trim();

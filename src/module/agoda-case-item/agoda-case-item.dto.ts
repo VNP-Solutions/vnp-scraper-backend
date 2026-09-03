@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { OTAProvider } from '@prisma/client';
 import {
   CreateAgodaCaseItemType,
   UpdateAgodaCaseItemType,
@@ -86,6 +87,20 @@ export class CreateAgodaCaseItemDto implements CreateAgodaCaseItemType {
 
   @ApiProperty({
     required: false,
+    enum: OTAProvider,
+    description: 'Which OTA this case item came from',
+  })
+  ota_provider?: OTAProvider;
+
+  @ApiProperty({
+    required: false,
+    default: false,
+    description: 'Soft-archive flag',
+  })
+  is_archived?: boolean;
+
+  @ApiProperty({
+    required: false,
     description: 'MongoDB ObjectId of the user who created this item',
     example: '65f0a3c4e2b7a1d2c3e4f5a6',
   })
@@ -143,6 +158,12 @@ export class UpdateAgodaCaseItemDto implements UpdateAgodaCaseItemType {
 
   @ApiProperty({ required: false })
   retrival_status?: string;
+
+  @ApiProperty({ required: false, enum: OTAProvider })
+  ota_provider?: OTAProvider;
+
+  @ApiProperty({ required: false })
+  is_archived?: boolean;
 
   @ApiProperty({ required: false })
   createdBy?: string;
@@ -202,6 +223,12 @@ export class AgodaCaseItemResponseDto {
 
   @ApiProperty({ required: false })
   retrival_status?: string;
+
+  @ApiProperty({ required: false, enum: OTAProvider })
+  ota_provider?: OTAProvider;
+
+  @ApiProperty({ default: false })
+  is_archived: boolean;
 
   @ApiProperty({ required: false })
   createdBy?: string;

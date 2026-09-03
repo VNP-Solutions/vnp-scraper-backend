@@ -1,3 +1,4 @@
+import { OTAProvider } from '@prisma/client';
 import { z } from 'zod';
 
 // MongoDB ObjectId validation
@@ -29,6 +30,8 @@ export const createAgodaCaseItemSchema = z.object({
   card_cvv: z.string().optional().nullable(),
   is_missing: z.boolean().optional().default(false),
   retrival_status: z.string().optional().nullable(),
+  ota_provider: z.nativeEnum(OTAProvider).optional().nullable(),
+  is_archived: z.boolean().optional().default(false),
   createdBy: objectIdSchema.optional().nullable(),
 });
 

@@ -1,4 +1,4 @@
-import { AgodaCaseItem } from '@prisma/client';
+import { AgodaCaseItem, OTAProvider } from '@prisma/client';
 import {
   CreateAgodaCaseItemDto,
   UpdateAgodaCaseItemDto,
@@ -12,6 +12,10 @@ export interface AgodaCaseItemFilters {
   retrival_status?: string;
   charge_status?: string;
   is_missing?: boolean;
+  ota_provider?: OTAProvider;
+  /** Filter by the user who created the item (`createdBy` on the model). */
+  createdBy?: string;
+  is_archived?: boolean;
   page?: number;
   limit?: number;
   order?: 'asc' | 'desc';

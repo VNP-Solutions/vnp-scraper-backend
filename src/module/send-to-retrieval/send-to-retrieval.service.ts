@@ -166,6 +166,7 @@ export class SendToRetrievalService implements ISendToRetrievalService {
             card_cvv: undefined, // Will be filled by retrieval process
             is_missing: true,
             retrival_status: 'Pending',
+            ota_provider: OTAProvider.Agoda,
             createdBy: job.user_id,
           });
 
