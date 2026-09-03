@@ -184,6 +184,7 @@ model User {
   sentInvitations              UserInvitation[]              @relation("InvitedBy")
   receivedInvitations          UserInvitation[]              @relation("InvitedUser")
   notifications                Notification[]
+  agodaCaseItems               AgodaCaseItem[]
 
   @@map("users")
 }
@@ -1046,7 +1047,7 @@ model AgodaCaseItem {
   batch_id         String?  @db.ObjectId
   portfolio_id     String?  @db.ObjectId
   reservation_id   String?
-  client_name      String?
+  guest_name       String?
   check_in         String? // Format: YYYY-MM-DD
   check_out        String? // Format: YYYY-MM-DD
   amount           String?
@@ -1058,13 +1059,14 @@ model AgodaCaseItem {
   card_cvv         String?
   is_missing       Boolean  @default(false)
   retrival_status  String?
-  createdBy        String?
+  createdBy        String?  @db.ObjectId
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
   property  Property?  @relation(fields: [property_id], references: [id], onDelete: Cascade)
   batch     Batch?     @relation(fields: [batch_id], references: [id], onDelete: Cascade)
   portfolio Portfolio? @relation(fields: [portfolio_id], references: [id], onDelete: Cascade)
+  creator   User?      @relation(fields: [createdBy], references: [id], onDelete: SetNull)
 
   @@index([property_id])
   @@index([batch_id])
@@ -1072,5 +1074,6 @@ model AgodaCaseItem {
   @@index([reservation_id])
   @@index([charge_status])
   @@index([retrival_status])
+  @@index([createdBy])
   @@map("agoda_case_items")
 }

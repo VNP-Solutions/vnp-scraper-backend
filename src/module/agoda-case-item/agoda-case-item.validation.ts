@@ -16,7 +16,7 @@ export const createAgodaCaseItemSchema = z.object({
   batch_id: objectIdSchema.optional().nullable(),
   portfolio_id: objectIdSchema.optional().nullable(),
   reservation_id: z.string().optional().nullable(),
-  client_name: z.string().optional().nullable(),
+  guest_name: z.string().optional().nullable(),
   check_in: dateStringSchema.optional().nullable(),
   check_out: dateStringSchema.optional().nullable(),
   amount: z.string().optional().nullable(),
@@ -28,7 +28,7 @@ export const createAgodaCaseItemSchema = z.object({
   card_cvv: z.string().optional().nullable(),
   is_missing: z.boolean().optional().default(false),
   retrival_status: z.string().optional().nullable(),
-  createdBy: z.string().optional().nullable(),
+  createdBy: objectIdSchema.optional().nullable(),
 });
 
 export const updateAgodaCaseItemSchema = createAgodaCaseItemSchema.partial();

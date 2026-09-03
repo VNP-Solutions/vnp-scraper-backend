@@ -30,7 +30,7 @@ export class CreateAgodaCaseItemDto implements CreateAgodaCaseItemType {
   reservation_id?: string;
 
   @ApiProperty({ required: false, example: 'John Doe' })
-  client_name?: string;
+  guest_name?: string;
 
   @ApiProperty({
     required: false,
@@ -77,7 +77,11 @@ export class CreateAgodaCaseItemDto implements CreateAgodaCaseItemType {
   @ApiProperty({ required: false, example: 'Open' })
   retrival_status?: string;
 
-  @ApiProperty({ required: false, description: 'Creator identifier' })
+  @ApiProperty({
+    required: false,
+    description: 'MongoDB ObjectId of the user who created this item',
+    example: '65f0a3c4e2b7a1d2c3e4f5a6',
+  })
   createdBy?: string;
 }
 
@@ -95,7 +99,7 @@ export class UpdateAgodaCaseItemDto implements UpdateAgodaCaseItemType {
   reservation_id?: string;
 
   @ApiProperty({ required: false })
-  client_name?: string;
+  guest_name?: string;
 
   @ApiProperty({ required: false, description: 'YYYY-MM-DD' })
   check_in?: string;
@@ -151,7 +155,7 @@ export class AgodaCaseItemResponseDto {
   reservation_id?: string;
 
   @ApiProperty({ required: false })
-  client_name?: string;
+  guest_name?: string;
 
   @ApiProperty({ required: false, description: 'YYYY-MM-DD' })
   check_in?: string;

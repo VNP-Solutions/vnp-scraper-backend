@@ -61,7 +61,7 @@ export class AgodaCaseItemController {
   @ApiResponse({ status: 400, description: 'Invalid request' })
   @ApiResponse({
     status: 404,
-    description: 'Property, batch or portfolio not found',
+    description: 'Property, batch, portfolio or user not found',
   })
   @ValidateBody(createAgodaCaseItemSchema)
   async create(
@@ -89,7 +89,7 @@ export class AgodaCaseItemController {
   @ApiQuery({
     name: 'search',
     required: false,
-    description: 'Search by ID, reservation_id, client_name or vcc_card_number',
+    description: 'Search by ID, reservation_id, guest_name or vcc_card_number',
   })
   @ApiQuery({
     name: 'property_id',
@@ -233,7 +233,8 @@ export class AgodaCaseItemController {
   })
   @ApiResponse({
     status: 404,
-    description: 'Agoda case item, property, batch or portfolio not found',
+    description:
+      'Agoda case item, property, batch, portfolio or user not found',
   })
   @ValidateBody(updateAgodaCaseItemSchema)
   async update(

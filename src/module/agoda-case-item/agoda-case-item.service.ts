@@ -49,6 +49,10 @@ export class AgodaCaseItemService implements IAgodaCaseItemService {
         `Portfolio with ID ${data.portfolio_id} not found`,
       );
     }
+
+    if (data.createdBy && !(await this.repository.userExists(data.createdBy))) {
+      throw new NotFoundException(`User with ID ${data.createdBy} not found`);
+    }
   }
 
   async create(data: CreateAgodaCaseItemDto): Promise<AgodaCaseItem> {

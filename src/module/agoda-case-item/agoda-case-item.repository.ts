@@ -19,24 +19,25 @@ export class AgodaCaseItemRepository implements IAgodaCaseItemRepository {
 
   /**
    * Turns the flat *_id fields on the DTO into Prisma relation writes. All
-   * three relations are optional: an absent id is left untouched, while an
+   * relations are optional: an absent id is left untouched, while an
    * explicit null clears the link so an update can detach a case item.
    */
   private toRelationInput(
     data: CreateAgodaCaseItemDto | UpdateAgodaCaseItemDto,
   ): Prisma.AgodaCaseItemCreateInput {
-    const { property_id, batch_id, portfolio_id, ...rest } = data;
+    const { property_id, batch_id, portfolio_id, createdBy, ...rest } = data;
 
     return {
       ...rest,
       ...this.relationWrite('property', property_id),
       ...this.relationWrite('batch', batch_id),
       ...this.relationWrite('portfolio', portfolio_id),
+      ...this.relationWrite('creator', createdBy),
     };
   }
 
   private relationWrite(
-    relation: 'property' | 'batch' | 'portfolio',
+    relation: 'property' | 'batch' | 'portfolio' | 'creator',
     id: string | null | undefined,
   ): Record<string, unknown> {
     if (id === undefined) return {};
@@ -90,7 +91,7 @@ export class AgodaCaseItemRepository implements IAgodaCaseItemRepository {
             },
           },
           {
-            client_name: { contains: searchTerm, mode: 'insensitive' as const },
+            guest_name: { contains: searchTerm, mode: 'insensitive' as const },
           },
           {
             vcc_card_number: {
@@ -196,6 +197,19 @@ export class AgodaCaseItemRepository implements IAgodaCaseItemRepository {
       return !!portfolio;
     } catch (error) {
       this.logger.error(`Error checking portfolio ${portfolioId}:`, error);
+      throw error;
+    }
+  }
+
+  async userExists(userId: string): Promise<boolean> {
+    try {
+      const user = await this.db.user.findUnique({
+        where: { id: userId },
+        select: { id: true },
+      });
+      return !!user;
+    } catch (error) {
+      this.logger.error(`Error checking user ${userId}:`, error);
       throw error;
     }
   }

@@ -41,6 +41,8 @@ export interface IAgodaCaseItemRepository {
   batchExists(batchId: string): Promise<boolean>;
 
   portfolioExists(portfolioId: string): Promise<boolean>;
+
+  userExists(userId: string): Promise<boolean>;
 }
 
 export interface IAgodaCaseItemService {
