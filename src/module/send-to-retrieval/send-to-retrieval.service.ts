@@ -156,21 +156,15 @@ export class SendToRetrievalService implements ISendToRetrievalService {
             portfolio_id: job.portfolio_id ?? undefined,
             retrieval_id: retrievalId,
             reservation_id: jobItem.reservation_id ?? undefined,
-            guest_name: jobItem.guest_name ?? undefined,
-            check_in: jobItem.check_in_date
-              ? jobItem.check_in_date.toISOString().split('T')[0]
-              : undefined,
-            check_out: jobItem.check_out_date
-              ? jobItem.check_out_date.toISOString().split('T')[0]
-              : undefined,
-            amount: jobItem.booking_amount?.toString() ?? undefined,
+            // guest_name, check_in, check_out, amount, amount_to_charge are
+            // deliberately left unset here — the retrieval process fills
+            // these in itself once it runs.
             currency: undefined, // Not available in JobItem
-            amount_to_charge: jobItem.booking_amount?.toString() ?? undefined,
-            charge_status: undefined, // Will be updated later by retrieval process
+            charge_status: 'retrieval_required',
             vcc_card_number: undefined, // Will be filled by retrieval process
             card_expire: undefined, // Will be filled by retrieval process
             card_cvv: undefined, // Will be filled by retrieval process
-            is_missing: false,
+            is_missing: true,
             retrival_status: 'Pending',
             createdBy: job.user_id,
           });
