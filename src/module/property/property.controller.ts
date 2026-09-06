@@ -24,6 +24,10 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { Response } from 'express';
+import {
+  creationDisabledMessage,
+  DBMS_SYNC_ONLY_MESSAGE,
+} from 'src/common/constants/dbms-sync.constants';
 import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
 import { ExcelFileInterceptor } from 'src/common/interceptors';
@@ -47,7 +51,6 @@ import {
 } from './property.dto';
 import { IPropertyService } from './property.interface';
 import {
-  createPropertySchema,
   revealOtaCredentialsSchema,
   type RevealOtaCredentialsBody,
   updateOtaCredentialsSchema,
@@ -67,42 +70,22 @@ export class PropertyController {
   ) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create new property' })
-  @ApiResponse({
-    status: 201,
-    description: 'Property created successfully',
+  @ApiOperation({
+    summary: 'Disabled - properties are created in DBMS and synced here',
   })
-  @ApiResponse({ status: 400, description: 'Bad request' })
-  @ValidateBody(createPropertySchema)
+  @ApiResponse({
+    status: 403,
+    description: 'Property creation is only possible through DBMS sync',
+  })
   @UseGuards(JwtAuthGuard)
-  async createProperty(
-    @Req() request: Request,
-    @Body() createPropertyDto: CreatePropertyDto,
-    @Res() response: Response,
-  ) {
-    const { user } = request as any;
-    if (user.role !== 'admin') {
-      return ResponseHandler.handler(
-        response,
-        async () => {
-          return {
-            statusCode: 403,
-            message: 'You are not authorized to create a property',
-            data: null,
-          };
-        },
-        this.logger,
-      );
-    }
+  async createProperty(@Res() response: Response) {
     return ResponseHandler.handler(
       response,
       async () => {
-        const res =
-          await this.propertyService.createProperty(createPropertyDto);
         return {
-          statusCode: 201,
-          message: 'Property created successfully',
-          data: res,
+          statusCode: 403,
+          message: creationDisabledMessage('Properties'),
+          data: null,
         };
       },
       this.logger,
@@ -597,7 +580,10 @@ export class PropertyController {
           await this.propertyService.importPropertiesFromExcel(file);
         return {
           statusCode: 200,
-          message: `Import completed successfully: ${result.portfoliosCreated} portfolios, ${result.subPortfoliosCreated} sub-portfolios, ${result.propertiesCreated} properties, and ${result.credentialsCreated} credentials created`,
+          message:
+            result.skipped.length > 0
+              ? `Import completed with ${result.skipped.length} skipped entr${result.skipped.length === 1 ? 'y' : 'ies'}: ${DBMS_SYNC_ONLY_MESSAGE}`
+              : `Import completed successfully: ${result.propertiesUpdated} properties updated and ${result.credentialsCreated} credentials written`,
           data: result,
         };
       },

@@ -8,6 +8,10 @@ import {
 import { Job, JobStatus, OTAProvider, PostingType, RecurringJob, RecurringReportBucket, RoleEnum } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import * as XLSX from 'xlsx';
+import {
+  portfolioNotSyncedMessage,
+  propertyNotSyncedMessage,
+} from '../../common/constants/dbms-sync.constants';
 import { DatabaseService } from '../database/database.service';
 import { IJobRepository } from '../job/job.interface';
 import { IScheduledJobService } from '../scraper/scheduled-job.interface';
@@ -1891,55 +1895,29 @@ export class RecurringJobService implements IRecurringJobService {
             ? this.parseExcelDate(initialDateColumn)
             : null;
 
-          // Get or Create Portfolio
+          // Portfolios and properties only enter the scraper through DBMS
+          // sync, so a missing one fails the row instead of being created.
           let portfolioId = null;
           let portfolioName = null;
           if (row['Portfolio'] && row['Portfolio'].trim() !== '') {
             portfolioName = row['Portfolio'].toString().trim();
-            let portfolio = await this.db.portfolio.findFirst({
+            const portfolio = await this.db.portfolio.findFirst({
               where: { name: portfolioName },
             });
-            
+
             if (!portfolio) {
-              // Create portfolio if it doesn't exist
-              this.logger.log(`Creating portfolio: ${portfolioName}`);
-              portfolio = await this.db.portfolio.create({
-                data: {
-                  name: portfolioName,
-                },
-              });
-              this.logger.log(`Created portfolio ${portfolio.id}: ${portfolioName}`);
+              throw new Error(portfolioNotSyncedMessage(portfolioName));
             }
             portfolioId = portfolio.id;
           }
 
-          // Get or Create Property
           const propertyName = row['Property Name'].toString().trim();
-          let property = await this.db.property.findFirst({
+          const property = await this.db.property.findFirst({
             where: { name: propertyName },
           });
-          
+
           if (!property) {
-            // Determine OTA Provider to set the appropriate ID
-            const otaProvider = this.determineOTAProvider(row);
-            
-            // Get OTA ID value
-            const expediaId = row['Expedia ID'] ? parseInt(row['Expedia ID'].toString().trim()) : null;
-            const agodaId = row['Agoda ID'] ? parseInt(row['Agoda ID'].toString().trim()) : null;
-            const bookingId = row['Booking ID'] ? parseInt(row['Booking ID'].toString().trim()) : null;
-            
-            // Create property if it doesn't exist
-            this.logger.log(`Creating property: ${propertyName}`);
-            property = await this.db.property.create({
-              data: {
-                name: propertyName,
-                expedia_id: expediaId,
-                agoda_id: agodaId,
-                booking_id: bookingId,
-                portfolio: portfolioId ? { connect: { id: portfolioId } } : undefined,
-              },
-            });
-            this.logger.log(`Created property ${property.id}: ${propertyName}`);
+            throw new Error(propertyNotSyncedMessage(propertyName));
           }
 
           // If portfolio not provided, get from property
