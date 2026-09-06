@@ -331,8 +331,15 @@ export class AgodaCaseItemRepository implements IAgodaCaseItemRepository {
 
   async findPropertyByAgodaId(agodaId: string): Promise<{ id: string } | null> {
     try {
+      // Convert string to number since agoda_id is Int in schema
+      const agodaIdNumber = parseInt(agodaId, 10);
+      
+      if (isNaN(agodaIdNumber)) {
+        return null; // Invalid number
+      }
+      
       const property = await this.db.property.findFirst({
-        where: { agoda_id: agodaId },
+        where: { agoda_id: agodaIdNumber },
         select: { id: true },
       });
       return property;
