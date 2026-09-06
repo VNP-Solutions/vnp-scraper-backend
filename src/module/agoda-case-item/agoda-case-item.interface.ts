@@ -44,8 +44,15 @@ export type AgodaCaseItemForExport = AgodaCaseItem & {
   creator: User | null;
 };
 
+/** List row with the relations the WIP table needs for hotel/batch/portfolio. */
+export type AgodaCaseItemListItem = AgodaCaseItem & {
+  property: Pick<Property, 'id' | 'name' | 'agoda_id'> | null;
+  batch: Pick<Batch, 'id' | 'name'> | null;
+  portfolio: Pick<Portfolio, 'id' | 'name'> | null;
+};
+
 export interface PaginatedAgodaCaseItems {
-  items: AgodaCaseItem[];
+  items: AgodaCaseItemListItem[];
   totalDocuments: number;
   currentPage: number;
   totalPage: number;

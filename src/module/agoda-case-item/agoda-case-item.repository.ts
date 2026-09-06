@@ -149,6 +149,11 @@ export class AgodaCaseItemRepository implements IAgodaCaseItemRepository {
           skip,
           take: limit,
           orderBy: { createdAt: order },
+          include: {
+            property: { select: { id: true, name: true, agoda_id: true } },
+            batch: { select: { id: true, name: true } },
+            portfolio: { select: { id: true, name: true } },
+          },
         }),
         this.db.agodaCaseItem.count({ where }),
       ]);
@@ -313,7 +318,7 @@ export class AgodaCaseItemRepository implements IAgodaCaseItemRepository {
     try {
       // Convert to relation input format
       const createData = data.map((item) => this.toRelationInput(item));
-      
+
       // Use createMany for bulk insert (faster but doesn't return created records)
       // Then fetch the created records
       await this.db.agodaCaseItem.createMany({
@@ -333,18 +338,21 @@ export class AgodaCaseItemRepository implements IAgodaCaseItemRepository {
     try {
       // Convert string to number since agoda_id is Int in schema
       const agodaIdNumber = parseInt(agodaId, 10);
-      
+
       if (isNaN(agodaIdNumber)) {
         return null; // Invalid number
       }
-      
+
       const property = await this.db.property.findFirst({
         where: { agoda_id: agodaIdNumber },
         select: { id: true },
       });
       return property;
     } catch (error) {
-      this.logger.error(`Error finding property by agoda_id ${agodaId}:`, error);
+      this.logger.error(
+        `Error finding property by agoda_id ${agodaId}:`,
+        error,
+      );
       throw error;
     }
   }
@@ -362,7 +370,9 @@ export class AgodaCaseItemRepository implements IAgodaCaseItemRepository {
     }
   }
 
-  async findPortfolioByName(portfolioName: string): Promise<{ id: string } | null> {
+  async findPortfolioByName(
+    portfolioName: string,
+  ): Promise<{ id: string } | null> {
     try {
       const portfolio = await this.db.portfolio.findFirst({
         where: { name: portfolioName },
@@ -370,7 +380,10 @@ export class AgodaCaseItemRepository implements IAgodaCaseItemRepository {
       });
       return portfolio;
     } catch (error) {
-      this.logger.error(`Error finding portfolio by name ${portfolioName}:`, error);
+      this.logger.error(
+        `Error finding portfolio by name ${portfolioName}:`,
+        error,
+      );
       throw error;
     }
   }
