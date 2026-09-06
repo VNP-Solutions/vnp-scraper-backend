@@ -5,12 +5,18 @@ import {
   Property,
   RoleEnum,
 } from '@prisma/client';
+import {
+  portfolioNotSyncedMessage,
+  propertyNotSyncedMessage,
+  subPortfolioNotSyncedMessage,
+} from 'src/common/constants/dbms-sync.constants';
 import { EncryptionUtil } from 'src/common/utils/encryption.util';
 import * as XLSX from 'xlsx';
 import { getPhoneLastThreeDigitsKey } from '../phone-number-slot/phone-number-slot.utils';
 import { DatabaseService } from '../database/database.service';
 import { CreatePropertyDto, UpdatePropertyDto } from './property.dto';
 import {
+  ImportPropertiesResult,
   IPropertyRepository,
   PropertyDropdownItem,
 } from './property.interface';
@@ -1288,24 +1294,21 @@ export class PropertyRepository implements IPropertyRepository {
    * - OTA columns: "Expedia ID", "Expedia Status", "Booking ID", "Booking Status", "Agoda ID", "Agoda Status"
    * - Credential columns: "Expedia Username", "Expedia Password", "Agoda Username", "Agoda Password", "Booking Username", "Booking Password", "Expedia Email Associated", "Property Contact Email", "Portfolio Contact Email"
    *
-   * The method will:
-   * 1. Extract unique portfolio names and create them if they don't exist
-   * 2. Extract unique sub-portfolio names and create them if they don't exist (linked to portfolios)
-   * 3. Create properties with relationships to portfolios and sub-portfolios
-   * 4. Create property credentials for OTA platforms
+   * Portfolios, sub-portfolios and properties are created only by DBMS sync,
+   * so this import can only match what already exists. The method will:
+   * 1. Match unique portfolio names against synced portfolios
+   * 2. Match unique sub-portfolio names against synced sub-portfolios
+   * 3. Update OTA IDs and phone slots on matched properties
+   * 4. Create or merge property credentials for OTA platforms
+   *
+   * Anything that cannot be matched is reported in `skipped` rather than created.
    *
    * @param file - Excel file buffer
-   * @returns Object containing creation counts and created entities
+   * @returns Match/update counts, the matched entities, and skipped entries
    */
-  async importPropertiesFromExcel(file: Express.Multer.File): Promise<{
-    portfoliosCreated: number;
-    subPortfoliosCreated: number;
-    propertiesCreated: number;
-    credentialsCreated: number;
-    portfolios: any[];
-    subPortfolios: any[];
-    properties: any[];
-  }> {
+  async importPropertiesFromExcel(
+    file: Express.Multer.File,
+  ): Promise<ImportPropertiesResult> {
     try {
       // Validate file buffer
       if (!file.buffer) {
@@ -1334,13 +1337,12 @@ export class PropertyRepository implements IPropertyRepository {
         `Starting import process for ${data.length} rows with headers: ${headers.join(', ')}`,
       );
 
-      let portfoliosCreated = 0;
-      let subPortfoliosCreated = 0;
-      let propertiesCreated = 0;
+      let propertiesUpdated = 0;
       let credentialsCreated = 0;
       const portfolios: any[] = [];
       const subPortfolios: any[] = [];
       const properties: any[] = [];
+      const skipped: ImportPropertiesResult['skipped'] = [];
 
       // Step 1: Handle Portfolios
       if (headers.includes('Portfolio')) {
@@ -1358,25 +1360,29 @@ export class PropertyRepository implements IPropertyRepository {
 
         for (const portfolioName of portfolioNames) {
           try {
-            // Check if portfolio exists
+            // Portfolios only enter the scraper through DBMS sync, so a
+            // missing one is reported instead of being created here.
             const existingPortfolio = await this.findPortfolioByName(
               portfolioName.toString(),
             );
 
             if (!existingPortfolio) {
-              // Create new portfolio
-              const newPortfolio = await this.createPortfolio(
+              const reason = portfolioNotSyncedMessage(
                 portfolioName.toString(),
               );
-              portfolios.push(newPortfolio);
-              portfoliosCreated++;
-              this.logger.log(`Created new portfolio: ${newPortfolio.name}`);
-            } else {
-              portfolios.push(existingPortfolio);
-              this.logger.log(
-                `Using existing portfolio: ${existingPortfolio.name}`,
-              );
+              skipped.push({
+                entity: 'portfolio',
+                name: portfolioName.toString(),
+                reason,
+              });
+              this.logger.warn(reason);
+              continue;
             }
+
+            portfolios.push(existingPortfolio);
+            this.logger.log(
+              `Using existing portfolio: ${existingPortfolio.name}`,
+            );
           } catch (error) {
             this.logger.error(
               `Error processing portfolio ${portfolioName}: ${error.message}`,
@@ -1421,7 +1427,6 @@ export class PropertyRepository implements IPropertyRepository {
               );
 
               if (portfolio) {
-                // Check if sub-portfolio exists
                 const existingSubPortfolio =
                   await this.findSubPortfolioByNameAndPortfolio(
                     subPortfolioName.toString(),
@@ -1429,16 +1434,16 @@ export class PropertyRepository implements IPropertyRepository {
                   );
 
                 if (!existingSubPortfolio) {
-                  // Create new sub-portfolio
-                  const newSubPortfolio = await this.createSubPortfolio(
+                  const reason = subPortfolioNotSyncedMessage(
                     subPortfolioName.toString(),
-                    portfolio.id,
+                    portfolio.name,
                   );
-                  subPortfolios.push(newSubPortfolio);
-                  subPortfoliosCreated++;
-                  this.logger.log(
-                    `Created new sub-portfolio: ${newSubPortfolio.name} under portfolio: ${portfolio.name}`,
-                  );
+                  skipped.push({
+                    entity: 'sub_portfolio',
+                    name: subPortfolioName.toString(),
+                    reason,
+                  });
+                  this.logger.warn(reason);
                 } else {
                   subPortfolios.push(existingSubPortfolio);
                   this.logger.log(
@@ -1446,9 +1451,16 @@ export class PropertyRepository implements IPropertyRepository {
                   );
                 }
               } else {
-                this.logger.warn(
-                  `Portfolio '${portfolioName}' not found for sub-portfolio '${subPortfolioName}'`,
+                const reason = subPortfolioNotSyncedMessage(
+                  subPortfolioName.toString(),
+                  portfolioName.toString(),
                 );
+                skipped.push({
+                  entity: 'sub_portfolio',
+                  name: subPortfolioName.toString(),
+                  reason,
+                });
+                this.logger.warn(reason);
               }
             } else {
               this.logger.warn(
@@ -1508,153 +1520,17 @@ export class PropertyRepository implements IPropertyRepository {
           );
 
           if (!existingProperty) {
-            // Create property data
-            const propertyData: CreatePropertyDto = {
-              name: rowData['Property Name'].toString().trim(),
-              portfolio_id: portfolioId,
-              sub_portfolio_id: subPortfolioId,
-              expedia_status: rowData['Expedia Status'] || 'Access Required',
-              booking_status: rowData['Booking Status'] || 'Access Required',
-              agoda_status: rowData['Agoda Status'] || 'Access Required',
-            };
-
-            if (rowData['Expedia ID']) {
-              propertyData.expedia_id = Number(rowData['Expedia ID']);
-            }
-
-            if (rowData['Booking ID']) {
-              propertyData.booking_id = Number(rowData['Booking ID']);
-            }
-            if (rowData['Agoda ID']) {
-              propertyData.agoda_id = Number(rowData['Agoda ID']);
-            }
-
-            const parsedPhoneSlot =
-              this.parsePhoneNumberAndSlotFromRow(rowData);
-            if (parsedPhoneSlot) {
-              try {
-                const resolved = await this.resolvePhoneNumberSlotLinkForImport(
-                  parsedPhoneSlot,
-                  `Phone slot (new property "${rowData['Property Name']}")`,
-                );
-                if (resolved) {
-                  propertyData.phone_number = resolved.phone;
-                  propertyData.slot = resolved.slot;
-                  propertyData.phone_number_slot_id = resolved.slotId;
-                }
-              } catch (phoneSlotError: any) {
-                this.logger.warn(
-                  `Phone slot link skipped for new property ${rowData['Property Name']}: ${phoneSlotError?.message}`,
-                );
-              }
-            }
-
-            // Create property using repository method
-            const newProperty = await this.create(propertyData);
-            properties.push(newProperty);
-            propertiesCreated++;
-            this.logger.log(`Created new property: ${newProperty.name}`);
-
-            // Create property credentials if any credential data exists
-            const credentialsData: any = {};
-            let hasCredentials = false;
-
-            // Check for credential columns and extract data
-            if (rowData['Expedia Username']) {
-              credentialsData.expediaUsername = rowData['Expedia Username']
-                .toString()
-                .trim();
-              hasCredentials = true;
-            }
-            if (rowData['Expedia Password']) {
-              credentialsData.expediaPassword =
-                this.encryptionUtil.encryptPassword(
-                  rowData['Expedia Password'].toString().trim(),
-                );
-              hasCredentials = true;
-            }
-            if (rowData['Agoda Username']) {
-              credentialsData.agodaUsername = rowData['Agoda Username']
-                .toString()
-                .trim();
-              hasCredentials = true;
-            }
-            if (rowData['Agoda Password']) {
-              credentialsData.agodaPassword =
-                this.encryptionUtil.encryptPassword(
-                  rowData['Agoda Password'].toString().trim(),
-                );
-              hasCredentials = true;
-            }
-            if (rowData['Booking Username']) {
-              credentialsData.bookingUsername = rowData['Booking Username']
-                .toString()
-                .trim();
-              hasCredentials = true;
-            }
-            if (rowData['Booking Password']) {
-              credentialsData.bookingPassword =
-                this.encryptionUtil.encryptPassword(
-                  rowData['Booking Password'].toString().trim(),
-                );
-              hasCredentials = true;
-            }
-            if (rowData['Expedia Email Associated']) {
-              credentialsData.expediaEmailAssociated = rowData[
-                'Expedia Email Associated'
-              ]
-                .toString()
-                .trim();
-              hasCredentials = true;
-            }
-            if (rowData['Property Contact Email']) {
-              credentialsData.propertyContactEmail = rowData[
-                'Property Contact Email'
-              ]
-                .toString()
-                .trim();
-              hasCredentials = true;
-            }
-            if (rowData['Portfolio Contact Email']) {
-              credentialsData.portfolioContactEmail = rowData[
-                'Portfolio Contact Email'
-              ]
-                .toString()
-                .trim();
-              hasCredentials = true;
-            }
-            if (rowData['Multiple Portfolio Emails']) {
-              // Handle comma-separated emails
-              const emails = rowData['Multiple Portfolio Emails']
-                .toString()
-                .split(',')
-                .map((email: string) => email.trim())
-                .filter((email: string) => email);
-              if (emails.length > 0) {
-                credentialsData.multiplePortfolioEmails = emails;
-                hasCredentials = true;
-              }
-            }
-
-            // Create credentials if any credential data exists
-            if (hasCredentials) {
-              try {
-                await this.createPropertyCredentials(
-                  newProperty.id,
-                  credentialsData,
-                );
-                credentialsCreated++;
-                this.logger.log(
-                  `Created credentials for property: ${newProperty.name}`,
-                );
-              } catch (credentialError) {
-                this.logger.error(
-                  `Error creating credentials for property ${newProperty.name}: ${credentialError.message}`,
-                );
-                // Don't fail the entire import if credentials creation fails
-              }
-            }
+            const propertyName = rowData['Property Name'].toString().trim();
+            const reason = propertyNotSyncedMessage(propertyName);
+            skipped.push({
+              entity: 'property',
+              name: propertyName,
+              reason,
+            });
+            this.logger.warn(reason);
           } else {
+            properties.push(existingProperty);
+            propertiesUpdated++;
             this.logger.log(
               `Property '${rowData['Property Name']}' already exists, checking for new credentials to merge`,
             );
@@ -1814,17 +1690,18 @@ export class PropertyRepository implements IPropertyRepository {
       }
 
       this.logger.log(
-        `Import completed: ${portfoliosCreated} portfolios, ${subPortfoliosCreated} sub-portfolios, ${propertiesCreated} properties, and ${credentialsCreated} credentials created`,
+        `Import completed: ${portfolios.length} portfolios matched, ${subPortfolios.length} sub-portfolios matched, ${propertiesUpdated} properties updated, ${credentialsCreated} credentials written, ${skipped.length} skipped`,
       );
 
       return {
-        portfoliosCreated,
-        subPortfoliosCreated,
-        propertiesCreated,
+        portfoliosMatched: portfolios.length,
+        subPortfoliosMatched: subPortfolios.length,
+        propertiesUpdated,
         credentialsCreated,
         portfolios,
         subPortfolios,
         properties,
+        skipped,
       };
     } catch (error) {
       this.logger.error(

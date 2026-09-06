@@ -23,6 +23,11 @@ import { firstValueFrom } from 'rxjs';
 import { PassThrough, Writable } from 'stream';
 import * as XLSX from 'xlsx';
 import {
+  portfolioNotSyncedMessage,
+  propertyNotSyncedMessage,
+  subPortfolioNotSyncedMessage,
+} from '../../common/constants/dbms-sync.constants';
+import {
   streamZipEntries,
   zipFiles,
 } from '../../common/utils/zip-and-filename.util';
@@ -706,9 +711,7 @@ export class JobService implements IJobService {
               await this.repository.findPortfolioByName(portfolioName);
 
             if (!existingPortfolio) {
-              throw new Error(
-                `Portfolio '${portfolioName}' not found. Please create the portfolio first.`,
-              );
+              throw new Error(portfolioNotSyncedMessage(portfolioName));
             }
             portfolioId = existingPortfolio.id;
           }
@@ -733,7 +736,7 @@ export class JobService implements IJobService {
 
             if (!existingSubPortfolio) {
               throw new Error(
-                `Sub-portfolio '${subPortfolioName}' not found under portfolio '${portfolioName}'. Please create the sub-portfolio first.`,
+                subPortfolioNotSyncedMessage(subPortfolioName, portfolioName),
               );
             }
             subPortfolioId = existingSubPortfolio.id;
@@ -754,9 +757,7 @@ export class JobService implements IJobService {
               );
 
             if (!existingProperty) {
-              throw new Error(
-                `Property '${propertyName}' not found. Please import the property first.`,
-              );
+              throw new Error(propertyNotSyncedMessage(propertyName));
             }
             propertyId = existingProperty.id;
           }
