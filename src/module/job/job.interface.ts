@@ -1,4 +1,4 @@
-import { Batch, DbEntry, Job, ReplyStatus } from '@prisma/client';
+import { Batch, DbEntry, Job, JobStatus, ReplyStatus } from '@prisma/client';
 import { Writable } from 'stream';
 import {
   BulkCreateJobFromDbmsItemDto,
@@ -75,6 +75,10 @@ export interface IJobRepository {
   bulkArchiveUpdate(
     jobIds: string[],
     isArchived: boolean,
+  ): Promise<{ count: number }>;
+  bulkStatusUpdate(
+    jobIds: string[],
+    jobStatus: JobStatus,
   ): Promise<{ count: number }>;
   bulkDelete(
     jobIds: string[],
@@ -187,6 +191,10 @@ export interface IJobService {
     jobIds: string[],
     status: boolean,
   ): Promise<{ updatedCount: number; status: boolean }>;
+  bulkStatusUpdate(
+    jobIds: string[],
+    jobStatus: JobStatus,
+  ): Promise<{ updatedCount: number; job_status: JobStatus }>;
   bulkDeleteJobs(
     jobIds: string[],
   ): Promise<{ deletedCount: number; deletedJobIds: string[] }>;

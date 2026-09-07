@@ -3,6 +3,7 @@ import {
   Batch,
   DbEntry,
   Job,
+  JobStatus,
   OTAProvider,
   Prisma,
   ReplyStatus,
@@ -1397,6 +1398,36 @@ export class JobRepository implements IJobRepository {
       return { count: totalCount };
     } catch (error) {
       this.logger.error('Error bulk updating jobs archive status:', error);
+      throw error;
+    }
+  }
+
+  async bulkStatusUpdate(
+    jobIds: string[],
+    jobStatus: JobStatus,
+  ): Promise<{ count: number }> {
+    const BATCH_SIZE = 500;
+    let totalCount = 0;
+
+    try {
+      for (let i = 0; i < jobIds.length; i += BATCH_SIZE) {
+        const batch = jobIds.slice(i, i + BATCH_SIZE);
+        const result = await this.db.job.updateMany({
+          where: {
+            id: {
+              in: batch,
+            },
+          },
+          data: {
+            job_status: jobStatus,
+          },
+        });
+        totalCount += result.count;
+      }
+
+      return { count: totalCount };
+    } catch (error) {
+      this.logger.error('Error bulk updating jobs status:', error);
       throw error;
     }
   }
