@@ -1,4 +1,4 @@
-import { Batch, DbEntry, Job, ReplyStatus } from '@prisma/client';
+import { Batch, DbEntry, Job, JobStatus, ReplyStatus } from '@prisma/client';
 import { Writable } from 'stream';
 import {
   BulkCreateJobFromDbmsItemDto,
@@ -76,6 +76,10 @@ export interface IJobRepository {
     jobIds: string[],
     isArchived: boolean,
   ): Promise<{ count: number }>;
+  bulkStatusUpdate(
+    jobIds: string[],
+    jobStatus: JobStatus,
+  ): Promise<{ count: number }>;
   bulkDelete(
     jobIds: string[],
   ): Promise<{ count: number; deletedJobIds: string[] }>;
@@ -132,6 +136,14 @@ export interface IJobRepository {
    * throwing) when the job id doesn't exist.
    */
   updateReplyStatus(jobId: string, replyStatus: ReplyStatus): Promise<Job | null>;
+  /**
+   * Find all Agoda jobs that need automatic email check.
+   * Criteria: OTA = Agoda, job_status = Completed, reply_status = NoReplied or RepliedRed,
+   * updatedAt >= updatedSince date.
+   */
+  findJobsForAutomaticEmailCheck(
+    updatedSince: Date,
+  ): Promise<Array<{ id: string }>>;
 }
 
 export interface IJobService {
@@ -179,6 +191,10 @@ export interface IJobService {
     jobIds: string[],
     status: boolean,
   ): Promise<{ updatedCount: number; status: boolean }>;
+  bulkStatusUpdate(
+    jobIds: string[],
+    jobStatus: JobStatus,
+  ): Promise<{ updatedCount: number; job_status: JobStatus }>;
   bulkDeleteJobs(
     jobIds: string[],
   ): Promise<{ deletedCount: number; deletedJobIds: string[] }>;
@@ -264,4 +280,13 @@ export interface IJobService {
    * throwing) when the job id doesn't exist.
    */
   updateReplyStatus(jobId: string, replyStatus: ReplyStatus): Promise<Job | null>;
+
+  /**
+   * Find all Agoda jobs that need automatic email check.
+   * Criteria: OTA = Agoda, job_status = Completed, reply_status = NoReplied or RepliedRed,
+   * updatedAt >= updatedSince date.
+   */
+  findJobsForAutomaticEmailCheck(
+    updatedSince: Date,
+  ): Promise<Array<{ id: string }>>;
 }

@@ -23,6 +23,11 @@ import { firstValueFrom } from 'rxjs';
 import { PassThrough, Writable } from 'stream';
 import * as XLSX from 'xlsx';
 import {
+  portfolioNotSyncedMessage,
+  propertyNotSyncedMessage,
+  subPortfolioNotSyncedMessage,
+} from '../../common/constants/dbms-sync.constants';
+import {
   streamZipEntries,
   zipFiles,
 } from '../../common/utils/zip-and-filename.util';
@@ -706,9 +711,7 @@ export class JobService implements IJobService {
               await this.repository.findPortfolioByName(portfolioName);
 
             if (!existingPortfolio) {
-              throw new Error(
-                `Portfolio '${portfolioName}' not found. Please create the portfolio first.`,
-              );
+              throw new Error(portfolioNotSyncedMessage(portfolioName));
             }
             portfolioId = existingPortfolio.id;
           }
@@ -733,7 +736,7 @@ export class JobService implements IJobService {
 
             if (!existingSubPortfolio) {
               throw new Error(
-                `Sub-portfolio '${subPortfolioName}' not found under portfolio '${portfolioName}'. Please create the sub-portfolio first.`,
+                subPortfolioNotSyncedMessage(subPortfolioName, portfolioName),
               );
             }
             subPortfolioId = existingSubPortfolio.id;
@@ -754,9 +757,7 @@ export class JobService implements IJobService {
               );
 
             if (!existingProperty) {
-              throw new Error(
-                `Property '${propertyName}' not found. Please import the property first.`,
-              );
+              throw new Error(propertyNotSyncedMessage(propertyName));
             }
             propertyId = existingProperty.id;
           }
@@ -1213,6 +1214,29 @@ export class JobService implements IJobService {
     } catch (error) {
       this.logger.error(
         `Error bulk updating jobs archive status: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async bulkStatusUpdate(
+    jobIds: string[],
+    jobStatus: JobStatus,
+  ): Promise<{ updatedCount: number; job_status: JobStatus }> {
+    try {
+      if (!jobIds || jobIds.length === 0) {
+        throw new Error('job_ids array cannot be empty');
+      }
+
+      const result = await this.repository.bulkStatusUpdate(jobIds, jobStatus);
+      return {
+        updatedCount: result.count,
+        job_status: jobStatus,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error bulk updating jobs status: ${error.message}`,
         error.stack,
       );
       throw error;
@@ -2107,6 +2131,22 @@ export class JobService implements IJobService {
     } catch (error) {
       this.logger.error(
         `Error updating reply_status for job ${jobId}: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async findJobsForAutomaticEmailCheck(
+    updatedSince: Date,
+  ): Promise<Array<{ id: string }>> {
+    try {
+      return await this.repository.findJobsForAutomaticEmailCheck(
+        updatedSince,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Error finding jobs for automatic email check: ${error.message}`,
         error.stack,
       );
       throw error;

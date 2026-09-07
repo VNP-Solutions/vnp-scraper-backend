@@ -167,6 +167,7 @@ export class SendToRetrievalService implements ISendToRetrievalService {
             is_missing: true,
             retrival_status: 'Pending',
             ota_provider: OTAProvider.Agoda,
+            posting_type: job.posting_type,
             createdBy: job.user_id,
           });
 

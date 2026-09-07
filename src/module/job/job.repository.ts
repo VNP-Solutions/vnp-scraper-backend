@@ -3,6 +3,7 @@ import {
   Batch,
   DbEntry,
   Job,
+  JobStatus,
   OTAProvider,
   Prisma,
   ReplyStatus,
@@ -1401,6 +1402,36 @@ export class JobRepository implements IJobRepository {
     }
   }
 
+  async bulkStatusUpdate(
+    jobIds: string[],
+    jobStatus: JobStatus,
+  ): Promise<{ count: number }> {
+    const BATCH_SIZE = 500;
+    let totalCount = 0;
+
+    try {
+      for (let i = 0; i < jobIds.length; i += BATCH_SIZE) {
+        const batch = jobIds.slice(i, i + BATCH_SIZE);
+        const result = await this.db.job.updateMany({
+          where: {
+            id: {
+              in: batch,
+            },
+          },
+          data: {
+            job_status: jobStatus,
+          },
+        });
+        totalCount += result.count;
+      }
+
+      return { count: totalCount };
+    } catch (error) {
+      this.logger.error('Error bulk updating jobs status:', error);
+      throw error;
+    }
+  }
+
   async bulkDelete(
     jobIds: string[],
   ): Promise<{ count: number; deletedJobIds: string[] }> {
@@ -2235,6 +2266,36 @@ export class JobRepository implements IJobRepository {
     } catch (error) {
       this.logger.error(
         `Error finding DbEntry by job ID: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async findJobsForAutomaticEmailCheck(
+    updatedSince: Date,
+  ): Promise<Array<{ id: string }>> {
+    try {
+      const jobs = await this.db.job.findMany({
+        where: {
+          ota_provider: 'Agoda',
+          job_status: 'Completed',
+          reply_status: {
+            in: ['NoReplied', 'RepliedRed'],
+          },
+          updatedAt: {
+            gte: updatedSince,
+          },
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      return jobs;
+    } catch (error) {
+      this.logger.error(
+        `Error finding jobs for automatic email check: ${error.message}`,
         error.stack,
       );
       throw error;

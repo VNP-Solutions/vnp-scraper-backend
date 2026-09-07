@@ -1,7 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { OTAProvider } from '@prisma/client';
+import { OTAProvider, PostingType } from '@prisma/client';
 import {
+  BulkDeclineAgodaCaseItemsType,
   CreateAgodaCaseItemType,
+  ExportSelectedAgodaCaseItemsType,
+  SendToRetrievalType,
   UpdateAgodaCaseItemType,
 } from './agoda-case-item.validation';
 
@@ -42,15 +45,15 @@ export class CreateAgodaCaseItemDto implements CreateAgodaCaseItemType {
 
   @ApiProperty({
     required: false,
-    description: 'Check-in date in YYYY-MM-DD format',
-    example: '2026-09-01',
+    description: 'Check-in date in MM/DD/YYYY format',
+    example: '09/01/2026',
   })
   check_in?: string;
 
   @ApiProperty({
     required: false,
-    description: 'Check-out date in YYYY-MM-DD format',
-    example: '2026-09-05',
+    description: 'Check-out date in MM/DD/YYYY format',
+    example: '09/05/2026',
   })
   check_out?: string;
 
@@ -94,6 +97,13 @@ export class CreateAgodaCaseItemDto implements CreateAgodaCaseItemType {
 
   @ApiProperty({
     required: false,
+    enum: PostingType,
+    description: 'Copied from the originating job at creation time',
+  })
+  posting_type?: PostingType;
+
+  @ApiProperty({
+    required: false,
     default: false,
     description: 'Soft-archive flag',
   })
@@ -133,10 +143,10 @@ export class UpdateAgodaCaseItemDto implements UpdateAgodaCaseItemType {
   @ApiProperty({ required: false })
   guest_name?: string;
 
-  @ApiProperty({ required: false, description: 'YYYY-MM-DD' })
+  @ApiProperty({ required: false, description: 'MM/DD/YYYY' })
   check_in?: string;
 
-  @ApiProperty({ required: false, description: 'YYYY-MM-DD' })
+  @ApiProperty({ required: false, description: 'MM/DD/YYYY' })
   check_out?: string;
 
   @ApiProperty({ required: false })
@@ -168,6 +178,9 @@ export class UpdateAgodaCaseItemDto implements UpdateAgodaCaseItemType {
 
   @ApiProperty({ required: false, enum: OTAProvider })
   ota_provider?: OTAProvider;
+
+  @ApiProperty({ required: false, enum: PostingType })
+  posting_type?: PostingType;
 
   @ApiProperty({ required: false })
   is_archived?: boolean;
@@ -201,10 +214,10 @@ export class AgodaCaseItemResponseDto {
   @ApiProperty({ required: false })
   guest_name?: string;
 
-  @ApiProperty({ required: false, description: 'YYYY-MM-DD' })
+  @ApiProperty({ required: false, description: 'MM/DD/YYYY' })
   check_in?: string;
 
-  @ApiProperty({ required: false, description: 'YYYY-MM-DD' })
+  @ApiProperty({ required: false, description: 'MM/DD/YYYY' })
   check_out?: string;
 
   @ApiProperty({ required: false })
@@ -237,6 +250,9 @@ export class AgodaCaseItemResponseDto {
   @ApiProperty({ required: false, enum: OTAProvider })
   ota_provider?: OTAProvider;
 
+  @ApiProperty({ required: false, enum: PostingType })
+  posting_type?: PostingType;
+
   @ApiProperty({ default: false })
   is_archived: boolean;
 
@@ -268,4 +284,114 @@ export class AgodaCaseItemListResponseDto {
 
   @ApiProperty({ description: 'Items per page' })
   limit: number;
+}
+
+export class ExportSelectedAgodaCaseItemsDto
+  implements ExportSelectedAgodaCaseItemsType
+{
+  @ApiProperty({
+    type: [String],
+    description: 'AgodaCaseItem ids to include in the WIP export',
+    example: ['65f0a3c4e2b7a1d2c3e4f5a6', '65f0a3c4e2b7a1d2c3e4f5a7'],
+  })
+  ids: string[];
+}
+
+export class BulkDeclineAgodaCaseItemsDto
+  implements BulkDeclineAgodaCaseItemsType
+{
+  @ApiProperty({
+    type: [String],
+    description: 'AgodaCaseItem ids to mark as declined',
+    example: ['65f0a3c4e2b7a1d2c3e4f5a6', '65f0a3c4e2b7a1d2c3e4f5a7'],
+  })
+  ids: string[];
+}
+
+export class BulkDeclineAgodaCaseItemsResponseDto {
+  @ApiProperty({
+    description: 'Number of items successfully marked as declined',
+    example: 5,
+  })
+  declinedCount: number;
+
+  @ApiProperty({
+    description: 'Success message',
+    example: 'Successfully marked 5 item(s) as declined',
+  })
+  message: string;
+}
+
+export class ImportWipDeclinedResponseDto {
+  @ApiProperty({
+    description: 'Number of items successfully imported',
+    example: 25,
+  })
+  successCount: number;
+
+  @ApiProperty({
+    description: 'Number of items that failed to import',
+    example: 2,
+  })
+  failedCount: number;
+
+  @ApiProperty({
+    description: 'Total number of rows processed',
+    example: 27,
+  })
+  totalRows: number;
+
+  @ApiProperty({
+    description: 'Array of error messages for failed rows',
+    example: ['Row 3: Property not found for Hotel ID: 12345', 'Row 5: Missing required field: Reservation ID'],
+    type: [String],
+  })
+  errors: string[];
+
+  @ApiProperty({
+    description: 'Success message',
+    example: 'Successfully imported 25 item(s), 2 failed',
+  })
+  message: string;
+}
+
+export class SendToRetrievalDto implements SendToRetrievalType {
+  @ApiProperty({
+    type: [String],
+    description: 'Array of AgodaCaseItem IDs to send to retrieval',
+    example: ['65f0a3c4e2b7a1d2c3e4f5a6', '65f0a3c4e2b7a1d2c3e4f5a7'],
+  })
+  ids: string[];
+}
+
+export class SendToRetrievalResponseDto {
+  @ApiProperty({
+    description: 'Parent Retrieval ID',
+    example: '65f0a3c4e2b7a1d2c3e4f5a6',
+  })
+  parentRetrievalId: string;
+
+  @ApiProperty({
+    description: 'Parent Retrieval Name',
+    example: 'agoda-retrieval-wip-automatic-2026-09-07',
+  })
+  parentRetrievalName: string;
+
+  @ApiProperty({
+    description: 'Number of retrievals created (one per property)',
+    example: 3,
+  })
+  retrievalsCount: number;
+
+  @ApiProperty({
+    description: 'Number of AgodaCaseItems linked to retrievals',
+    example: 15,
+  })
+  itemsCount: number;
+
+  @ApiProperty({
+    description: 'Success message',
+    example: 'Successfully created 3 retrieval(s) from 15 item(s)',
+  })
+  message: string;
 }

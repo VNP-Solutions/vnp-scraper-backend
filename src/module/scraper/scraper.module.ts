@@ -45,7 +45,7 @@ import { S3UploadService } from '../../common/utils/s3-upload.util';
     forwardRef(() => RecurringJobModule),
     ServerModule,
     BookingScraperUrlModule,
-    RetrievalModule,
+    forwardRef(() => RetrievalModule),
     PropertyCredentialsModule,
   ],
   controllers: [ScraperController, BookingRunController],
