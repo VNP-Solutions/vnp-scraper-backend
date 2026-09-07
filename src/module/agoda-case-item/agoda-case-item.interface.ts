@@ -99,7 +99,12 @@ export interface IAgodaCaseItemRepository {
   /** Find AgodaCaseItems with full details for send to retrieval */
   findItemsWithDetailsForRetrieval(ids: string[]): Promise<any[]>;
 
-  /** Update retrieval_id for multiple AgodaCaseItems */
+  /**
+   * Sets retrieval_id and charge_status: 'send to retrieval' on the given
+   * AgodaCaseItems. Used by the send-to-retrieval flow after the
+   * Retrieval record has been created. retrival_status is left untouched
+   * (stays 'pending').
+   */
   updateRetrievalIdForItems(ids: string[], retrievalId: string): Promise<number>;
 
   propertyExists(propertyId: string): Promise<boolean>;

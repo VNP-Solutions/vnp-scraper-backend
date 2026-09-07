@@ -431,7 +431,10 @@ export class AgodaCaseItemRepository implements IAgodaCaseItemRepository {
     try {
       const result = await this.db.agodaCaseItem.updateMany({
         where: { id: { in: ids } },
-        data: { retrieval_id: retrievalId },
+        data: {
+          retrieval_id: retrievalId,
+          charge_status: 'retrieval_required',
+        },
       });
       return result.count;
     } catch (error) {
