@@ -2240,4 +2240,34 @@ export class JobRepository implements IJobRepository {
       throw error;
     }
   }
+
+  async findJobsForAutomaticEmailCheck(
+    updatedSince: Date,
+  ): Promise<Array<{ id: string }>> {
+    try {
+      const jobs = await this.db.job.findMany({
+        where: {
+          ota_provider: 'Agoda',
+          job_status: 'Completed',
+          reply_status: {
+            in: ['NoReplied', 'RepliedRed'],
+          },
+          updatedAt: {
+            gte: updatedSince,
+          },
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      return jobs;
+    } catch (error) {
+      this.logger.error(
+        `Error finding jobs for automatic email check: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
 }

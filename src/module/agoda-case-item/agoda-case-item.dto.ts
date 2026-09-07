@@ -4,6 +4,7 @@ import {
   BulkDeclineAgodaCaseItemsType,
   CreateAgodaCaseItemType,
   ExportSelectedAgodaCaseItemsType,
+  SendToRetrievalType,
   UpdateAgodaCaseItemType,
 } from './agoda-case-item.validation';
 
@@ -350,6 +351,47 @@ export class ImportWipDeclinedResponseDto {
   @ApiProperty({
     description: 'Success message',
     example: 'Successfully imported 25 item(s), 2 failed',
+  })
+  message: string;
+}
+
+export class SendToRetrievalDto implements SendToRetrievalType {
+  @ApiProperty({
+    type: [String],
+    description: 'Array of AgodaCaseItem IDs to send to retrieval',
+    example: ['65f0a3c4e2b7a1d2c3e4f5a6', '65f0a3c4e2b7a1d2c3e4f5a7'],
+  })
+  ids: string[];
+}
+
+export class SendToRetrievalResponseDto {
+  @ApiProperty({
+    description: 'Parent Retrieval ID',
+    example: '65f0a3c4e2b7a1d2c3e4f5a6',
+  })
+  parentRetrievalId: string;
+
+  @ApiProperty({
+    description: 'Parent Retrieval Name',
+    example: 'agoda-retrieval-wip-automatic-2026-09-07',
+  })
+  parentRetrievalName: string;
+
+  @ApiProperty({
+    description: 'Number of retrievals created (one per property)',
+    example: 3,
+  })
+  retrievalsCount: number;
+
+  @ApiProperty({
+    description: 'Number of AgodaCaseItems linked to retrievals',
+    example: 15,
+  })
+  itemsCount: number;
+
+  @ApiProperty({
+    description: 'Success message',
+    example: 'Successfully created 3 retrieval(s) from 15 item(s)',
   })
   message: string;
 }

@@ -1,7 +1,8 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { AgodaCaseItem } from '@prisma/client';
+import { AgodaCaseItem, PostingType } from '@prisma/client';
 import * as XLSX from 'xlsx';
 import { IPropertyCredentialsService } from '../property-credentials/property-credentials.interface';
+import { IRetrievalService } from '../retrieval/retrieval.interface';
 import { buildAgodaCaseItemWipWorkbook } from './agoda-case-item-wip-export.util';
 import {
   CreateAgodaCaseItemDto,
@@ -23,6 +24,8 @@ export class AgodaCaseItemService implements IAgodaCaseItemService {
     private readonly repository: IAgodaCaseItemRepository,
     @Inject('IPropertyCredentialsService')
     private readonly propertyCredentialsService: IPropertyCredentialsService,
+    @Inject('IRetrievalService')
+    private readonly retrievalService: IRetrievalService,
   ) {}
 
   /**
@@ -412,6 +415,104 @@ export class AgodaCaseItemService implements IAgodaCaseItemService {
       };
     } catch (error) {
       this.logger.error('Error importing WIP declined items:', error);
+      throw error;
+    }
+  }
+
+  async sendToRetrieval(
+    ids: string[],
+    userId: string,
+  ): Promise<{
+    parentRetrievalId: string;
+    parentRetrievalName: string;
+    retrievalsCount: number;
+    itemsCount: number;
+  }> {
+    try {
+      // Fetch AgodaCaseItems with details
+      const items = await this.repository.findItemsWithDetailsForRetrieval(ids);
+
+      if (items.length === 0) {
+        throw new NotFoundException('No AgodaCaseItems found with provided IDs');
+      }
+
+      // Generate parent retrieval name
+      const now = new Date();
+      const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+      const parentRetrievalName = `agoda-retrieval-wip-automatic-${dateStr}`;
+
+      // Create Parent Retrieval
+      const parentRetrieval = await this.retrievalService.createParentRetrieval({
+        name: parentRetrievalName,
+        ota_provider: 'Agoda',
+      });
+
+      this.logger.log(
+        `Created ParentRetrieval: ${parentRetrieval.id} - ${parentRetrieval.name}`,
+      );
+
+      // Group items by property_id
+      const itemsByProperty = items.reduce((acc, item) => {
+        const propertyId = item.property_id;
+        if (!acc[propertyId]) {
+          acc[propertyId] = [];
+        }
+        acc[propertyId].push(item);
+        return acc;
+      }, {} as Record<string, typeof items>);
+
+      const retrievalsCreated: string[] = [];
+
+      // Create one Retrieval per property
+      for (const propertyId of Object.keys(itemsByProperty)) {
+        const propertyItems = itemsByProperty[propertyId];
+        const firstItem = propertyItems[0];
+        const property = firstItem.property;
+        const posting_type = firstItem.posting_type || 'pre';
+
+        // Create Retrieval
+        const retrieval = await this.retrievalService.createRetrieval({
+          name: `${property.name} - ${parentRetrievalName}`,
+          user_id: userId,
+          parent_retrieval_id: parentRetrieval.id,
+          property_id: propertyId,
+          property_name: property.name,
+          portfolio_id: property.portfolio_id || undefined,
+          portfolio_name: firstItem.portfolio?.name || undefined,
+          batch_id: firstItem.batch_id || undefined,
+          posting_type: posting_type as PostingType,
+          ota_provider: 'Agoda',
+          remaining_direct_billed: 0,
+          total_collectable: 0,
+          total_amount_confirmed: 0,
+          execution_type: 'automatic',
+          job_backoff_length_loading: 5000,
+          job_backoff_length_selector: 3000,
+        });
+
+        retrievalsCreated.push(retrieval.id);
+
+        // Update AgodaCaseItems with retrieval_id
+        const itemIds = propertyItems.map((item) => item.id);
+        await this.repository.updateRetrievalIdForItems(itemIds, retrieval.id);
+
+        this.logger.log(
+          `Created Retrieval: ${retrieval.id} for property ${property.name} with ${itemIds.length} items`,
+        );
+      }
+
+      this.logger.log(
+        `Send to Retrieval completed: ${retrievalsCreated.length} retrieval(s) created from ${items.length} item(s)`,
+      );
+
+      return {
+        parentRetrievalId: parentRetrieval.id,
+        parentRetrievalName: parentRetrieval.name,
+        retrievalsCount: retrievalsCreated.length,
+        itemsCount: items.length,
+      };
+    } catch (error) {
+      this.logger.error('Error sending to retrieval:', error);
       throw error;
     }
   }

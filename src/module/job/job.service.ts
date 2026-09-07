@@ -2113,4 +2113,20 @@ export class JobService implements IJobService {
       throw error;
     }
   }
+
+  async findJobsForAutomaticEmailCheck(
+    updatedSince: Date,
+  ): Promise<Array<{ id: string }>> {
+    try {
+      return await this.repository.findJobsForAutomaticEmailCheck(
+        updatedSince,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Error finding jobs for automatic email check: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
 }

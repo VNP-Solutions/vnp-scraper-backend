@@ -9,6 +9,7 @@ import {
   Post,
   Put,
   Query,
+  Request,
   Res,
   UploadedFile,
   UseGuards,
@@ -40,6 +41,8 @@ import {
   CreateAgodaCaseItemDto,
   ExportSelectedAgodaCaseItemsDto,
   ImportWipDeclinedResponseDto,
+  SendToRetrievalDto,
+  SendToRetrievalResponseDto,
   UpdateAgodaCaseItemDto,
 } from './agoda-case-item.dto';
 import {
@@ -50,6 +53,7 @@ import {
   bulkDeclineAgodaCaseItemsSchema,
   createAgodaCaseItemSchema,
   exportSelectedAgodaCaseItemsSchema,
+  sendToRetrievalSchema,
   updateAgodaCaseItemSchema,
 } from './agoda-case-item.validation';
 
@@ -458,6 +462,51 @@ export class AgodaCaseItemController {
       totalRows: result.totalRows,
       errors: result.errors,
       message: `Successfully imported ${result.successCount} item(s), ${result.failedCount} failed`,
+    };
+  }
+
+  @Post('send-to-retrieval')
+  @ApiOperation({
+    summary: 'Send AgodaCaseItems to Retrieval',
+    description:
+      'Create ParentRetrieval and Retrievals (grouped by property) from selected AgodaCaseItems. One Retrieval will be created per property. User is automatically taken from JWT token.',
+  })
+  @ApiBody({ type: SendToRetrievalDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Successfully sent items to retrieval',
+    type: SendToRetrievalResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad Request - Invalid input',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'No AgodaCaseItems found with provided IDs',
+  })
+  @UsePipes(new ZodValidationPipe(sendToRetrievalSchema))
+  async sendToRetrieval(
+    @Body() body: SendToRetrievalDto,
+    @Request() req: any,
+  ): Promise<SendToRetrievalResponseDto> {
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      throw new Error('User not authenticated');
+    }
+
+    const result = await this.agodaCaseItemService.sendToRetrieval(
+      body.ids,
+      userId,
+    );
+
+    return {
+      parentRetrievalId: result.parentRetrievalId,
+      parentRetrievalName: result.parentRetrievalName,
+      retrievalsCount: result.retrievalsCount,
+      itemsCount: result.itemsCount,
+      message: `Successfully created ${result.retrievalsCount} retrieval(s) from ${result.itemsCount} item(s)`,
     };
   }
 

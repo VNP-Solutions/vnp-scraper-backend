@@ -96,6 +96,12 @@ export interface IAgodaCaseItemRepository {
   /** Find portfolio by name */
   findPortfolioByName(portfolioName: string): Promise<{ id: string } | null>;
 
+  /** Find AgodaCaseItems with full details for send to retrieval */
+  findItemsWithDetailsForRetrieval(ids: string[]): Promise<any[]>;
+
+  /** Update retrieval_id for multiple AgodaCaseItems */
+  updateRetrievalIdForItems(ids: string[], retrievalId: string): Promise<number>;
+
   propertyExists(propertyId: string): Promise<boolean>;
 
   batchExists(batchId: string): Promise<boolean>;
@@ -148,5 +154,20 @@ export interface IAgodaCaseItemService {
     failedCount: number;
     totalRows: number;
     errors: string[];
+  }>;
+
+  /**
+   * Send AgodaCaseItems to Retrieval - creates ParentRetrieval and Retrievals
+   * @param ids - Array of AgodaCaseItem IDs
+   * @param userId - User creating the retrieval
+   */
+  sendToRetrieval(
+    ids: string[],
+    userId: string,
+  ): Promise<{
+    parentRetrievalId: string;
+    parentRetrievalName: string;
+    retrievalsCount: number;
+    itemsCount: number;
   }>;
 }

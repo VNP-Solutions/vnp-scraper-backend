@@ -132,6 +132,14 @@ export interface IJobRepository {
    * throwing) when the job id doesn't exist.
    */
   updateReplyStatus(jobId: string, replyStatus: ReplyStatus): Promise<Job | null>;
+  /**
+   * Find all Agoda jobs that need automatic email check.
+   * Criteria: OTA = Agoda, job_status = Completed, reply_status = NoReplied or RepliedRed,
+   * updatedAt >= updatedSince date.
+   */
+  findJobsForAutomaticEmailCheck(
+    updatedSince: Date,
+  ): Promise<Array<{ id: string }>>;
 }
 
 export interface IJobService {
@@ -264,4 +272,13 @@ export interface IJobService {
    * throwing) when the job id doesn't exist.
    */
   updateReplyStatus(jobId: string, replyStatus: ReplyStatus): Promise<Job | null>;
+
+  /**
+   * Find all Agoda jobs that need automatic email check.
+   * Criteria: OTA = Agoda, job_status = Completed, reply_status = NoReplied or RepliedRed,
+   * updatedAt >= updatedSince date.
+   */
+  findJobsForAutomaticEmailCheck(
+    updatedSince: Date,
+  ): Promise<Array<{ id: string }>>;
 }

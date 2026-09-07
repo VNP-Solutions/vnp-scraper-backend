@@ -9,6 +9,7 @@ import { PropertyModule } from '../property/property.module';
 import { AttachmentParserService } from './attachment-parser.service';
 import { SupportEmailController } from './support-email.controller';
 import { SupportEmailRepository } from './support-email.repository';
+import { SupportEmailSchedulerService } from './support-email-scheduler.service';
 import { SupportEmailScraperService } from './support-email-scraper.service';
 import { SupportEmailService } from './support-email.service';
 
@@ -28,6 +29,7 @@ import { SupportEmailService } from './support-email.service';
       provide: 'ISupportEmailRepository',
       useClass: SupportEmailRepository,
     },
+    SupportEmailSchedulerService,
     AttachmentParserService,
     S3UploadService,
     DatabaseService,

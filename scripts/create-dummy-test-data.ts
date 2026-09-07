@@ -49,14 +49,22 @@ async function createDummyTestData() {
         const checkInDate = new Date(2026, 8, 10 + i);
         const checkOutDate = new Date(2026, 8, 15 + i);
         
+        // Format dates as MM/DD/YYYY
+        const formatDate = (date: Date) => {
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          const year = date.getFullYear();
+          return `${month}/${day}/${year}`;
+        };
+        
         dummyItems.push({
           property_id: job.property_id,
           batch_id: job.batch_id,
           portfolio_id: job.property.portfolio_id,
           reservation_id: reservationId,
           guest_name: `Dummy Guest ${i + 1}`,
-          check_in: checkInDate.toISOString().split('T')[0], // YYYY-MM-DD
-          check_out: checkOutDate.toISOString().split('T')[0], // YYYY-MM-DD
+          check_in: formatDate(checkInDate), // MM/DD/YYYY
+          check_out: formatDate(checkOutDate), // MM/DD/YYYY
           amount: (Math.random() * 500 + 100).toFixed(2),
           amount_to_charge: (Math.random() * 500 + 100).toFixed(2),
           vcc_card_number: `4111${Math.floor(Math.random() * 100000000000000)}`.substring(0, 16),
@@ -64,6 +72,7 @@ async function createDummyTestData() {
           card_cvv: '123',
           currency: 'USD',
           charge_status: ['retrieval_required', 'pending', 'charged'][Math.floor(Math.random() * 3)],
+          retrival_status: 'pending',
           is_missing: [true, false][Math.floor(Math.random() * 2)],
           is_archived: false,
           is_declined: [true, false][Math.floor(Math.random() * 2)],

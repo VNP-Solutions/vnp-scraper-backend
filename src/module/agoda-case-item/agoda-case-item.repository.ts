@@ -387,4 +387,56 @@ export class AgodaCaseItemRepository implements IAgodaCaseItemRepository {
       throw error;
     }
   }
+
+  async findItemsWithDetailsForRetrieval(ids: string[]): Promise<any[]> {
+    try {
+      const items = await this.db.agodaCaseItem.findMany({
+        where: { id: { in: ids } },
+        include: {
+          property: {
+            select: {
+              id: true,
+              name: true,
+              portfolio_id: true,
+            },
+          },
+          batch: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          portfolio: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+      return items;
+    } catch (error) {
+      this.logger.error(
+        'Error finding items with details for retrieval:',
+        error,
+      );
+      throw error;
+    }
+  }
+
+  async updateRetrievalIdForItems(
+    ids: string[],
+    retrievalId: string,
+  ): Promise<number> {
+    try {
+      const result = await this.db.agodaCaseItem.updateMany({
+        where: { id: { in: ids } },
+        data: { retrieval_id: retrievalId },
+      });
+      return result.count;
+    } catch (error) {
+      this.logger.error('Error updating retrieval_id for items:', error);
+      throw error;
+    }
+  }
 }
