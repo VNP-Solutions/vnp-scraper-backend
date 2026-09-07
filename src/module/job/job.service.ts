@@ -110,6 +110,13 @@ export class JobService implements IJobService {
     }
   }
 
+  private parseOtaIdFromRow(value: any): number | null {
+    const raw = value?.toString().trim();
+    if (!raw) return null;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
   async createJob(data: CreateJobDto): Promise<Job> {
     try {
       const job = await this.repository.create(data);
@@ -705,12 +712,16 @@ export class JobService implements IJobService {
             const existingPortfolio =
               await this.repository.findPortfolioByName(portfolioName);
 
-            if (!existingPortfolio) {
-              throw new Error(
-                `Portfolio '${portfolioName}' not found. Please create the portfolio first.`,
+            if (existingPortfolio) {
+              portfolioId = existingPortfolio.id;
+            } else {
+              const newPortfolio =
+                await this.repository.createPortfolio(portfolioName);
+              portfolioId = newPortfolio.id;
+              this.logger.log(
+                `Created portfolio: ${portfolioName} (${portfolioId})`,
               );
             }
-            portfolioId = existingPortfolio.id;
           }
 
           if (
@@ -731,12 +742,19 @@ export class JobService implements IJobService {
                 portfolioId,
               );
 
-            if (!existingSubPortfolio) {
-              throw new Error(
-                `Sub-portfolio '${subPortfolioName}' not found under portfolio '${portfolioName}'. Please create the sub-portfolio first.`,
+            if (existingSubPortfolio) {
+              subPortfolioId = existingSubPortfolio.id;
+            } else {
+              const newSubPortfolio =
+                await this.repository.createSubPortfolio(
+                  subPortfolioName,
+                  portfolioId,
+                );
+              subPortfolioId = newSubPortfolio.id;
+              this.logger.log(
+                `Created sub-portfolio: ${subPortfolioName} under portfolio ${portfolioName} (${subPortfolioId})`,
               );
             }
-            subPortfolioId = existingSubPortfolio.id;
           }
 
           let propertyId = null;
@@ -753,12 +771,22 @@ export class JobService implements IJobService {
                 subPortfolioId,
               );
 
-            if (!existingProperty) {
-              throw new Error(
-                `Property '${propertyName}' not found. Please import the property first.`,
+            if (existingProperty) {
+              propertyId = existingProperty.id;
+            } else {
+              const newProperty = await this.repository.createProperty({
+                name: propertyName,
+                portfolio_id: portfolioId,
+                sub_portfolio_id: subPortfolioId,
+                expedia_id: this.parseOtaIdFromRow(rowData['Expedia ID']),
+                booking_id: this.parseOtaIdFromRow(rowData['Booking ID']),
+                agoda_id: this.parseOtaIdFromRow(rowData['Agoda ID']),
+              });
+              propertyId = newProperty.id;
+              this.logger.log(
+                `Created property: ${propertyName} (${propertyId})`,
               );
             }
-            propertyId = existingProperty.id;
           }
 
           let batchId = null;

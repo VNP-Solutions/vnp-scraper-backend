@@ -839,6 +839,59 @@ export class JobRepository implements IJobRepository {
     }
   }
 
+  async createPortfolio(name: string): Promise<any> {
+    try {
+      return await this.db.portfolio.create({
+        data: { name: name.trim() },
+      });
+    } catch (error) {
+      this.logger.error(error);
+      throw error;
+    }
+  }
+
+  async createSubPortfolio(name: string, portfolioId: string): Promise<any> {
+    try {
+      return await this.db.subPortfolio.create({
+        data: {
+          name: name.trim(),
+          portfolio_id: portfolioId,
+        },
+      });
+    } catch (error) {
+      this.logger.error(error);
+      throw error;
+    }
+  }
+
+  async createProperty(data: {
+    name: string;
+    portfolio_id?: string | null;
+    sub_portfolio_id?: string | null;
+    expedia_id?: number | null;
+    booking_id?: number | null;
+    agoda_id?: number | null;
+  }): Promise<any> {
+    try {
+      return await this.db.property.create({
+        data: {
+          name: data.name.trim(),
+          portfolio_id: data.portfolio_id ?? undefined,
+          sub_portfolio_id: data.sub_portfolio_id ?? undefined,
+          expedia_id: data.expedia_id ?? undefined,
+          booking_id: data.booking_id ?? undefined,
+          agoda_id: data.agoda_id ?? undefined,
+          expedia_status: 'Access Required',
+          booking_status: 'Access Required',
+          agoda_status: 'Access Required',
+        },
+      });
+    } catch (error) {
+      this.logger.error(error);
+      throw error;
+    }
+  }
+
   /**
    * Resolves a phone number against the PhoneNumberSlot pool.
    *

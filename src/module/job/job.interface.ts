@@ -27,6 +27,16 @@ export interface IJobRepository {
     portfolioId?: string,
     subPortfolioId?: string,
   ): Promise<any>;
+¬  createPortfolio(name: string): Promise<any>;
+  createSubPortfolio(name: string, portfolioId: string): Promise<any>;
+  createProperty(data: {
+    name: string;
+    portfolio_id?: string | null;
+    sub_portfolio_id?: string | null;
+    expedia_id?: number | null;
+    booking_id?: number | null;
+    agoda_id?: number | null;
+  }): Promise<any>;
   findLatestCheckoutDateByJobId(
     jobId: string,
   ): Promise<{ check_out_date: Date } | null>;
