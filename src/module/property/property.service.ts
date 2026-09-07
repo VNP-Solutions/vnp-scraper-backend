@@ -26,7 +26,6 @@ import {
 } from './property.dto';
 import type { RevealOtaCredentialsBody } from './property.validation';
 import {
-  ImportPropertiesResult,
   IPropertyRepository,
   IPropertyService,
   PropertyDropdownItem,
@@ -351,9 +350,15 @@ export class PropertyService implements IPropertyService {
    * @param file - Excel file buffer
    * @returns Object containing creation counts and created entities
    */
-  async importPropertiesFromExcel(
-    file: Express.Multer.File,
-  ): Promise<ImportPropertiesResult> {
+  async importPropertiesFromExcel(file: Express.Multer.File): Promise<{
+    portfoliosCreated: number;
+    subPortfoliosCreated: number;
+    propertiesCreated: number;
+    credentialsCreated: number;
+    portfolios: any[];
+    subPortfolios: any[];
+    properties: any[];
+  }> {
     try {
       this.logger.log('Starting Excel import process via repository');
       const result = await this.repository.importPropertiesFromExcel(file);

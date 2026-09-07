@@ -149,54 +149,33 @@ export class UpdatePropertyDto {
   phone_number_slot_id?: string | null;
 }
 
-export class ImportPropertiesSkippedDto {
-  @ApiProperty({
-    description: 'Which entity could not be resolved',
-    enum: ['portfolio', 'sub_portfolio', 'property'],
-  })
-  entity: 'portfolio' | 'sub_portfolio' | 'property';
-
-  @ApiProperty({ description: 'Name from the Excel row' })
-  name: string;
-
-  @ApiProperty({ description: 'Why this entry was skipped' })
-  reason: string;
-}
-
 export class ImportPropertiesResponseDto {
   @ApiProperty({
-    description: 'Number of existing portfolios matched from the file',
+    description: 'Number of portfolios created',
     example: 5,
   })
-  portfoliosMatched: number;
+  portfoliosCreated: number;
 
   @ApiProperty({
-    description: 'Number of existing sub-portfolios matched from the file',
+    description: 'Number of sub-portfolios created',
     example: 12,
   })
-  subPortfoliosMatched: number;
+  subPortfoliosCreated: number;
 
   @ApiProperty({
-    description: 'Number of existing properties updated from the file',
+    description: 'Number of properties created',
     example: 25,
   })
-  propertiesUpdated: number;
+  propertiesCreated: number;
 
   @ApiProperty({
-    description: 'Number of property credentials created or merged',
+    description: 'Number of property credentials created',
     example: 20,
   })
   credentialsCreated: number;
 
   @ApiProperty({
-    description:
-      'Rows skipped because the portfolio, sub-portfolio or property has not been synced from DBMS yet',
-    type: [ImportPropertiesSkippedDto],
-  })
-  skipped: ImportPropertiesSkippedDto[];
-
-  @ApiProperty({
-    description: 'List of matched portfolios',
+    description: 'List of created/existing portfolios',
     type: 'array',
     items: {
       type: 'object',
@@ -211,7 +190,7 @@ export class ImportPropertiesResponseDto {
   portfolios: any[];
 
   @ApiProperty({
-    description: 'List of matched sub-portfolios',
+    description: 'List of created/existing sub-portfolios',
     type: 'array',
     items: {
       type: 'object',
@@ -227,7 +206,7 @@ export class ImportPropertiesResponseDto {
   subPortfolios: any[];
 
   @ApiProperty({
-    description: 'List of updated properties',
+    description: 'List of created properties',
     type: 'array',
     items: {
       type: 'object',

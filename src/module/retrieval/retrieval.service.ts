@@ -13,7 +13,6 @@ import {
   RetrievalItem,
 } from '@prisma/client';
 import * as XLSX from 'xlsx';
-import { propertyNotSyncedMessage } from '../../common/constants/dbms-sync.constants';
 import { applyExcelTextColumnFormat } from '../../common/utils/excel-text-column.util';
 import {
   ensureUniqueFilename,
@@ -21,7 +20,10 @@ import {
   sanitizeForFilename,
 } from '../../common/utils/zip-and-filename.util';
 import { IPropertyCredentialsService } from '../property-credentials/property-credentials.interface';
-import { IPropertyRepository } from '../property/property.interface';
+import {
+  IPropertyRepository,
+  IPropertyService,
+} from '../property/property.interface';
 import { IRecurringJobService } from '../recurring-job/recurring-job.interface';
 import {
   BulkCreateRetrievalsFromDbmsDto,
@@ -44,6 +46,8 @@ export class RetrievalService implements IRetrievalService {
     private readonly repository: IRetrievalRepository,
     @Inject('IPropertyRepository')
     private readonly propertyRepository: IPropertyRepository,
+    @Inject('IPropertyService')
+    private readonly propertyService: IPropertyService,
     @Inject('IPropertyCredentialsService')
     private readonly propertyCredentialsService: IPropertyCredentialsService,
     @Inject('IRecurringJobService')
@@ -248,6 +252,8 @@ export class RetrievalService implements IRetrievalService {
     const errors: Array<{ hotel_id: string; name?: string; error: string }> =
       [];
     const created: Array<{ hotel_id: string; retrieval_id: string }> = [];
+    let createdPropertiesCount = 0;
+    let createdPortfoliosCount = 0;
     let retrievalItemsCount = 0;
     let firstOtaProvider: OTAProvider | null = null;
 
@@ -283,53 +289,100 @@ export class RetrievalService implements IRetrievalService {
               ? OTAProvider.Agoda
               : OTAProvider.Expedia;
 
-        const property =
+        let property =
           otaProvider === OTAProvider.Agoda
             ? await this.propertyRepository.findByAgodaId(parseInt(hotelId))
             : await this.propertyRepository.findByExpediaId(parseInt(hotelId));
 
         if (!property) {
-          throw new Error(propertyNotSyncedMessage(hotelId));
-        }
+          const portfolioName = firstRow['Portfolio'] || 'Unknown Portfolio';
+          let portfolio =
+            await this.propertyRepository.findPortfolioByName(portfolioName);
 
-        const username = (firstRow['User Name'] || firstRow['Username'])
-          ?.toString()
-          ?.trim();
-        const password = firstRow['Password']?.toString()?.trim();
+          if (!portfolio) {
+            portfolio =
+              await this.propertyRepository.createPortfolio(portfolioName);
+            createdPortfoliosCount++;
+          }
 
-        if (username || password) {
-          try {
-            const existingCredentials =
-              await this.propertyCredentialsService.getPropertyCredentialsByPropertyId(
-                property.id,
-              );
+          const propertyData = {
+            name:
+              firstRow['Hotel Name'] ||
+              firstRow['Property Name'] ||
+              `Hotel ${hotelId}`,
+            portfolio_id: portfolio.id,
+            ...(otaProvider === OTAProvider.Agoda
+              ? { agoda_id: parseInt(hotelId), agoda_status: 'Active' }
+              : { expedia_id: parseInt(hotelId), expedia_status: 'Active' }),
+          };
 
-            const credentialsData: any =
-              otaProvider === OTAProvider.Agoda
-                ? {
-                    agodaUsername: username || '',
-                    agodaPassword: password || '',
-                  }
-                : {
-                    expediaUsername: username || '',
-                    expediaPassword: password || '',
-                  };
+          property = await this.propertyService.createProperty(propertyData);
+          createdPropertiesCount++;
 
-            if (existingCredentials) {
-              await this.propertyCredentialsService.updatePropertyCredentials(
-                existingCredentials.id,
+          const username = (firstRow['User Name'] || firstRow['Username'])
+            ?.toString()
+            ?.trim();
+          const password = firstRow['Password']?.toString()?.trim();
+
+          if (username || password) {
+            try {
+              const credentialsData: any = { property_id: property.id };
+              if (otaProvider === OTAProvider.Agoda) {
+                credentialsData.agodaUsername = username || '';
+                credentialsData.agodaPassword = password || '';
+              } else {
+                credentialsData.expediaUsername = username || '';
+                credentialsData.expediaPassword = password || '';
+              }
+              await this.propertyCredentialsService.createPropertyCredentials(
                 credentialsData,
               );
-            } else {
-              await this.propertyCredentialsService.createPropertyCredentials({
-                property_id: property.id,
-                ...credentialsData,
-              });
+            } catch (credError: any) {
+              this.logger.error(
+                `Failed to create credentials for property ${property.id}: ${credError.message}`,
+              );
             }
-          } catch (credError: any) {
-            this.logger.error(
-              `Failed to update credentials for property ${property.id}: ${credError.message}`,
-            );
+          }
+        } else {
+          const username = (firstRow['User Name'] || firstRow['Username'])
+            ?.toString()
+            ?.trim();
+          const password = firstRow['Password']?.toString()?.trim();
+
+          if (username || password) {
+            try {
+              const existingCredentials =
+                await this.propertyCredentialsService.getPropertyCredentialsByPropertyId(
+                  property.id,
+                );
+
+              const credentialsData: any =
+                otaProvider === OTAProvider.Agoda
+                  ? {
+                      agodaUsername: username || '',
+                      agodaPassword: password || '',
+                    }
+                  : {
+                      expediaUsername: username || '',
+                      expediaPassword: password || '',
+                    };
+
+              if (existingCredentials) {
+                await this.propertyCredentialsService.updatePropertyCredentials(
+                  existingCredentials.id,
+                  credentialsData,
+                );
+              } else {
+                await this.propertyCredentialsService.createPropertyCredentials({
+                  property_id: property.id,
+                  ...credentialsData,
+                });
+              }
+            } catch (credError: any) {
+              this.logger.error(
+                `Failed to update credentials for property ${property.id}: ${credError.message}`,
+              );
+            }
           }
         }
 
@@ -497,7 +550,7 @@ export class RetrievalService implements IRetrievalService {
     }
 
     this.logger.log(
-      `Retrieval import completed: parent=${parentRetrieval.id}, success=${successCount}, failed=${failedCount}, items=${retrievalItemsCount}`,
+      `Retrieval import completed: parent=${parentRetrieval.id}, success=${successCount}, failed=${failedCount}, items=${retrievalItemsCount}, portfolios=${createdPortfoliosCount}, properties=${createdPropertiesCount}`,
     );
 
     return {

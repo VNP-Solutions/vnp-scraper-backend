@@ -20,16 +20,21 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { Response } from 'express';
-import { creationDisabledMessage } from 'src/common/constants/dbms-sync.constants';
 import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
 import { ResponseHandler } from 'src/common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { UpdateSubPortfolioDto } from './sub-portfolio.dto';
+import {
+  CreateSubPortfolioDto,
+  UpdateSubPortfolioDto,
+} from './sub-portfolio.dto';
 import { ISubPortfolioService } from './sub-portfolio.interface';
 import { ExternalJwtGuard } from '../qa-panel/guards/external-jwt.guard';
 import { SyncBulkUpsertSubPortfolioDto } from './sub-portfolio.dto';
-import { updateSubPortfolioSchema } from './sub-portfolio.validation';
+import {
+  createSubPortfolioSchema,
+  updateSubPortfolioSchema,
+} from './sub-portfolio.validation';
 
 @ApiTags('Sub-Portfolios')
 @ApiBearerAuth('JWT-auth')
@@ -42,22 +47,43 @@ export class SubPortfolioController {
   ) {}
 
   @Post()
-  @ApiOperation({
-    summary: 'Disabled - sub-portfolios are created in DBMS and synced here',
-  })
+  @ApiOperation({ summary: 'Create a new sub-portfolio' })
   @ApiResponse({
-    status: 403,
-    description: 'Sub-portfolio creation is only possible through DBMS sync',
+    status: 201,
+    description: 'Sub-portfolio created successfully',
   })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ValidateBody(createSubPortfolioSchema)
   @UseGuards(JwtAuthGuard)
-  async createSubPortfolio(@Res() response: Response) {
+  async createSubPortfolio(
+    @Req() request: Request,
+    @Body() createSubPortfolioDto: CreateSubPortfolioDto,
+    @Res() response: Response,
+  ) {
+    const { user } = request as any;
+    if (user.role !== 'admin') {
+      return ResponseHandler.handler(
+        response,
+        async () => {
+          return {
+            statusCode: 403,
+            message: 'You are not authorized to create a sub-portfolio',
+            data: null,
+          };
+        },
+        this.logger,
+      );
+    }
     return ResponseHandler.handler(
       response,
       async () => {
+        const res = await this.subPortfolioService.createSubPortfolio(
+          createSubPortfolioDto,
+        );
         return {
-          statusCode: 403,
-          message: creationDisabledMessage('Sub-portfolios'),
-          data: null,
+          statusCode: 201,
+          message: 'Sub-portfolio created successfully',
+          data: res,
         };
       },
       this.logger,

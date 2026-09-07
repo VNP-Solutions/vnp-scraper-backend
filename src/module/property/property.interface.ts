@@ -21,25 +21,6 @@ export interface PropertyDropdownItem {
   portfolio_id: string | null;
 }
 
-/**
- * The Excel import can only match and update entities that DBMS has already
- * synced, so anything it could not resolve is reported back in `skipped`.
- */
-export interface ImportPropertiesResult {
-  portfoliosMatched: number;
-  subPortfoliosMatched: number;
-  propertiesUpdated: number;
-  credentialsCreated: number;
-  portfolios: any[];
-  subPortfolios: any[];
-  properties: any[];
-  skipped: Array<{
-    entity: 'portfolio' | 'sub_portfolio' | 'property';
-    name: string;
-    reason: string;
-  }>;
-}
-
 export interface IPropertyRepository {
   create(data: CreatePropertyDto): Promise<Property>;
   findAll(
@@ -97,9 +78,15 @@ export interface IPropertyRepository {
   ): Promise<any>;
   findPropertyCredentialsByPropertyId(propertyId: string): Promise<any>;
   // Excel import operations
-  importPropertiesFromExcel(
-    file: Express.Multer.File,
-  ): Promise<ImportPropertiesResult>;
+  importPropertiesFromExcel(file: Express.Multer.File): Promise<{
+    portfoliosCreated: number;
+    subPortfoliosCreated: number;
+    propertiesCreated: number;
+    credentialsCreated: number;
+    portfolios: any[];
+    subPortfolios: any[];
+    properties: any[];
+  }>;
   importExpediaCredentialsFromExcel(file: Express.Multer.File): Promise<{
     updated: number;
     propertyNotFound: number;
@@ -159,9 +146,15 @@ export interface IPropertyService {
     isAdmin: boolean,
   ): Promise<PropertyDropdownItem[]>;
   // getPropertyCredentials(propertyId: string): Promise<any>;
-  importPropertiesFromExcel(
-    file: Express.Multer.File,
-  ): Promise<ImportPropertiesResult>;
+  importPropertiesFromExcel(file: Express.Multer.File): Promise<{
+    portfoliosCreated: number;
+    subPortfoliosCreated: number;
+    propertiesCreated: number;
+    credentialsCreated: number;
+    portfolios: any[];
+    subPortfolios: any[];
+    properties: any[];
+  }>;
   importExpediaCredentialsFromExcel(file: Express.Multer.File): Promise<{
     updated: number;
     propertyNotFound: number;

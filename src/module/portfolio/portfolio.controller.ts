@@ -21,14 +21,16 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { Response } from 'express';
-import { creationDisabledMessage } from 'src/common/constants/dbms-sync.constants';
 import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
+import { ValidateBody } from 'src/common/decorators/validate.decorator';
 import { ResponseHandler } from 'src/common/utils/response-handler';
 import { IPortfolioService } from './portfolio.interface';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { createPortfolioSchema } from './portfolio.validation';
 import { ServiceTokenGuard } from '../property/guards/service-token';
 import {
+  CreatePortfolioDto,
   SyncBulkUpsertPortfolioDto,
   SyncCreatePortfolioDto,
   SyncDeleteByParentPortfolioDto,
@@ -50,22 +52,41 @@ export class PortfolioController {
   ) {}
 
   @Post()
-  @ApiOperation({
-    summary: 'Disabled - portfolios are created in DBMS and synced here',
-  })
-  @ApiResponse({
-    status: 403,
-    description: 'Portfolio creation is only possible through DBMS sync',
-  })
+  @ApiOperation({ summary: 'Create a new portfolio' })
+  @ApiResponse({ status: 201, description: 'Portfolio created successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ValidateBody(createPortfolioSchema)
   @UseGuards(JwtAuthGuard)
-  async createPortfolio(@Res() response: Response) {
+  async createPortfolio(
+    @Req() request: Request,
+    @Body() createPortfolioDto: CreatePortfolioDto,
+    @Res() response: Response,
+  ) {
+    const { user } = request as any;
+    if (user.role !== 'admin') {
+      return ResponseHandler.handler(
+        response,
+        async () => {
+          return {
+            statusCode: 403,
+            message: 'You are not authorized to create a portfolio',
+            data: null,
+          };
+        },
+        this.logger,
+      );
+    }
     return ResponseHandler.handler(
       response,
       async () => {
+        const res = await this.portfolioService.createPortfolio(
+          createPortfolioDto,
+          user.userId,
+        );
         return {
-          statusCode: 403,
-          message: creationDisabledMessage('Portfolios'),
-          data: null,
+          statusCode: 200,
+          message: 'Portfolio created successfully',
+          data: res,
         };
       },
       this.logger,
