@@ -749,6 +749,151 @@ export class BulkUploadJobItemsAcceptedDto {
   };
 }
 
+export class ReopenAllReservationsRequestDto {
+  @ApiProperty({
+    type: [String],
+    description:
+      'MongoDB _ids of jobs to re-run. Must be non-empty. A job is only ' +
+      'submitted if it is not already Running/InQueue, has a ' +
+      'need_help_file_url on record, its property has a valid agoda_id, ' +
+      'and it has valid Agoda credentials — otherwise it is reported under ' +
+      'results.invalid.',
+    example: ['507f1f77bcf86cd799439011', '507f1f77bcf86cd799439012'],
+  })
+  job_ids: string[];
+}
+
+export class ReopenAllReservationsSubmittedDto {
+  @ApiProperty({ example: '507f1f77bcf86cd799439011' })
+  jobId: string;
+
+  @ApiProperty({ example: '123456' })
+  agodaId: string;
+
+  @ApiProperty({ example: 'submitted' })
+  status: string;
+}
+
+export class ReopenAllReservationsInvalidDto {
+  @ApiProperty({ example: '507f1f77bcf86cd799439012' })
+  jobId: string;
+
+  @ApiProperty({
+    example:
+      'Job 507f1f77bcf86cd799439012 has no need_help_file_url on record — nothing to re-attach. A property run must complete successfully first.',
+  })
+  reason: string;
+
+  @ApiProperty({ example: 'Pending' })
+  currentStatus: string;
+}
+
+export class ReopenAllReservationsResultsDto {
+  @ApiProperty({ type: [ReopenAllReservationsSubmittedDto] })
+  submitted: ReopenAllReservationsSubmittedDto[];
+
+  @ApiProperty({ type: [ReopenAllReservationsInvalidDto] })
+  invalid: ReopenAllReservationsInvalidDto[];
+
+  @ApiProperty({ type: [Object], description: 'Per-job errors, if any' })
+  errors: any[];
+}
+
+export class ReopenAllReservationsResponseDto {
+  @ApiProperty({ example: 200 })
+  status: number;
+
+  @ApiProperty({
+    example: 'Processed 2 jobs. 1 submitted, 1 invalid, 0 with errors.',
+  })
+  message: string;
+
+  @ApiProperty({ type: ReopenAllReservationsResultsDto })
+  results: ReopenAllReservationsResultsDto;
+}
+
+export class ReopenCaseRunJobRequestDto {
+  @ApiProperty({
+    type: [String],
+    description:
+      'MongoDB _ids of jobs to evaluate for a case reopen. Non-empty array. ' +
+      'Only Completed jobs are eligible; for each one the newest stored ' +
+      'Agoda Partner Support reply (from support_emails) is checked for a ' +
+      'should_reopen flag before a Need Help reopen run is submitted.',
+    example: ['507f1f77bcf86cd799439011', '507f1f77bcf86cd799439012'],
+  })
+  job_ids: string[];
+}
+
+export class ReopenCaseRunJobSubmittedDto {
+  @ApiProperty({ example: '507f1f77bcf86cd799439011' })
+  jobId: string;
+
+  @ApiProperty({ example: '2462187' })
+  agodaId: string;
+
+  @ApiProperty({ example: 'CS123456789' })
+  caseId: string;
+
+  @ApiProperty({ type: [String], example: ['1234567890', '1234567891'] })
+  reopenBookingIds: string[];
+
+  @ApiProperty({ example: 'submitted' })
+  status: string;
+}
+
+export class ReopenCaseRunJobSkippedDto {
+  @ApiProperty({ example: '507f1f77bcf86cd799439012' })
+  jobId: string;
+
+  @ApiProperty({ example: '98433' })
+  agodaId: string;
+
+  @ApiProperty({ example: 'No booking needs the case reopened' })
+  reason: string;
+}
+
+export class ReopenCaseRunJobInvalidDto {
+  @ApiProperty({ example: '507f1f77bcf86cd799439013' })
+  jobId: string;
+
+  @ApiProperty({
+    example: "Job is not Completed (current status: 'Pending')",
+  })
+  reason: string;
+
+  @ApiPropertyOptional({ example: 'Pending' })
+  currentStatus?: string;
+}
+
+export class ReopenCaseRunJobResultsDto {
+  @ApiProperty({ type: [ReopenCaseRunJobSubmittedDto] })
+  submitted: ReopenCaseRunJobSubmittedDto[];
+
+  @ApiProperty({ type: [ReopenCaseRunJobSkippedDto] })
+  skipped: ReopenCaseRunJobSkippedDto[];
+
+  @ApiProperty({ type: [ReopenCaseRunJobInvalidDto] })
+  invalid: ReopenCaseRunJobInvalidDto[];
+
+  @ApiProperty({ type: [Object], description: 'Per-job errors, if any' })
+  errors: any[];
+}
+
+export class ReopenCaseRunJobResponseDto {
+  @ApiProperty({ example: 200 })
+  status: number;
+
+  @ApiProperty({
+    example:
+      'Processed 2 jobs. 1 submitted for reopen, 1 skipped, 0 invalid, 0 with errors.',
+  })
+  message: string;
+
+  @ApiProperty({ type: ReopenCaseRunJobResultsDto })
+  results: ReopenCaseRunJobResultsDto;
+}
+
 export class BulkUploadJobItemsSyncResultDto {
   @ApiProperty({ example: 200 })
   statusCode: number;

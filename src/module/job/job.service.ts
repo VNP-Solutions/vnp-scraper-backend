@@ -9,7 +9,14 @@ import {
   IPropertyRepository,
   IPropertyService,
 } from '../property/property.interface';
-import { Batch, Job, JobStatus, OTAProvider, PostingType } from '@prisma/client';
+import {
+  Batch,
+  Job,
+  JobStatus,
+  OTAProvider,
+  PostingType,
+  ReplyStatus,
+} from '@prisma/client';
 import * as archiver from 'archiver';
 import { PassThrough, Writable } from 'stream';
 import * as XLSX from 'xlsx';
@@ -47,6 +54,7 @@ import {
 } from './dashboard-export.util';
 import { writeDashboardXlsxToStream } from './dashboard-export-stream.util';
 import { triggerLambda } from '../../helpers/lambdaHelper';
+import { buildReplyWaitFields } from './reply-status.util';
 
 @Injectable()
 export class JobService implements IJobService {
@@ -295,6 +303,13 @@ export class JobService implements IJobService {
           screenshot_urls: Array.isArray(job.screenshot_urls)
             ? job.screenshot_urls
             : [],
+          // Older documents (created before reply_status existed, or
+          // non-Agoda jobs which never set it) may not have this field at
+          // all in Mongo — default it to null instead of letting it be
+          // silently dropped from the JSON response.
+          reply_status: job.reply_status ?? null,
+          reply_deadline_at: job.reply_deadline_at ?? null,
+          job_completed_date: job.job_completed_date ?? null,
         };
       });
       return { ...result, data };
@@ -345,7 +360,12 @@ export class JobService implements IJobService {
         }
       }
       
-      const job = await this.repository.update(id, data);
+      const job = await this.repository.update(id, {
+        ...data,
+        ...(data.job_status === JobStatus.Completed
+          ? buildReplyWaitFields(existingJob.ota_provider)
+          : {}),
+      });
       return job;
     } catch (error) {
       this.logger.error(`Error updating job: ${error.message}`, error.stack);
@@ -2015,4 +2035,34 @@ export class JobService implements IJobService {
     }
   }
 
+  async updateReplyStatus(
+    jobId: string,
+    replyStatus: ReplyStatus,
+  ): Promise<Job | null> {
+    try {
+      return await this.repository.updateReplyStatus(jobId, replyStatus);
+    } catch (error) {
+      this.logger.error(
+        `Error updating reply_status for job ${jobId}: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async findJobsForAutomaticEmailCheck(
+    updatedSince: Date,
+  ): Promise<Array<{ id: string }>> {
+    try {
+      return await this.repository.findJobsForAutomaticEmailCheck(
+        updatedSince,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Error finding jobs for automatic email check: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
 }

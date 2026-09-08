@@ -25,6 +25,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { ReplyStatus } from '@prisma/client';
 import { Response } from 'express';
 import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
@@ -292,6 +293,13 @@ export class JobController {
     required: false,
     enum: ['Expedia', 'Booking', 'Agoda'],
     description: 'Filter jobs by OTA provider',
+  })
+  @ApiQuery({
+    name: 'reply_status',
+    required: false,
+    enum: ReplyStatus,
+    description:
+      'Filter jobs by Agoda Partner Support reply status (NoReplied, RepliedRed, RepliedGreen). Only meaningful for Agoda jobs — reply_status is null for Expedia/Booking jobs and for Agoda jobs that have never completed a run.',
   })
   @ApiQuery({
     name: 'recurring_id',
