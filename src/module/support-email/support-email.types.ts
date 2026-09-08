@@ -104,6 +104,18 @@ export interface ParsedSupportEmailBody {
   text: string;
 }
 
+/**
+ * Amount Agoda's report showed as still owed for one collectable booking.
+ * `currency` is the report's own `Supplier Local Currency` column when
+ * present, otherwise `USD` (the amount column itself is always USD —
+ * `LP(USD)`, `USD Total Include GST`).
+ */
+export interface CollectBookingAmount {
+  bookingId: string;
+  amount: string | null;
+  currency: string | null;
+}
+
 /** Roll-up of the per-attachment decisions for a single email. */
 export interface ReopenSummary {
   shouldReopen: boolean;
@@ -112,6 +124,12 @@ export interface ReopenSummary {
   reopenBookingIds: string[];
   /** Bookings the property can charge directly, deduplicated. */
   collectBookingIds: string[];
+  /**
+   * Amount/currency for each entry in `collectBookingIds`, so
+   * `send-to-retrieval` can populate `AgodaCaseItem.amount_to_charge` /
+   * `currency` straight from the captured reply.
+   */
+  collectBookingAmounts: CollectBookingAmount[];
 }
 
 /** Which way a message in the labelled conversation was travelling. */

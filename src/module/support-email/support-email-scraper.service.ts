@@ -44,6 +44,7 @@ import {
   DEFAULT_LOOKBACK_DAYS,
   DEFAULT_SUPPORT_EMAIL_LABEL,
   type BulkSupportEmailResults,
+  type CollectBookingAmount,
   type JobSupportEmailResult,
   type ParsedAttachment,
   type ParsedSupportEmail,
@@ -201,6 +202,7 @@ export class SupportEmailScraperService implements ISupportEmailScraperService {
         reason: 'No tabular attachment to evaluate',
         reopenBookingIds: [],
         collectBookingIds: [],
+        collectBookingAmounts: [],
       };
     }
 
@@ -217,6 +219,43 @@ export class SupportEmailScraperService implements ISupportEmailScraperService {
       ),
     );
 
+    // One amount per collectable booking, in the order first seen — a
+    // booking repeated across attachments keeps its first reading rather
+    // than being overwritten by a later, possibly stale, one.
+    const collectBookingAmounts: CollectBookingAmount[] = [];
+    const seenBookingIds = new Set<string>();
+    for (const decision of decisions) {
+      // The report's own currency column, when it has one — the amount
+      // column itself is always USD (`LP(USD)`, `USD Total Include GST`),
+      // this is only ever the *supplier's local* currency, kept for
+      // reference alongside the (always-USD) amount.
+      const currencyColumn = decision.detectedColumns.currency;
+
+      for (const entry of decision.collect) {
+        if (!entry.bookingId || seenBookingIds.has(entry.bookingId)) continue;
+        seenBookingIds.add(entry.bookingId);
+
+        if (entry.amount === null) {
+          collectBookingAmounts.push({
+            bookingId: entry.bookingId,
+            amount: null,
+            currency: null,
+          });
+          continue;
+        }
+
+        const rawCurrency = currencyColumn
+          ? entry.row[currencyColumn]?.trim()
+          : '';
+
+        collectBookingAmounts.push({
+          bookingId: entry.bookingId,
+          amount: String(entry.amount),
+          currency: rawCurrency || 'USD',
+        });
+      }
+    }
+
     const reasonParts: string[] = [];
     if (reopenBookingIds.length > 0) {
       reasonParts.push(
@@ -232,6 +271,7 @@ export class SupportEmailScraperService implements ISupportEmailScraperService {
       reason: reasonParts.join(', ') || 'Nothing outstanding in the report',
       reopenBookingIds,
       collectBookingIds,
+      collectBookingAmounts,
     };
   }
 

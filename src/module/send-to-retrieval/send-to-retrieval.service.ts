@@ -12,7 +12,12 @@
  */
 
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { Job, JobStatus, OTAProvider } from '@prisma/client';
+import {
+  CollectBookingAmount,
+  Job,
+  JobStatus,
+  OTAProvider,
+} from '@prisma/client';
 import { IAgodaCaseItemService } from '../agoda-case-item/agoda-case-item.interface';
 import { DatabaseService } from '../database/database.service';
 import { resolveAgodaIdForJob } from '../job/agoda-id.util';
@@ -39,6 +44,8 @@ interface CollectCandidate {
   job: Job;
   agodaId: string;
   reservations: string[];
+  /** Amount/currency Agoda's report showed per booking, from the stored reply. */
+  bookingAmounts: CollectBookingAmount[];
 }
 
 function defaultParentName(now: Date): string {
@@ -86,7 +93,7 @@ export class SendToRetrievalService implements ISendToRetrievalService {
     candidate: CollectCandidate,
     parentRetrievalId: string,
   ) {
-    const { job, reservations } = candidate;
+    const { job, reservations, bookingAmounts } = candidate;
 
     const data: CreateRetrievalDto = {
       name: job.property_name,
@@ -121,20 +128,28 @@ export class SendToRetrievalService implements ISendToRetrievalService {
     // Create the retrieval first
     const retrieval = await this.retrievalService.createRetrieval(data);
 
-    // Create AgodaCaseItems for each reservation
-    await this.createAgodaCaseItemsForRetrieval(job, reservations, retrieval.id);
+    // Create (or update) AgodaCaseItems for each reservation
+    await this.createAgodaCaseItemsForRetrieval(
+      job,
+      reservations,
+      retrieval.id,
+      bookingAmounts,
+    );
 
     return retrieval;
   }
 
   /**
-   * Creates AgodaCaseItem records for each reservation in the retrieval.
-   * Fetches JobItem data for each reservation and maps it to AgodaCaseItem fields.
+   * Creates one AgodaCaseItem per reservation in the retrieval, or updates
+   * the existing one for the same (reservation_id, property_id) pair —
+   * resending a job to retrieval must not pile up duplicate rows for a
+   * booking it already has a case item for.
    */
   private async createAgodaCaseItemsForRetrieval(
     job: Job,
     reservationIds: string[],
     retrievalId: string,
+    bookingAmounts: CollectBookingAmount[],
   ): Promise<void> {
     try {
       // Fetch JobItems for these reservations
@@ -147,19 +162,38 @@ export class SendToRetrievalService implements ISendToRetrievalService {
         },
       });
 
-      // Create AgodaCaseItem for each JobItem
+      const amountByBookingId = new Map<
+        string,
+        { amount: string | null; currency: string | null }
+      >();
+      for (const entry of bookingAmounts) {
+        if (!entry.booking_id) continue;
+        amountByBookingId.set(entry.booking_id, {
+          amount: entry.amount,
+          currency: entry.currency,
+        });
+      }
+
+      // Create or update AgodaCaseItem for each JobItem
       for (const jobItem of jobItems) {
+        const reservationId = jobItem.reservation_id ?? undefined;
+        const amountInfo = reservationId
+          ? amountByBookingId.get(reservationId)
+          : undefined;
+
         try {
-          await this.agodaCaseItemService.create({
+          const payload = {
             property_id: job.property_id ?? undefined,
             batch_id: job.batch_id ?? undefined,
             portfolio_id: job.portfolio_id ?? undefined,
             retrieval_id: retrievalId,
-            reservation_id: jobItem.reservation_id ?? undefined,
-            // guest_name, check_in, check_out, amount, amount_to_charge are
-            // deliberately left unset here — the retrieval process fills
-            // these in itself once it runs.
-            currency: undefined, // Not available in JobItem
+            reservation_id: reservationId,
+            // Straight from the report Agoda attached to its reply
+            // (captured by POST /api/agoda/retrive-case-email); guest_name,
+            // check_in, check_out and amount stay unset here — the
+            // retrieval process fills those in once it runs.
+            amount_to_charge: amountInfo?.amount ?? undefined,
+            currency: amountInfo?.currency ?? undefined,
             charge_status: 'retrieval_required',
             vcc_card_number: undefined, // Will be filled by retrieval process
             card_expire: undefined, // Will be filled by retrieval process
@@ -169,14 +203,31 @@ export class SendToRetrievalService implements ISendToRetrievalService {
             ota_provider: OTAProvider.Agoda,
             posting_type: job.posting_type,
             createdBy: job.user_id,
-          });
+          };
 
-          this.logger.log(
-            `✅ Created AgodaCaseItem for reservation ${jobItem.reservation_id} (retrievalId=${retrievalId})`,
-          );
+          const existing =
+            job.property_id && reservationId
+              ? await this.agodaCaseItemService.findByReservationAndProperty(
+                  reservationId,
+                  job.property_id,
+                )
+              : null;
+
+          if (existing) {
+            await this.agodaCaseItemService.update(existing.id, payload);
+            this.logger.log(
+              `♻️ Updated existing AgodaCaseItem for reservation ${reservationId} ` +
+                `(id=${existing.id}, retrievalId=${retrievalId}) instead of duplicating it`,
+            );
+          } else {
+            await this.agodaCaseItemService.create(payload);
+            this.logger.log(
+              `✅ Created AgodaCaseItem for reservation ${reservationId} (retrievalId=${retrievalId})`,
+            );
+          }
         } catch (error: any) {
           this.logger.error(
-            `Failed to create AgodaCaseItem for reservation ${jobItem.reservation_id}:`,
+            `Failed to create/update AgodaCaseItem for reservation ${reservationId}:`,
             error,
           );
           // Continue with other items even if one fails
@@ -346,6 +397,7 @@ export class SendToRetrievalService implements ISendToRetrievalService {
           job,
           agodaId,
           reservations: email.collect_booking_ids,
+          bookingAmounts: email.collect_booking_amounts,
         });
       } catch (error: any) {
         this.logger.error(`Error preparing retrieval for job ${jobId}:`, error);

@@ -292,8 +292,6 @@ model Job {
   /// Completion time + 48h. Past this, NoReplied means overdue rather than
   /// merely "too early". Rewritten every time the job completes.
   reply_deadline_at                       DateTime?
-  /// updatedAt keeps moving forward on later, unrelated edits (e.g. a
-  /// manual reply_status correction).
   job_completed_date                      String?
   createdAt                               DateTime           @default(now())
   updatedAt                               DateTime           @updatedAt
@@ -995,6 +993,18 @@ type SupportEmailAttachment {
   upload_error String?
 }
 
+/// The USD amount Agoda's report showed as still owed for one collectable
+/// booking, captured alongside `collect_booking_ids` so `send-to-retrieval`
+/// can populate `AgodaCaseItem.amount_to_charge` / `currency` without having
+/// to re-read the report. `currency` is the report's own `Supplier Local
+/// Currency` column when present, otherwise `USD` (the amount column itself
+/// is always USD — `LP(USD)`, `USD Total Include GST`).
+type CollectBookingAmount {
+  booking_id String
+  amount     String?
+  currency   String?
+}
+
 /// One message from the labelled Agoda Partner Support conversation — Agoda's
 /// replies and our own submissions alike — captured from Gmail and kept so
 /// the same message is never processed twice. `message_id` is Gmail's own
@@ -1033,6 +1043,7 @@ model SupportEmail {
   should_reopen       Boolean  @default(false)
   reopen_booking_ids  String[] @default([])
   collect_booking_ids String[] @default([])
+  collect_booking_amounts CollectBookingAmount[]
   reply_status        ReplyStatus?
 
   createdAt DateTime @default(now())

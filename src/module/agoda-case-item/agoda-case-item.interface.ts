@@ -74,6 +74,16 @@ export interface IAgodaCaseItemRepository {
 
   findById(id: string): Promise<AgodaCaseItem | null>;
 
+  /**
+   * Looks up an existing item for the same booking at the same property, so
+   * `send-to-retrieval` can update it in place instead of inserting a
+   * duplicate when a job is resent to retrieval.
+   */
+  findByReservationAndProperty(
+    reservationId: string,
+    propertyId: string,
+  ): Promise<AgodaCaseItem | null>;
+
   update(id: string, data: UpdateAgodaCaseItemDto): Promise<AgodaCaseItem>;
 
   delete(id: string): Promise<AgodaCaseItem>;
@@ -122,6 +132,12 @@ export interface IAgodaCaseItemService {
   findAll(filters?: AgodaCaseItemFilters): Promise<PaginatedAgodaCaseItems>;
 
   findById(id: string): Promise<AgodaCaseItem>;
+
+  /** Same lookup as the repository's, exposed for callers outside this module (e.g. send-to-retrieval). */
+  findByReservationAndProperty(
+    reservationId: string,
+    propertyId: string,
+  ): Promise<AgodaCaseItem | null>;
 
   update(id: string, data: UpdateAgodaCaseItemDto): Promise<AgodaCaseItem>;
 

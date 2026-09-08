@@ -104,17 +104,40 @@ function parseXlsx(buffer: Buffer): {
   if (!sheetName) return { columns: [], rows: [] };
 
   const sheet = workbook.Sheets[sheetName];
+
+  // Get all rows as arrays to find the first non-empty row for headers
+  const allRows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+    header: 1,
+    defval: '',
+    raw: false,
+  });
+
+  // Find the first non-empty row to use as headers
+  let headerRowIndex = 0;
+  let columns: string[] = [];
+
+  for (let i = 0; i < allRows.length; i++) {
+    const row = allRows[i];
+    // Check if row has any non-empty cells
+    const hasContent = row && row.some((cell) => cell !== '' && cell != null);
+    if (hasContent) {
+      headerRowIndex = i;
+      columns = row.map((cell) => String(cell ?? '').trim());
+      break;
+    }
+  }
+
+  // Parse rows starting from the row after the header
   const rows = XLSX.utils
-    .sheet_to_json<Record<string, unknown>>(sheet, { defval: '', raw: false })
+    .sheet_to_json<Record<string, unknown>>(sheet, {
+      defval: '',
+      raw: false,
+      range: headerRowIndex, // Start from the header row (xlsx will skip it and start from next row)
+    })
     .map(toStringRecord);
 
-  const columns = XLSX.utils.sheet_to_json<string[]>(sheet, {
-    header: 1,
-    range: 0,
-  })[0];
-
   return {
-    columns: (columns ?? []).map((column) => String(column).trim()),
+    columns,
     rows,
   };
 }
