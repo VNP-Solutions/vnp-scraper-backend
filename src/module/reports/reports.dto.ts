@@ -140,8 +140,7 @@ export class SearchReportsRequestDto {
   card_periods?: ('Over160' | 'Under160')[];
 
   @ApiPropertyOptional({
-    description:
-      '"Job dates within" — filters by Job.start_date and end_date.',
+    description: '"Job dates within" — filters by Job.start_date and end_date.',
     type: ReportsJobDatesDto,
   })
   job_dates?: ReportsJobDatesDto | null;
@@ -160,6 +159,14 @@ export class SearchReportsRequestDto {
     example: false,
   })
   include_archived?: boolean;
+
+  @ApiPropertyOptional({
+    enum: [0, 1],
+    description:
+      'Filter jobs by priority (0 = Normal, 1 = High). Omit for no filter.',
+    example: 1,
+  })
+  priority?: 0 | 1;
 
   @ApiPropertyOptional({ description: 'Page number (1-indexed)', example: 1 })
   page?: number;
@@ -225,7 +232,7 @@ export class ReportsJobTagEntryDto {
     description:
       'Tag kind. Currently the only supported value is `over_160` ' +
       '(whether (today - check_out_date) > 160 days for the majority of ' +
-      'the job\'s items at completion time).',
+      "the job's items at completion time).",
     example: 'over_160',
   })
   field: JobTagField;
@@ -421,6 +428,9 @@ export class ReportsCurrentCountsDto {
 
   @ApiProperty({ type: ReportsStatusItemDto })
   manual: ReportsStatusItemDto;
+
+  @ApiProperty({ type: ReportsStatusItemDto })
+  highPriority: ReportsStatusItemDto;
 
   @ApiProperty({ description: 'Total number of matching jobs', example: 47 })
   total: number;

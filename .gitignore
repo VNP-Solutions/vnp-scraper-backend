@@ -140,3 +140,6 @@ decrypt-password.ts
 
 # Local database backups
 /backups
+
+# macOS
+.DS_Store

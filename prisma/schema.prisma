@@ -32,14 +32,6 @@ enum JobStatus {
   Manual
 }
 
-/// Identifies which "kind" of evaluation a JobTagEntry represents.
-/// Add new values here as new tag kinds are introduced.
-///   - over_160: whether (today − check_out_date) > 160 days majority on
-///               the job's items at completion time.
-enum JobTagField {
-  over_160
-}
-
 /// Where a job stands with Agoda Partner Support, judged from the newest
 /// reply to land after the property run. Only meaningful for Agoda jobs.
 enum ReplyStatus {
@@ -49,6 +41,14 @@ enum ReplyStatus {
   RepliedRed
   /// Agoda replied and nothing needs reopening — the balance is collectable.
   RepliedGreen
+}
+
+/// Identifies which "kind" of evaluation a JobTagEntry represents.
+/// Add new values here as new tag kinds are introduced.
+///   - over_160: whether (today − check_out_date) > 160 days majority on
+///               the job's items at completion time.
+enum JobTagField {
+  over_160
 }
 
 /// Embedded entry stored inside Job.tags. Each entry records both the
@@ -281,6 +281,10 @@ model Job {
   tags                                    JobTagEntry[]
   db_billing_duration                     Int?
   booking_vccs_filtered_reservation_count Int?
+  phone_number                            String?
+  slot                                    Int?
+  replay_status                           String?
+  current_ss_step                         String?
   is_archived                             Boolean            @default(false)
   /// How Agoda Partner Support answered this run. Agoda jobs only —
   /// (re)set to NoReplied whenever the job completes; see reply-status.util.ts.
@@ -288,6 +292,8 @@ model Job {
   /// Completion time + 48h. Past this, NoReplied means overdue rather than
   /// merely "too early". Rewritten every time the job completes.
   reply_deadline_at                       DateTime?
+  /// updatedAt keeps moving forward on later, unrelated edits (e.g. a
+  /// manual reply_status correction).
   job_completed_date                      String?
   createdAt                               DateTime           @default(now())
   updatedAt                               DateTime           @updatedAt
@@ -304,8 +310,8 @@ model Job {
   OtpStatus             OtpStatus[]
   phoneNumberSlots      PhoneNumberSlot[]
   dbData                DbData[]
-  supportEmails         SupportEmail[]
   dbEntries             DbEntry[]
+  supportEmails         SupportEmail[]
 
   @@map("jobs")
 }

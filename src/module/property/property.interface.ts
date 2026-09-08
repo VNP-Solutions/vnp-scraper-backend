@@ -1,5 +1,15 @@
 import { OTAProvider, Property } from '@prisma/client';
-import { CreatePropertyDto, SyncBulkDeletePropertyDto, SyncBulkDeletePropertyItemDto, SyncBulkDeletePropertyResultDto, SyncBulkUpsertPropertyItemDto, SyncBulkUpsertPropertyResultDto, SyncDeleteDto, SyncUpsertPropertyDto, UpdatePropertyDto } from './property.dto';
+import {
+  CreatePropertyDto,
+  SyncBulkDeletePropertyDto,
+  SyncBulkDeletePropertyItemDto,
+  SyncBulkDeletePropertyResultDto,
+  SyncBulkUpsertPropertyItemDto,
+  SyncBulkUpsertPropertyResultDto,
+  SyncDeleteDto,
+  SyncUpsertPropertyDto,
+  UpdatePropertyDto,
+} from './property.dto';
 import type {
   RevealOtaCredentialsBody,
   UpdateOtaCredentialsBody,
@@ -83,9 +93,7 @@ export interface IPropertyRepository {
     rowsSkippedInvalid: number;
     failures: Array<{ row: number; expediaId?: number; reason: string }>;
   }>;
-  updateOtaCredentials(
-    body: UpdateOtaCredentialsBody,
-  ): Promise<{
+  updateOtaCredentials(body: UpdateOtaCredentialsBody): Promise<{
     updated: number;
     propertyNotFound: boolean;
     failures: Array<{ reason: string; property_id?: string }>;
@@ -99,10 +107,16 @@ export interface IPropertyRepository {
     username: string;
     password: string;
   }>;
-  findByOtaIds(ids: { expedia_id: number | null; booking_id: number | null; agoda_id: number | null }): Promise<Property | null>
-  findByName(name: string): Promise<Property | null>
-  findByParentId(parentId: string): Promise<Property | null>
-  findPortfolioByParentId(parentId: string): Promise<any>
+  findByOtaIds(ids: {
+    expedia_id: number | null;
+    booking_id: number | null;
+    agoda_id: number | null;
+  }): Promise<Property | null>;
+  findByName(name: string): Promise<Property | null>;
+  findByParentId(parentId: string): Promise<Property | null>;
+  findPortfolioByParentId(parentId: string): Promise<any>;
+  findByParentIds(parentIds: string[]): Promise<Property[]>;
+  findPortfoliosByParentIds(parentIds: string[]): Promise<any[]>;
 }
 
 export interface IPropertyService {
@@ -147,16 +161,12 @@ export interface IPropertyService {
     rowsSkippedInvalid: number;
     failures: Array<{ row: number; expediaId?: number; reason: string }>;
   }>;
-  updateOtaCredentials(
-    body: UpdateOtaCredentialsBody,
-  ): Promise<{
+  updateOtaCredentials(body: UpdateOtaCredentialsBody): Promise<{
     updated: number;
     propertyNotFound: boolean;
     failures: Array<{ reason: string; property_id?: string }>;
   }>;
-  getOtaCredentialsReveal(
-    body: RevealOtaCredentialsBody,
-  ): Promise<{
+  getOtaCredentialsReveal(body: RevealOtaCredentialsBody): Promise<{
     propertyNotFound: boolean;
     credentialsNotFound: boolean;
     username: string;
@@ -165,11 +175,13 @@ export interface IPropertyService {
 
   /** Flattens `credentials[]` to a single object like GET /properties. */
   applyPropertyCredentialsShape(property: any | null | undefined): void;
-  syncCreate(dto: CreatePropertyDto): Promise<{ status: string; id?: string }>
-  syncDelete(dto: SyncDeleteDto): Promise<{ status: string; id?: string }>
-  syncDeleteByParentId(parentId: string): Promise<{ message: string }>
+  syncCreate(dto: CreatePropertyDto): Promise<{ status: string; id?: string }>;
+  syncDelete(dto: SyncDeleteDto): Promise<{ status: string; id?: string }>;
+  syncDeleteByParentId(parentId: string): Promise<{ message: string }>;
   syncBulkCreate(items: CreatePropertyDto[]): Promise<{
-    created: number; alreadyExists: number; failed: number;
+    created: number;
+    alreadyExists: number;
+    failed: number;
     results: Array<{ name: string; status: string; id?: string }>;
   }>;
   syncUpsertProperty(
@@ -179,6 +191,11 @@ export interface IPropertyService {
   syncBulkUpsert(
     items: SyncBulkUpsertPropertyItemDto[],
   ): Promise<SyncBulkUpsertPropertyResultDto>;
+  syncBulkUpsertAsync(
+    items: SyncBulkUpsertPropertyItemDto[],
+    batchId: string,
+    callbackUrl: string,
+  ): Promise<{ batchId: string; status: string }>;
   syncBulkDelete(
     dto: SyncBulkDeletePropertyDto,
   ): Promise<SyncBulkDeletePropertyResultDto>;

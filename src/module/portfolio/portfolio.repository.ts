@@ -155,7 +155,9 @@ export class PortfolioRepository implements IPortfolioRepository {
 
   async findByName(name: string): Promise<Portfolio | null> {
     try {
-      return await this.db.portfolio.findFirst({ where: { name: name.trim() } });
+      return await this.db.portfolio.findUnique({
+        where: { name: name.trim() },
+      });
     } catch (error) {
       this.logger.error(error);
       return null;

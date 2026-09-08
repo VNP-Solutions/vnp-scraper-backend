@@ -29,6 +29,8 @@ import {
   UpdateSubPortfolioDto,
 } from './sub-portfolio.dto';
 import { ISubPortfolioService } from './sub-portfolio.interface';
+import { ExternalJwtGuard } from '../qa-panel/guards/external-jwt.guard';
+import { SyncBulkUpsertSubPortfolioDto } from './sub-portfolio.dto';
 import {
   createSubPortfolioSchema,
   updateSubPortfolioSchema,
@@ -349,6 +351,25 @@ export class SubPortfolioController {
           data: subPortfolio,
         };
       },
+      this.logger,
+    );
+  }
+
+  @Post('/sync-bulk-upsert')
+  @UseGuards(ExternalJwtGuard)
+  @ApiBearerAuth('external-jwt')
+  @ApiOperation({ summary: 'Internal: bulk upsert sub-portfolios from DBMS' })
+  async syncBulkUpsert(
+    @Body() dto: SyncBulkUpsertSubPortfolioDto,
+    @Res() response: Response,
+  ) {
+    return ResponseHandler.handler(
+      response,
+      async () => ({
+        statusCode: 200,
+        message: 'Sync bulk upsert processed',
+        data: await this.subPortfolioService.syncBulkUpsert(dto.items ?? []),
+      }),
       this.logger,
     );
   }

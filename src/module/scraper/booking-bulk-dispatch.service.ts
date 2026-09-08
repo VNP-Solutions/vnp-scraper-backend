@@ -79,6 +79,7 @@ export class BookingBulkDispatchService {
    * Groups Booking jobs by decrypted bookingUsername + bookingPassword + property portfolio
    * (same credentials in different portfolios → separate groups), then one POST to Booking.
    * Body includes optional scheduled_job_id (top-level and repeated per credential_groups item).
+   * phone_number and slot on each credential group come from the Job documents, not Property.
    */
   async dispatchGroupedBulkRuns(
     bookingJobs: BookingJobForBulk[],
@@ -255,8 +256,8 @@ export class BookingBulkDispatchService {
   private async resolvePhoneSlotForCredentialGroup(
     entries: JobPropertyRef[],
   ): Promise<{ phone_number: string | null; slot: number | null }> {
-    const uniqueIds = [...new Set(entries.map((e) => e.propertyId))];
-    if (uniqueIds.length === 0) {
+    const uniqueJobIds = [...new Set(entries.map((e) => e.jobId))];
+    if (uniqueJobIds.length === 0) {
       return { phone_number: null, slot: null };
     }
 
@@ -265,28 +266,27 @@ export class BookingBulkDispatchService {
       phone_number: string | null;
       slot: number | null;
     };
-    const rows = (await this.db.property.findMany({
-      where: { id: { in: uniqueIds } },
-      // Prisma client typings may lag schema; fields exist on Property in DB
-      select: { id: true, phone_number: true, slot: true } as any,
-    })) as unknown as Row[];
+    const rows = await this.db.job.findMany({
+      where: { id: { in: uniqueJobIds } },
+      select: { id: true, phone_number: true, slot: true },
+    });
 
     const byId = new Map(rows.map((r) => [r.id, r]));
     let first: { phone_number: string; slot: number } | null = null;
 
-    for (const { propertyId } of entries) {
-      const p = byId.get(propertyId);
-      if (!p) {
+    for (const { jobId } of entries) {
+      const job = byId.get(jobId);
+      if (!job) {
         continue;
       }
       const phoneOk =
-        p.phone_number != null && String(p.phone_number).trim() !== '';
-      const slotOk = p.slot != null && !Number.isNaN(Number(p.slot));
+        job.phone_number != null && String(job.phone_number).trim() !== '';
+      const slotOk = job.slot != null && !Number.isNaN(Number(job.slot));
       if (!phoneOk || !slotOk) {
         continue;
       }
-      const phoneStr = String(p.phone_number).trim();
-      const slotNum = Number(p.slot);
+      const phoneStr = String(job.phone_number).trim();
+      const slotNum = Number(job.slot);
       if (!first) {
         first = { phone_number: phoneStr, slot: slotNum };
       } else if (
@@ -294,7 +294,7 @@ export class BookingBulkDispatchService {
         first.slot !== slotNum
       ) {
         this.logger.warn(
-          `Booking credential group: properties disagree on phone/slot; using first (${first.phone_number}, slot ${first.slot})`,
+          `Booking credential group: jobs disagree on phone/slot; using first (${first.phone_number}, slot ${first.slot})`,
         );
       }
     }

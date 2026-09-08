@@ -22,7 +22,8 @@
     "migrate:add-is-archived": "ts-node migrations/add-is-archived-field.ts",
     "migrate:fix-ota-id-indexes": "ts-node migrations/fix-ota-id-sparse-unique-indexes.ts",
     "backup:full": "ts-node scripts/backup-full-ejson.ts",
-    "backup:restore": "ts-node scripts/dump-and-restore-backup.ts"
+    "backup:restore": "ts-node scripts/dump-and-restore-backup.ts",
+    "export:property-job-date-ranges": "ts-node scripts/export-property-job-date-ranges.ts"
   },
   "dependencies": {
     "@aws-sdk/client-lambda": "^3.1043.0",
@@ -49,6 +50,7 @@
     "mongodb": "^7.1.0",
     "multer": "^2.0.0",
     "nodemailer": "^7.0.3",
+    "papaparse": "^5.7.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "prisma": "^6.7.0",
@@ -66,6 +68,7 @@
     "@types/jest": "^29.5.2",
     "@types/multer": "^1.4.12",
     "@types/node": "^20.3.1",
+    "@types/papaparse": "^5.5.2",
     "@types/supertest": "^6.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",

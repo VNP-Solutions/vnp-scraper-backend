@@ -38,6 +38,46 @@ export class SubPortfolioRepository implements ISubPortfolioRepository {
     }
   }
 
+  async findByName(name: string): Promise<SubPortfolio | null> {
+    try {
+      return await this.db.subPortfolio.findUnique({
+        where: { name: name.trim() },
+      });
+    } catch (error) {
+      this.logger.error(error);
+      return null;
+    }
+  }
+
+  async createWithId(
+    id: string,
+    name: string,
+    portfolioId: string,
+  ): Promise<SubPortfolio> {
+    return this.db.subPortfolio.create({
+      data: {
+        id,
+        name: name.trim(),
+        portfolio_id: portfolioId,
+      },
+    });
+  }
+
+  async reassignPropertiesFromSubPortfolio(
+    fromSubPortfolioId: string,
+    toSubPortfolioId: string,
+  ): Promise<void> {
+    if (fromSubPortfolioId === toSubPortfolioId) return;
+    await this.db.property.updateMany({
+      where: { sub_portfolio_id: fromSubPortfolioId },
+      data: { sub_portfolio_id: toSubPortfolioId },
+    });
+    await this.db.job.updateMany({
+      where: { sub_portfolio_id: fromSubPortfolioId },
+      data: { sub_portfolio_id: toSubPortfolioId },
+    });
+  }
+
   async findAll(
     query: Record<string, any>,
   ): Promise<{ data: SubPortfolio[]; metadata: any }> {

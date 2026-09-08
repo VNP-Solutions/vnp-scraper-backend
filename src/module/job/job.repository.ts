@@ -370,6 +370,7 @@ export class JobRepository implements IJobRepository {
         portfolio_id,
         property_id,
         ota_provider,
+        priority,
         reply_status,
         ...filters
       } = query || {};
@@ -518,6 +519,11 @@ export class JobRepository implements IJobRepository {
       // Filter by ota_provider
       if (ota_provider) {
         allFilters.ota_provider = ota_provider.toString();
+      }
+
+      // Filter by priority (0 = Normal, 1 = High)
+      if (priority !== undefined && priority !== null && priority !== '') {
+        allFilters.priority = parseInt(priority.toString(), 10);
       }
 
       // Filter by reply_status (Agoda Partner Support reply outcome:
@@ -749,36 +755,6 @@ export class JobRepository implements IJobRepository {
     }
   }
 
-  async findJobsForAutomaticEmailCheck(
-    updatedSince: Date,
-  ): Promise<Array<{ id: string }>> {
-    try {
-      const jobs = await this.db.job.findMany({
-        where: {
-          ota_provider: 'Agoda',
-          job_status: 'Completed',
-          reply_status: {
-            in: ['NoReplied', 'RepliedRed'],
-          },
-          updatedAt: {
-            gte: updatedSince,
-          },
-        },
-        select: {
-          id: true,
-        },
-      });
-
-      return jobs;
-    } catch (error) {
-      this.logger.error(
-        `Error finding jobs for automatic email check: ${error.message}`,
-        error.stack,
-      );
-      throw error;
-    }
-  }
-
   async delete(id: string): Promise<Job> {
     try {
       // First, delete all associated job items
@@ -859,6 +835,99 @@ export class JobRepository implements IJobRepository {
       return property;
     } catch (error) {
       this.logger.error(error);
+      throw error;
+    }
+  }
+
+  async createPortfolio(name: string): Promise<any> {
+    try {
+      return await this.db.portfolio.create({
+        data: { name: name.trim() },
+      });
+    } catch (error) {
+      this.logger.error(error);
+      throw error;
+    }
+  }
+
+  async createSubPortfolio(name: string, portfolioId: string): Promise<any> {
+    try {
+      return await this.db.subPortfolio.create({
+        data: {
+          name: name.trim(),
+          portfolio_id: portfolioId,
+        },
+      });
+    } catch (error) {
+      this.logger.error(error);
+      throw error;
+    }
+  }
+
+  async createProperty(data: {
+    name: string;
+    portfolio_id?: string | null;
+    sub_portfolio_id?: string | null;
+    expedia_id?: number | null;
+    booking_id?: number | null;
+    agoda_id?: number | null;
+  }): Promise<any> {
+    try {
+      return await this.db.property.create({
+        data: {
+          name: data.name.trim(),
+          portfolio_id: data.portfolio_id ?? undefined,
+          sub_portfolio_id: data.sub_portfolio_id ?? undefined,
+          expedia_id: data.expedia_id ?? undefined,
+          booking_id: data.booking_id ?? undefined,
+          agoda_id: data.agoda_id ?? undefined,
+          expedia_status: 'Access Required',
+          booking_status: 'Access Required',
+          agoda_status: 'Access Required',
+        },
+      });
+    } catch (error) {
+      this.logger.error(error);
+      throw error;
+    }
+  }
+
+  /**
+   * Resolves a phone number against the PhoneNumberSlot pool.
+   *
+   * Tries an exact match first, then falls back to comparing digits only, so a
+   * DBMS-entered "+1 (555) 0100" still finds a pool row stored as "15550100".
+   * Returns null when the pool has no match — callers keep the phone number and
+   * leave the slot unset rather than failing.
+   */
+  async findPhoneNumberSlotByPhone(
+    phoneNumber: string,
+  ): Promise<{ phone_number: string; slot: number } | null> {
+    try {
+      const raw = (phoneNumber ?? '').trim();
+      if (!raw) return null;
+
+      const exact = await this.db.phoneNumberSlot.findFirst({
+        where: { phone_number: raw },
+        select: { phone_number: true, slot: true },
+      });
+      if (exact) return exact;
+
+      const digits = raw.replace(/\D/g, '');
+      if (!digits) return null;
+
+      const all = await this.db.phoneNumberSlot.findMany({
+        select: { phone_number: true, slot: true },
+      });
+      return (
+        all.find((row) => row.phone_number.replace(/\D/g, '') === digits) ??
+        null
+      );
+    } catch (error) {
+      this.logger.error(
+        `Error resolving phone number slot for "${phoneNumber}":`,
+        error,
+      );
       throw error;
     }
   }
@@ -2250,6 +2319,36 @@ export class JobRepository implements IJobRepository {
     } catch (error) {
       this.logger.error(
         `Error finding DbEntry by job ID: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async findJobsForAutomaticEmailCheck(
+    updatedSince: Date,
+  ): Promise<Array<{ id: string }>> {
+    try {
+      const jobs = await this.db.job.findMany({
+        where: {
+          ota_provider: 'Agoda',
+          job_status: 'Completed',
+          reply_status: {
+            in: ['NoReplied', 'RepliedRed'],
+          },
+          updatedAt: {
+            gte: updatedSince,
+          },
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      return jobs;
+    } catch (error) {
+      this.logger.error(
+        `Error finding jobs for automatic email check: ${error.message}`,
         error.stack,
       );
       throw error;

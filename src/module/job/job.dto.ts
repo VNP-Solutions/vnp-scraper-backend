@@ -119,6 +119,32 @@ export class CreateJobDto {
       'Count of reservations after booking VCCs filter (optional metadata)',
   })
   booking_vccs_filtered_reservation_count?: number;
+
+  @ApiProperty({
+    required: false,
+    description: 'Assigned phone number (matches the linked PhoneNumberSlot)',
+  })
+  phone_number?: string;
+
+  @ApiProperty({
+    required: false,
+    description: 'Slot index of the assigned PhoneNumberSlot',
+  })
+  slot?: number;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Current replay status of the job',
+  })
+  replay_status?: string;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Screenshot step the scraper is currently on, matching JobScreenshotUrl.step',
+  })
+  current_ss_step?: string;
 }
 
 export class BulkCreateJobFromDbmsItemDto {
@@ -149,6 +175,23 @@ export class BulkCreateJobFromDbmsItemDto {
       'Ignored — billing type is derived from ota_type (VCC or DB).',
   })
   billing_type?: string;
+
+  @ApiProperty({
+    example: 1,
+    required: false,
+    default: 0,
+    description: 'Job priority (0 = Normal, 1 = High)',
+  })
+  priority?: number;
+
+  @ApiProperty({
+    example: '+1 555 0100',
+    required: false,
+    description:
+      'Booking OTP phone number from DBMS. Stored on the job as phone_number, ' +
+      'and matched against the PhoneNumberSlot pool to resolve the job slot.',
+  })
+  booking_otp_number?: string;
 }
 
 export class BulkCreateJobFromDbmsDto {
@@ -243,6 +286,19 @@ export class UpdateJobDto implements Partial<CreateJobDto> {
       'Count of reservations after booking VCCs filter (optional metadata)',
   })
   booking_vccs_filtered_reservation_count?: number;
+
+  @ApiProperty({
+    required: false,
+    description: 'Current replay status of the job',
+  })
+  replay_status?: string;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Screenshot step the scraper is currently on, matching JobScreenshotUrl.step',
+  })
+  current_ss_step?: string;
 
   @ApiProperty({
     required: false,

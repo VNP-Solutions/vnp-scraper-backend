@@ -140,26 +140,31 @@ export class JobController {
     type: BulkCreateJobFromDbmsDto,
     examples: {
       two_jobs: {
-        summary: 'Create two jobs',
+        summary: 'Create jobs with priority',
         value: {
           jobs: [
             {
               parent_id: 'dbms-property-id',
               ota_type: 'expedia',
-              start_date: '2025-07-01',
-              end_date: '2025-10-01',
+              start_date: '2026-08-01',
+              end_date: '2026-08-31',
+              billing_type: 'VCC',
+              priority: 1,
             },
             {
               parent_id: 'dbms-property-id',
               ota_type: 'booking',
-              start_date: '2025-07-01',
-              end_date: '2026-10-01',
+              start_date: '2026-08-01',
+              end_date: '2026-08-31',
+              priority: 0,
+              booking_otp_number: '+1 555 0100',
             },
             {
               parent_id: 'dbms-property-id',
               ota_type: 'expedia_db',
-              start_date: '2025-07-01',
-              end_date: '2026-10-01',
+              start_date: '2026-08-01',
+              end_date: '2026-08-31',
+              priority: 1,
             },
           ],
         },
@@ -271,7 +276,8 @@ export class JobController {
   @ApiQuery({
     name: 'schedule_start_date',
     required: false,
-    description: 'Start date for filtering by schedule_date (YYYY-MM-DD format)',
+    description:
+      'Start date for filtering by schedule_date (YYYY-MM-DD format)',
   })
   @ApiQuery({
     name: 'schedule_end_date',
@@ -293,6 +299,12 @@ export class JobController {
     required: false,
     enum: ['Expedia', 'Booking', 'Agoda'],
     description: 'Filter jobs by OTA provider',
+  })
+  @ApiQuery({
+    name: 'priority',
+    required: false,
+    type: Number,
+    description: 'Filter jobs by priority (0 = Normal, 1 = High)',
   })
   @ApiQuery({
     name: 'reply_status',
@@ -1277,8 +1289,7 @@ export class JobController {
           const status = error?.status || 500;
           return {
             statusCode: status,
-            message:
-              error?.message || 'Failed to export single job master CSV',
+            message: error?.message || 'Failed to export single job master CSV',
             data: null,
           };
         },
@@ -1319,7 +1330,11 @@ export class JobController {
     schema: {
       type: 'object',
       properties: {
-        platform: { type: 'string', example: 'expedia', description: 'Platform name to send to Lambda' },
+        platform: {
+          type: 'string',
+          example: 'expedia',
+          description: 'Platform name to send to Lambda',
+        },
       },
       required: ['platform'],
     },
@@ -1346,7 +1361,10 @@ export class JobController {
         message: `Lambda triggered successfully for platform: ${body.platform}`,
       });
     } catch (error: any) {
-      this.logger.error(`Error triggering Lambda: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error triggering Lambda: ${error.message}`,
+        error.stack,
+      );
       return response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
         success: false,
         message: `Failed to trigger Lambda: ${error.message}`,

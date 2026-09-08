@@ -15,13 +15,11 @@ export interface ReportsJobTagEntry {
 }
 
 /** Per-user permission scope. `null` means "no restriction" (admin). */
-export type ReportsAccessScope =
-  | null
-  | {
-      propertyIds: string[];
-      portfolioIds: string[];
-      subPortfolioIds: string[];
-    };
+export type ReportsAccessScope = null | {
+  propertyIds: string[];
+  portfolioIds: string[];
+  subPortfolioIds: string[];
+};
 
 /**
  * Filter the repository layer applies against the Job collection. Built
@@ -67,6 +65,9 @@ export interface ReportsRepositoryFilter {
 
   /** When 'DB' / 'VCC' restrict Job.billing_type. */
   billingTypes: string[];
+
+  /** When set, filters by Job.priority (0 = Normal, 1 = High). */
+  priority?: 0 | 1;
 }
 
 /**
@@ -162,6 +163,7 @@ export interface ReportsCurrentCounts {
   stopped: ReportsStatusItem;
   nothingToReport: ReportsStatusItem;
   manual: ReportsStatusItem;
+  highPriority: ReportsStatusItem;
   total: number;
 }
 

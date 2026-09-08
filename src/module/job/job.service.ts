@@ -1,3 +1,4 @@
+import { HttpService } from '@nestjs/axios';
 import {
   BadRequestException,
   Inject,
@@ -5,6 +6,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   IPropertyRepository,
   IPropertyService,
@@ -17,7 +19,7 @@ import {
   PostingType,
   ReplyStatus,
 } from '@prisma/client';
-import * as archiver from 'archiver';
+import { firstValueFrom } from 'rxjs';
 import { PassThrough, Writable } from 'stream';
 import * as XLSX from 'xlsx';
 import {
@@ -71,6 +73,8 @@ export class JobService implements IJobService {
     private readonly propertyService: IPropertyService,
     @Inject('IPropertyRepository')
     private readonly propertyRepository: IPropertyRepository,
+    private readonly httpService: HttpService,
+    private readonly configService: ConfigService,
     private readonly logger: Logger,
   ) {}
 
@@ -106,38 +110,11 @@ export class JobService implements IJobService {
     }
   }
 
-  /**
-   * Parse an optional OTA ID from an Excel cell.
-   * Empty / blank / non-numeric values are ignored.
-   */
-  private parseOptionalOtaId(value: unknown): number | undefined {
-    if (value === undefined || value === null) {
-      return undefined;
-    }
-    if (typeof value === 'string' && value.trim() === '') {
-      return undefined;
-    }
-    const num =
-      typeof value === 'number' ? value : Number(String(value).trim());
-    if (!Number.isFinite(num) || num <= 0) {
-      return undefined;
-    }
-    return Math.trunc(num);
-  }
-
-  private parseOtaIdsFromImportRow(rowData: any): {
-    expedia_id?: number;
-    booking_id?: number;
-    agoda_id?: number;
-  } {
-    const expedia_id = this.parseOptionalOtaId(rowData['Expedia ID']);
-    const booking_id = this.parseOptionalOtaId(rowData['Booking ID']);
-    const agoda_id = this.parseOptionalOtaId(rowData['Agoda ID']);
-    return {
-      ...(expedia_id !== undefined ? { expedia_id } : {}),
-      ...(booking_id !== undefined ? { booking_id } : {}),
-      ...(agoda_id !== undefined ? { agoda_id } : {}),
-    };
+  private parseOtaIdFromRow(value: any): number | null {
+    const raw = value?.toString().trim();
+    if (!raw) return null;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
   }
 
   async createJob(data: CreateJobDto): Promise<Job> {
@@ -191,6 +168,11 @@ export class JobService implements IJobService {
 
         const otaProvider = this.mapOtaType(item.ota_type);
         const billingType = this.mapBillingTypeFromOtaType(item.ota_type);
+        const priority = this.mapDbmsPriority(item.priority);
+        const phoneSlot = await this.resolveDbmsPhoneSlot(
+          item.booking_otp_number,
+          parentId,
+        );
 
         const job = await this.repository.create({
           user_id: userId,
@@ -209,15 +191,17 @@ export class JobService implements IJobService {
           job_backoff_length_selector: 40000,
           max_retries: 3,
           retry_delay_ms: 5000,
-          priority: 0,
+          priority,
           queue_name: 'default',
           job_status: JobStatus.Pending,
+          phone_number: phoneSlot.phone_number,
+          slot: phoneSlot.slot,
         } as CreateJobDto);
 
         result.createdCount++;
         result.created.push({ parent_id: parentId, job_id: job.id });
         this.logger.log(
-          `DBMS bulk create: created job_id=${job.id} for parent_id=${parentId} (property_id=${property.id}, ota_type=${item.ota_type}, billing_type=${billingType}, start_date=${item.start_date}, end_date=${item.end_date})`,
+          `DBMS bulk create: created job_id=${job.id} for parent_id=${parentId} (property_id=${property.id}, ota_type=${item.ota_type}, billing_type=${billingType}, priority=${priority}, start_date=${item.start_date}, end_date=${item.end_date})`,
         );
       } catch (error) {
         const errorMessage =
@@ -238,6 +222,30 @@ export class JobService implements IJobService {
     );
 
     return result;
+  }
+
+  /**
+   * Turns the DBMS-supplied booking OTP number into the { phone_number, slot }
+   * pair stored on the job. The slot comes from the PhoneNumberSlot pool; an
+   * unknown number is still recorded, just without a slot, so a missing pool
+   * row never fails job creation.
+   */
+  private async resolveDbmsPhoneSlot(
+    bookingOtpNumber: string | undefined,
+    parentId: string,
+  ): Promise<{ phone_number?: string; slot?: number }> {
+    const phoneNumber = (bookingOtpNumber ?? '').trim();
+    if (!phoneNumber) return {};
+
+    const match = await this.repository.findPhoneNumberSlotByPhone(phoneNumber);
+    if (!match) {
+      this.logger.warn(
+        `DBMS bulk create: no PhoneNumberSlot matches booking_otp_number="${phoneNumber}" (parent_id=${parentId}); saving phone number without a slot`,
+      );
+      return { phone_number: phoneNumber };
+    }
+
+    return { phone_number: match.phone_number, slot: match.slot };
   }
 
   private mapOtaType(otaType: string): OTAProvider {
@@ -284,6 +292,15 @@ export class JobService implements IJobService {
       default:
         throw new Error(`Unsupported ota_type: ${otaType}`);
     }
+  }
+
+  /** Normalize DBMS priority; defaults to 0 (Normal). Accepts 0 / 1. */
+  private mapDbmsPriority(priority?: number): number {
+    if (priority === undefined || priority === null || Number.isNaN(Number(priority))) {
+      return 0;
+    }
+    const n = Math.trunc(Number(priority));
+    return n < 0 ? 0 : n;
   }
 
   async getAllJobs(
@@ -366,10 +383,107 @@ export class JobService implements IJobService {
           ? buildReplyWaitFields(existingJob.ota_provider)
           : {}),
       });
+
+      // When status is set to Completed, notify DBMS so it can update
+      // the property's historical run date window for this OTA.
+      if (data.job_status === JobStatus.Completed) {
+        await this.notifyDbmsHistoricalRunDate(job);
+      }
+
       return job;
     } catch (error) {
       this.logger.error(`Error updating job: ${error.message}`, error.stack);
       throw error;
+    }
+  }
+
+  /**
+   * POST /external/recurring-jobs/update-historical-run-date on DBMS.
+   * Public endpoint — no auth header. Soft-fails: never blocks the job update.
+   */
+  private async notifyDbmsHistoricalRunDate(job: Job): Promise<void> {
+    try {
+      const baseUrl = this.configService
+        .get<string>('DBMS_SERVER_URL')
+        ?.trim?.();
+
+      if (!baseUrl) {
+        this.logger.warn(
+          `DBMS historical-run-date skipped for job ${job.id}: DBMS_SERVER_URL is not set`,
+        );
+        return;
+      }
+
+      if (!job.property_id) {
+        this.logger.warn(
+          `DBMS historical-run-date skipped for job ${job.id}: job has no property_id`,
+        );
+        return;
+      }
+
+      const property = await this.propertyRepository.findById(job.property_id);
+      const parentId = (property as any)?.parent_id?.trim?.() as
+        | string
+        | undefined;
+      if (!parentId) {
+        this.logger.warn(
+          `DBMS historical-run-date skipped for job ${job.id}: property ${job.property_id} has no parent_id`,
+        );
+        return;
+      }
+
+      const startDate = (job.start_date ?? '').toString().trim();
+      const endDate = (job.end_date ?? '').toString().trim();
+      if (!startDate || !endDate) {
+        this.logger.warn(
+          `DBMS historical-run-date skipped for job ${job.id}: missing start_date/end_date`,
+        );
+        return;
+      }
+
+      const otaType = this.mapOtaProviderToDbmsType(job.ota_provider);
+      const url = `${baseUrl.replace(/\/+$/, '')}/external/recurring-jobs/update-historical-run-date`;
+      const body = {
+        parent_id: parentId,
+        ota_type: otaType,
+        start_date: startDate,
+        end_date: endDate,
+      };
+
+      const response = await firstValueFrom(
+        this.httpService.post(url, body, {
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          timeout: 60000,
+        }),
+      );
+
+      this.logger.log(
+        `DBMS historical-run-date notified for job ${job.id} (parent_id=${parentId}, ota_type=${otaType}, status=${response?.status})`,
+      );
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      const responseData = (error as any)?.response?.data;
+      this.logger.warn(
+        `DBMS historical-run-date failed for job ${job.id}: ${msg}${
+          responseData ? ` — ${JSON.stringify(responseData)}` : ''
+        }`,
+      );
+    }
+  }
+
+  private mapOtaProviderToDbmsType(otaProvider: OTAProvider | string): string {
+    switch ((otaProvider ?? '').toString().trim().toLowerCase()) {
+      case 'expedia':
+        return 'expedia';
+      case 'booking':
+        return 'booking';
+      case 'agoda':
+        return 'agoda';
+      default:
+        return (otaProvider ?? '').toString().trim().toLowerCase();
     }
   }
 
@@ -598,12 +712,16 @@ export class JobService implements IJobService {
             const existingPortfolio =
               await this.repository.findPortfolioByName(portfolioName);
 
-            if (!existingPortfolio) {
-              throw new Error(
-                `Portfolio '${portfolioName}' not found. Please create the portfolio first.`,
+            if (existingPortfolio) {
+              portfolioId = existingPortfolio.id;
+            } else {
+              const newPortfolio =
+                await this.repository.createPortfolio(portfolioName);
+              portfolioId = newPortfolio.id;
+              this.logger.log(
+                `Created portfolio: ${portfolioName} (${portfolioId})`,
               );
             }
-            portfolioId = existingPortfolio.id;
           }
 
           if (
@@ -624,12 +742,19 @@ export class JobService implements IJobService {
                 portfolioId,
               );
 
-            if (!existingSubPortfolio) {
-              throw new Error(
-                `Sub-portfolio '${subPortfolioName}' not found under portfolio '${portfolioName}'. Please create the sub-portfolio first.`,
+            if (existingSubPortfolio) {
+              subPortfolioId = existingSubPortfolio.id;
+            } else {
+              const newSubPortfolio =
+                await this.repository.createSubPortfolio(
+                  subPortfolioName,
+                  portfolioId,
+                );
+              subPortfolioId = newSubPortfolio.id;
+              this.logger.log(
+                `Created sub-portfolio: ${subPortfolioName} under portfolio ${portfolioName} (${subPortfolioId})`,
               );
             }
-            subPortfolioId = existingSubPortfolio.id;
           }
 
           let propertyId = null;
@@ -639,40 +764,29 @@ export class JobService implements IJobService {
             rowData['Property Name'].trim() !== ''
           ) {
             propertyName = rowData['Property Name'].toString().trim();
-
-            // Prefer OTA IDs (same as property import) — Excel name often differs
-            // from the stored property name when matched previously by Expedia/Booking/Agoda ID
-            const otaIds = this.parseOtaIdsFromImportRow(rowData);
             const existingProperty =
-              (await this.propertyRepository.findByOtaIds({
-                expedia_id: otaIds.expedia_id ?? null,
-                booking_id: otaIds.booking_id ?? null,
-                agoda_id: otaIds.agoda_id ?? null,
-              })) ??
-              (await this.repository.findPropertyByNameAndRelations(
+              await this.repository.findPropertyByNameAndRelations(
                 propertyName,
                 portfolioId,
                 subPortfolioId,
-              ));
+              );
 
-            if (!existingProperty) {
-              const idHint = [
-                otaIds.expedia_id != null
-                  ? `Expedia ID ${otaIds.expedia_id}`
-                  : null,
-                otaIds.booking_id != null
-                  ? `Booking ID ${otaIds.booking_id}`
-                  : null,
-                otaIds.agoda_id != null ? `Agoda ID ${otaIds.agoda_id}` : null,
-              ]
-                .filter(Boolean)
-                .join(', ');
-              throw new Error(
-                `Property '${propertyName}'${idHint ? ` (${idHint})` : ''} not found. Please import the property first.`,
+            if (existingProperty) {
+              propertyId = existingProperty.id;
+            } else {
+              const newProperty = await this.repository.createProperty({
+                name: propertyName,
+                portfolio_id: portfolioId,
+                sub_portfolio_id: subPortfolioId,
+                expedia_id: this.parseOtaIdFromRow(rowData['Expedia ID']),
+                booking_id: this.parseOtaIdFromRow(rowData['Booking ID']),
+                agoda_id: this.parseOtaIdFromRow(rowData['Agoda ID']),
+              });
+              propertyId = newProperty.id;
+              this.logger.log(
+                `Created property: ${propertyName} (${propertyId})`,
               );
             }
-            propertyId = existingProperty.id;
-            propertyName = existingProperty.name || propertyName;
           }
 
           let batchId = null;

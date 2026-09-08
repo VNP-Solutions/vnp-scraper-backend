@@ -79,9 +79,7 @@ export class ReportsRepository implements IReportsRepository {
     }
   }
 
-  async getSubPortfolioIdsForPortfolio(
-    portfolioId: string,
-  ): Promise<string[]> {
+  async getSubPortfolioIdsForPortfolio(portfolioId: string): Promise<string[]> {
     try {
       const rows = await this.db.subPortfolio.findMany({
         where: { portfolio_id: portfolioId },
@@ -265,6 +263,10 @@ export class ReportsRepository implements IReportsRepository {
       };
     }
 
+    if (filter.priority !== undefined) {
+      where.priority = filter.priority;
+    }
+
     return where;
   }
 
@@ -351,15 +353,33 @@ export class ReportsRepository implements IReportsRepository {
         stoppedCount,
         nothingToReportCount,
         manualCount,
+        highPriorityCount,
         totalCount,
       ] = await Promise.all([
-        this.db.job.count({ where: { ...(where as any), job_status: 'Pending' } }),
-        this.db.job.count({ where: { ...(where as any), job_status: 'Failed' } }),
-        this.db.job.count({ where: { ...(where as any), job_status: 'Running' } }),
-        this.db.job.count({ where: { ...(where as any), job_status: 'Completed' } }),
-        this.db.job.count({ where: { ...(where as any), job_status: 'Stopped' } }),
-        this.db.job.count({ where: { ...(where as any), job_status: 'NothingToReport' } }),
-        this.db.job.count({ where: { ...(where as any), job_status: 'Manual' } }),
+        this.db.job.count({
+          where: { ...(where as any), job_status: 'Pending' },
+        }),
+        this.db.job.count({
+          where: { ...(where as any), job_status: 'Failed' },
+        }),
+        this.db.job.count({
+          where: { ...(where as any), job_status: 'Running' },
+        }),
+        this.db.job.count({
+          where: { ...(where as any), job_status: 'Completed' },
+        }),
+        this.db.job.count({
+          where: { ...(where as any), job_status: 'Stopped' },
+        }),
+        this.db.job.count({
+          where: { ...(where as any), job_status: 'NothingToReport' },
+        }),
+        this.db.job.count({
+          where: { ...(where as any), job_status: 'Manual' },
+        }),
+        this.db.job.count({
+          where: { ...(where as any), priority: 1 },
+        }),
         this.db.job.count({ where: where as any }),
       ]);
 
@@ -372,8 +392,15 @@ export class ReportsRepository implements IReportsRepository {
         running: { count: runningCount, percentage: pct(runningCount) },
         completed: { count: completedCount, percentage: pct(completedCount) },
         stopped: { count: stoppedCount, percentage: pct(stoppedCount) },
-        nothingToReport: { count: nothingToReportCount, percentage: pct(nothingToReportCount) },
+        nothingToReport: {
+          count: nothingToReportCount,
+          percentage: pct(nothingToReportCount),
+        },
         manual: { count: manualCount, percentage: pct(manualCount) },
+        highPriority: {
+          count: highPriorityCount,
+          percentage: pct(highPriorityCount),
+        },
         total: totalCount,
       };
     } catch (error) {
@@ -384,5 +411,4 @@ export class ReportsRepository implements IReportsRepository {
       throw error;
     }
   }
-
 }

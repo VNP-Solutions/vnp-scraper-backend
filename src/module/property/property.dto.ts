@@ -24,8 +24,10 @@ export class CreatePropertyDto {
 
   @ApiPropertyOptional({ description: 'Portfolio name (for sync resolution)' })
   portfolio_name?: string;
-  
-  @ApiPropertyOptional({ description: 'Sub Portfolio name (for sync resolution)' })
+
+  @ApiPropertyOptional({
+    description: 'Sub Portfolio name (for sync resolution)',
+  })
   sub_portfolio_name?: string;
 
   @ApiPropertyOptional({
@@ -69,7 +71,8 @@ export class CreatePropertyDto {
   slot?: number;
 
   @ApiPropertyOptional({
-    description: 'PhoneNumberSlot document id — which pool row this property uses',
+    description:
+      'PhoneNumberSlot document id — which pool row this property uses',
   })
   phone_number_slot_id?: string;
 }
@@ -139,7 +142,8 @@ export class UpdatePropertyDto {
   slot?: number | null;
 
   @ApiPropertyOptional({
-    description: 'PhoneNumberSlot document id — which pool row this property uses',
+    description:
+      'PhoneNumberSlot document id — which pool row this property uses',
     nullable: true,
   })
   phone_number_slot_id?: string | null;
@@ -220,7 +224,9 @@ export class ImportPropertiesResponseDto {
 }
 
 export class ImportExpediaCredentialsFailureDto {
-  @ApiProperty({ description: '1-based Excel row number (includes header row)' })
+  @ApiProperty({
+    description: '1-based Excel row number (includes header row)',
+  })
   row: number;
 
   @ApiPropertyOptional({
@@ -346,16 +352,29 @@ export class RevealOtaCredentialsResponseDto {
   password: string;
 }
 
+/**
+ * Every optional field below accepts the string 'NULL' from the DBMS, which
+ * clears the stored value — the DBMS omits keys it isn't changing, so an absent
+ * key can't mean "empty this out". The sub-portfolio keys are only read for that
+ * clear; a sync upsert never assigns a sub-portfolio.
+ */
 export class SyncUpsertPropertyDto {
-  @ApiProperty({ example: 'dbms-portfolio-123', description: 'DBMS portfolio id (resolves portfolio)' })
+  @ApiProperty({
+    example: 'dbms-portfolio-123',
+    description: 'DBMS portfolio id (resolves portfolio)',
+  })
   portfolio_parent_id: string;
 
   @ApiProperty({ example: 'Grand Hotel', description: 'Property name' })
   name: string;
 
-  @ApiPropertyOptional({ example: 123456 }) expedia_id?: number;
-  @ApiPropertyOptional({ example: 654321 }) booking_id?: number;
-  @ApiPropertyOptional({ example: 111222 }) agoda_id?: number;
+  @ApiPropertyOptional({ example: 'dbms-subportfolio-123' })
+  sub_portfolio_parent_id?: string;
+  @ApiPropertyOptional({ example: 'East Coast' }) sub_portfolio_name?: string;
+
+  @ApiPropertyOptional({ example: 123456 }) expedia_id?: number | 'NULL';
+  @ApiPropertyOptional({ example: 654321 }) booking_id?: number | 'NULL';
+  @ApiPropertyOptional({ example: 111222 }) agoda_id?: number | 'NULL';
 
   @ApiPropertyOptional() expedia_username?: string;
   @ApiPropertyOptional() expedia_password?: string;
@@ -365,22 +384,36 @@ export class SyncUpsertPropertyDto {
   @ApiPropertyOptional() booking_password?: string;
 }
 
+/** Same 'NULL' clearing rules as {@link SyncUpsertPropertyDto}. */
 export class SyncBulkUpsertPropertyItemDto {
-  @ApiProperty({ example: 2, description: 'Source row number for the sync report' })
+  @ApiProperty({
+    example: 2,
+    description: 'Source row number for the sync report',
+  })
   row: number;
 
-  @ApiProperty({ example: 'dbms-property-123', description: 'DBMS property id (upsert key)' })
+  @ApiProperty({
+    example: 'dbms-property-123',
+    description: 'DBMS property id (upsert key)',
+  })
   parent_id: string;
 
-  @ApiProperty({ example: 'dbms-portfolio-123', description: 'DBMS portfolio id (resolves portfolio)' })
+  @ApiProperty({
+    example: 'dbms-portfolio-123',
+    description: 'DBMS portfolio id (resolves portfolio)',
+  })
   portfolio_parent_id: string;
 
   @ApiProperty({ example: 'Grand Hotel', description: 'Property name' })
   name: string;
 
-  @ApiPropertyOptional({ example: 123456 }) expedia_id?: number;
-  @ApiPropertyOptional({ example: 654321 }) booking_id?: number;
-  @ApiPropertyOptional({ example: 111222 }) agoda_id?: number;
+  @ApiPropertyOptional({ example: 'dbms-subportfolio-123' })
+  sub_portfolio_parent_id?: string;
+  @ApiPropertyOptional({ example: 'East Coast' }) sub_portfolio_name?: string;
+
+  @ApiPropertyOptional({ example: 123456 }) expedia_id?: number | 'NULL';
+  @ApiPropertyOptional({ example: 654321 }) booking_id?: number | 'NULL';
+  @ApiPropertyOptional({ example: 111222 }) agoda_id?: number | 'NULL';
 
   @ApiPropertyOptional() expedia_username?: string;
   @ApiPropertyOptional() expedia_password?: string;
@@ -395,8 +428,36 @@ export class SyncBulkUpsertPropertyResultDto {
   @ApiProperty({ example: 4 }) createdCount: number;
   @ApiProperty({ example: 4 }) updatedCount: number;
   @ApiProperty({ example: 2 }) failureCount: number;
-  @ApiProperty() errors: Array<{ row: number; parent_id: string; error: string }>;
-  @ApiProperty() successfulUpserts: Array<{ parent_id: string; action: 'created' | 'updated' }>;
+  @ApiProperty() errors: Array<{
+    row: number;
+    parent_id: string;
+    error: string;
+  }>;
+  @ApiProperty() successfulUpserts: Array<{
+    parent_id: string;
+    action: 'created' | 'updated';
+  }>;
+}
+
+/// Wrapper for the sync-bulk-upsert endpoint. When `batchId` is present the
+/// endpoint returns immediately and processes the items in the background,
+/// POSTing the result back to `callbackUrl` (the DBMS). When `batchId` is
+/// absent the endpoint behaves synchronously as before.
+export class SyncBulkUpsertRequestDto {
+  @ApiProperty({ type: [SyncBulkUpsertPropertyItemDto] })
+  items: SyncBulkUpsertPropertyItemDto[];
+
+  @ApiPropertyOptional({
+    description:
+      'If present, process asynchronously and call back with the result',
+  })
+  batchId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'DBMS endpoint to POST the result back to (required when batchId is set)',
+  })
+  callbackUrl?: string;
 }
 
 export class SyncDeleteDto {
@@ -410,7 +471,10 @@ export class SyncBulkCreateDto {
 }
 
 export class SyncBulkDeletePropertyItemDto {
-  @ApiProperty({ example: 'dbms-property-123', description: 'DBMS property id (delete key)' })
+  @ApiProperty({
+    example: 'dbms-property-123',
+    description: 'DBMS property id (delete key)',
+  })
   parent_id: string;
 }
 

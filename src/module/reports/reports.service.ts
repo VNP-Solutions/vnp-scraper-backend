@@ -215,9 +215,21 @@ export class ReportsService implements IReportsService {
   ): Promise<ReportsCurrentCounts> {
     try {
       // Strip job_statuses so the status breakdown is never pre-filtered,
+      // strip priority so the high-priority count is computed independently,
       // and strip pagination/sort fields which are irrelevant for counts.
-      const { job_statuses: _s, page: _p, limit: _l, sortBy: _sb, sortOrder: _so, ...statsBody } = body;
-      const plan = await this.buildSearchPlan(statsBody as SearchReportsType, user);
+      const {
+        job_statuses: _s,
+        priority: _priority,
+        page: _p,
+        limit: _l,
+        sortBy: _sb,
+        sortOrder: _so,
+        ...statsBody
+      } = body;
+      const plan = await this.buildSearchPlan(
+        statsBody as SearchReportsType,
+        user,
+      );
       if (plan === null) {
         return {
           pending: { count: 0, percentage: 0 },
@@ -227,6 +239,7 @@ export class ReportsService implements IReportsService {
           stopped: { count: 0, percentage: 0 },
           nothingToReport: { count: 0, percentage: 0 },
           manual: { count: 0, percentage: 0 },
+          highPriority: { count: 0, percentage: 0 },
           total: 0,
         };
       }
@@ -426,13 +439,11 @@ export class ReportsService implements IReportsService {
       }
     }
 
-    const resolvedPropertyIds = await this.repository.resolveSearchPropertyIds(
-      {
-        searchTerm: body.search_term,
-        explicitPropertyIds: body.property_ids ?? [],
-        portfolioPropertyIds,
-      },
-    );
+    const resolvedPropertyIds = await this.repository.resolveSearchPropertyIds({
+      searchTerm: body.search_term,
+      explicitPropertyIds: body.property_ids ?? [],
+      portfolioPropertyIds,
+    });
 
     if (resolvedPropertyIds !== null && resolvedPropertyIds.length === 0) {
       return null;
@@ -476,6 +487,7 @@ export class ReportsService implements IReportsService {
       includeArchived: body.include_archived ?? false,
       cardOver160: this.resolveCardOver160(body.card_periods ?? []),
       billingTypes,
+      priority: body.priority,
     };
 
     const needsPostDateFilter = !!(
@@ -524,10 +536,7 @@ export class ReportsService implements IReportsService {
     // Non-admin: also OR in their portfolio / sub-portfolio access so
     // jobs/retrievals that don't have a property_id but DO belong to an
     // accessible portfolio still show up.
-    if (
-      accessPortfolioIds.length === 0 &&
-      accessSubPortfolioIds.length === 0
-    ) {
+    if (accessPortfolioIds.length === 0 && accessSubPortfolioIds.length === 0) {
       return null;
     }
     return {
@@ -693,5 +702,4 @@ export class ReportsService implements IReportsService {
       updatedAt: j.updatedAt,
     };
   }
-
 }

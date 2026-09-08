@@ -22,7 +22,7 @@ export class PropertyRepository implements IPropertyRepository {
     private readonly db: DatabaseService,
     private readonly logger: Logger,
     private readonly encryptionUtil: EncryptionUtil,
-  ) { }
+  ) {}
 
   get databaseService(): DatabaseService {
     return this.db;
@@ -64,10 +64,37 @@ export class PropertyRepository implements IPropertyRepository {
       propertyData.phone_number_slot_id = data.phone_number_slot_id;
     }
 
-    const property = await this.db.property.create({
-      data: propertyData,
+    try {
+      const property = await this.db.property.create({
+        data: propertyData,
+      });
+      return property;
+    } catch (error) {
+      this.logger.error(error);
+      return null;
+    }
+  }
+
+  async createWithId(id: string, data: CreatePropertyDto): Promise<Property> {
+    const propertyData: CreatePropertyDto & { id?: string } = {
+      name: data.name,
+      portfolio_id: data.portfolio_id,
+      sub_portfolio_id: data.sub_portfolio_id,
+      expedia_status: data.expedia_status || 'Access Required',
+      booking_status: data.booking_status || 'Access Required',
+      agoda_status: data.agoda_status || 'Access Required',
+    };
+
+    if (data.expedia_id) propertyData.expedia_id = data.expedia_id;
+    if (data.booking_id) propertyData.booking_id = data.booking_id;
+    if (data.agoda_id) propertyData.agoda_id = data.agoda_id;
+
+    return this.db.property.create({
+      data: {
+        id,
+        ...propertyData,
+      },
     });
-    return property;
   }
 
   async findAll(
@@ -191,6 +218,12 @@ export class PropertyRepository implements IPropertyRepository {
         include: {
           credentials: true,
           phoneNumberSlot: true,
+          portfolio: true,
+          subPortfolio: {
+            include: {
+              portfolio: true,
+            },
+          },
         },
       });
       return property;
@@ -201,11 +234,25 @@ export class PropertyRepository implements IPropertyRepository {
   }
 
   async findByParentId(parentId: string): Promise<Property | null> {
-    return this.db.property.findFirst({ where: { parent_id: parentId } })
+    return this.db.property.findFirst({ where: { parent_id: parentId } });
   }
 
   async findPortfolioByParentId(parentId: string): Promise<any> {
     return this.db.portfolio.findFirst({ where: { parent_id: parentId } });
+  }
+
+  async findByParentIds(parentIds: string[]): Promise<Property[]> {
+    if (!parentIds.length) return [];
+    return this.db.property.findMany({
+      where: { parent_id: { in: parentIds } },
+    });
+  }
+
+  async findPortfoliosByParentIds(parentIds: string[]): Promise<any[]> {
+    if (!parentIds.length) return [];
+    return this.db.portfolio.findMany({
+      where: { parent_id: { in: parentIds } },
+    });
   }
 
   async findByExpediaId(expediaId: number): Promise<Property | null> {
@@ -243,20 +290,20 @@ export class PropertyRepository implements IPropertyRepository {
   }
 
   async findByOtaIds(ids: {
-    expedia_id: number | null
-    booking_id: number | null
-    agoda_id: number | null
+    expedia_id: number | null;
+    booking_id: number | null;
+    agoda_id: number | null;
   }): Promise<Property | null> {
-    const conditions: any[] = []
-    if (ids.expedia_id) conditions.push({ expedia_id: ids.expedia_id })
-    if (ids.booking_id) conditions.push({ booking_id: ids.booking_id })
-    if (ids.agoda_id)   conditions.push({ agoda_id: ids.agoda_id })
-    if (!conditions.length) return null
-    return this.db.property.findFirst({ where: { OR: conditions } })
+    const conditions: any[] = [];
+    if (ids.expedia_id) conditions.push({ expedia_id: ids.expedia_id });
+    if (ids.booking_id) conditions.push({ booking_id: ids.booking_id });
+    if (ids.agoda_id) conditions.push({ agoda_id: ids.agoda_id });
+    if (!conditions.length) return null;
+    return this.db.property.findFirst({ where: { OR: conditions } });
   }
-  
+
   async findByName(name: string): Promise<Property | null> {
-    return this.db.property.findFirst({ where: { name } })
+    return this.db.property.findFirst({ where: { name } });
   }
 
   async update(id: string, data: UpdatePropertyDto): Promise<Property> {
@@ -939,23 +986,31 @@ export class PropertyRepository implements IPropertyRepository {
     try {
       const updatePayload: any = {};
 
+      // A null password means the caller is clearing it (a DBMS sync of a
+      // property whose password was emptied), so it must not go through the
+      // cipher — that would store ciphertext for the word "null".
+      const encryptOrClear = (password: string | null) =>
+        password === null
+          ? null
+          : this.encryptionUtil.encryptPassword(password);
+
       // Add credential fields if they exist (encrypt passwords)
       if (credentialsData.expediaUsername !== undefined)
         updatePayload.expediaUsername = credentialsData.expediaUsername;
       if (credentialsData.expediaPassword !== undefined)
-        updatePayload.expediaPassword = this.encryptionUtil.encryptPassword(
+        updatePayload.expediaPassword = encryptOrClear(
           credentialsData.expediaPassword,
         );
       if (credentialsData.agodaUsername !== undefined)
         updatePayload.agodaUsername = credentialsData.agodaUsername;
       if (credentialsData.agodaPassword !== undefined)
-        updatePayload.agodaPassword = this.encryptionUtil.encryptPassword(
+        updatePayload.agodaPassword = encryptOrClear(
           credentialsData.agodaPassword,
         );
       if (credentialsData.bookingUsername !== undefined)
         updatePayload.bookingUsername = credentialsData.bookingUsername;
       if (credentialsData.bookingPassword !== undefined)
-        updatePayload.bookingPassword = this.encryptionUtil.encryptPassword(
+        updatePayload.bookingPassword = encryptOrClear(
           credentialsData.bookingPassword,
         );
       if (credentialsData.expediaEmailAssociated !== undefined)
@@ -1085,39 +1140,6 @@ export class PropertyRepository implements IPropertyRepository {
   }
 
   /**
-   * Parse an optional OTA ID from an Excel cell.
-   * Empty / blank / non-numeric values are ignored (returns undefined).
-   */
-  private parseOptionalOtaId(value: unknown): number | undefined {
-    if (value === undefined || value === null) {
-      return undefined;
-    }
-    if (typeof value === 'string' && value.trim() === '') {
-      return undefined;
-    }
-    const num = typeof value === 'number' ? value : Number(String(value).trim());
-    if (!Number.isFinite(num) || num <= 0) {
-      return undefined;
-    }
-    return Math.trunc(num);
-  }
-
-  private parseOtaIdsFromRow(rowData: any): {
-    expedia_id?: number;
-    booking_id?: number;
-    agoda_id?: number;
-  } {
-    const expedia_id = this.parseOptionalOtaId(rowData['Expedia ID']);
-    const booking_id = this.parseOptionalOtaId(rowData['Booking ID']);
-    const agoda_id = this.parseOptionalOtaId(rowData['Agoda ID']);
-    return {
-      ...(expedia_id !== undefined ? { expedia_id } : {}),
-      ...(booking_id !== undefined ? { booking_id } : {}),
-      ...(agoda_id !== undefined ? { agoda_id } : {}),
-    };
-  }
-
-  /**
    * Parse optional "Phone Number" and optional "Slot".
    * - Phone only: slot null → link by finding PhoneNumberSlot with same last-3-digit key.
    * - Phone + slot: match or create pool row as before.
@@ -1210,9 +1232,7 @@ export class PropertyRepository implements IPropertyRepository {
         parsed.phone,
         parsed.slot,
       );
-      return slotId
-        ? { slotId, phone: parsed.phone, slot: parsed.slot }
-        : null;
+      return slotId ? { slotId, phone: parsed.phone, slot: parsed.slot } : null;
     }
     const found = await this.resolveExistingPhoneNumberSlotIdByPhoneDigits(
       parsed.phone,
@@ -1491,24 +1511,15 @@ export class PropertyRepository implements IPropertyRepository {
             }
           }
 
-          // Only use OTA IDs that are actually present; ignore empty Expedia/Agoda/Booking ID cells
-          const otaIds = this.parseOtaIdsFromRow(rowData);
-
-          // Prefer match by present OTA IDs, then fall back to name + portfolio
-          let existingProperty =
-            (await this.findByOtaIds({
-              expedia_id: otaIds.expedia_id ?? null,
-              booking_id: otaIds.booking_id ?? null,
-              agoda_id: otaIds.agoda_id ?? null,
-            })) ??
-            (await this.findPropertyByNameAndRelations(
-              rowData['Property Name'].toString(),
-              portfolioId,
-              subPortfolioId,
-            ));
+          // Check if property already exists
+          const existingProperty = await this.findPropertyByNameAndRelations(
+            rowData['Property Name'].toString(),
+            portfolioId,
+            subPortfolioId,
+          );
 
           if (!existingProperty) {
-            // Create property data — only set OTA IDs that were provided
+            // Create property data
             const propertyData: CreatePropertyDto = {
               name: rowData['Property Name'].toString().trim(),
               portfolio_id: portfolioId,
@@ -1516,10 +1527,21 @@ export class PropertyRepository implements IPropertyRepository {
               expedia_status: rowData['Expedia Status'] || 'Access Required',
               booking_status: rowData['Booking Status'] || 'Access Required',
               agoda_status: rowData['Agoda Status'] || 'Access Required',
-              ...otaIds,
             };
 
-            const parsedPhoneSlot = this.parsePhoneNumberAndSlotFromRow(rowData);
+            if (rowData['Expedia ID']) {
+              propertyData.expedia_id = Number(rowData['Expedia ID']);
+            }
+
+            if (rowData['Booking ID']) {
+              propertyData.booking_id = Number(rowData['Booking ID']);
+            }
+            if (rowData['Agoda ID']) {
+              propertyData.agoda_id = Number(rowData['Agoda ID']);
+            }
+
+            const parsedPhoneSlot =
+              this.parsePhoneNumberAndSlotFromRow(rowData);
             if (parsedPhoneSlot) {
               try {
                 const resolved = await this.resolvePhoneNumberSlotLinkForImport(
@@ -1729,8 +1751,17 @@ export class PropertyRepository implements IPropertyRepository {
               }
             }
 
-            // Update only OTA IDs that are present in the row (skip empty cells)
-            const propertyUpdateData: any = { ...otaIds };
+            // Update property with IDs if they exist
+            const propertyUpdateData: any = {};
+            if (rowData['Expedia ID']) {
+              propertyUpdateData.expedia_id = Number(rowData['Expedia ID']);
+            }
+            if (rowData['Booking ID']) {
+              propertyUpdateData.booking_id = Number(rowData['Booking ID']);
+            }
+            if (rowData['Agoda ID']) {
+              propertyUpdateData.agoda_id = Number(rowData['Agoda ID']);
+            }
 
             const parsedPhoneSlotExisting =
               this.parsePhoneNumberAndSlotFromRow(rowData);
@@ -1833,9 +1864,7 @@ export class PropertyRepository implements IPropertyRepository {
    * For each row: finds all Properties with that expedia_id, then upserts
    * PropertyCredentials for each (passwords encrypted like other credential updates).
    */
-  async importExpediaCredentialsFromExcel(
-    file: Express.Multer.File,
-  ): Promise<{
+  async importExpediaCredentialsFromExcel(file: Express.Multer.File): Promise<{
     updated: number;
     propertyNotFound: number;
     rowsSkippedInvalid: number;
@@ -1961,10 +1990,7 @@ export class PropertyRepository implements IPropertyRepository {
 
       for (const property of properties) {
         try {
-          await this.updatePropertyCredentials(
-            property.id,
-            credentialsPayload,
-          );
+          await this.updatePropertyCredentials(property.id, credentialsPayload);
           updated++;
         } catch (error) {
           const message =
@@ -2008,9 +2034,7 @@ export class PropertyRepository implements IPropertyRepository {
   /**
    * Upsert property_credentials for one property; username/password fields depend on `ota_provider`.
    */
-  async updateOtaCredentials(
-    body: UpdateOtaCredentialsBody,
-  ): Promise<{
+  async updateOtaCredentials(body: UpdateOtaCredentialsBody): Promise<{
     updated: number;
     propertyNotFound: boolean;
     failures: Array<{ reason: string; property_id?: string }>;
@@ -2044,8 +2068,7 @@ export class PropertyRepository implements IPropertyRepository {
         failures: [],
       };
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Update failed';
+      const message = error instanceof Error ? error.message : 'Update failed';
       failures.push({
         property_id: propertyId,
         reason: message,
