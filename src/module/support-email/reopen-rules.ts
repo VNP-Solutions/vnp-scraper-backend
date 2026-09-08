@@ -67,6 +67,13 @@ const COLUMN_KEYS = {
   type1Amount: ['lpusd', 'lpusdamount'],
   /** Type 2 amount column: `USD Total Include GST`. */
   type2Amount: ['usdtotalincludegst', 'usdtotalincludinggst', 'usdtotal'],
+  /**
+   * `Supplier Local Currency` — the property's own currency, not the amount
+   * column's (that one is always USD, per its own name). Read only so a
+   * collectable row can carry the actual currency when the report states
+   * one; falls back to USD when the column is absent.
+   */
+  currency: ['supplierlocalcurrency', 'localcurrency', 'currency'],
 } as const;
 
 /** Matched statuses meaning the money has not been received yet. */
@@ -307,6 +314,8 @@ interface ResolvedColumns {
   bookingStatus: string | null;
   matchedStatus: string | null;
   amount: string | null;
+  /** `Supplier Local Currency` header, when the report includes one. */
+  currency: string | null;
 }
 
 export function resolveColumns(headers: string[]): ResolvedColumns {
@@ -323,6 +332,7 @@ export function resolveColumns(headers: string[]): ResolvedColumns {
     amount: matchedStatus
       ? findColumn(headers, COLUMN_KEYS.type2Amount)
       : findColumn(headers, COLUMN_KEYS.type1Amount),
+    currency: findColumn(headers, COLUMN_KEYS.currency),
   };
 }
 

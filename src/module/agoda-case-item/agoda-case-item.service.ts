@@ -100,6 +100,24 @@ export class AgodaCaseItemService implements IAgodaCaseItemService {
     }
   }
 
+  async findByReservationAndProperty(
+    reservationId: string,
+    propertyId: string,
+  ): Promise<AgodaCaseItem | null> {
+    try {
+      return await this.repository.findByReservationAndProperty(
+        reservationId,
+        propertyId,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Error finding agoda case item by reservation ${reservationId} / property ${propertyId}:`,
+        error,
+      );
+      throw error;
+    }
+  }
+
   async update(
     id: string,
     data: UpdateAgodaCaseItemDto,

@@ -236,6 +236,23 @@ export class AgodaCaseItemRepository implements IAgodaCaseItemRepository {
     }
   }
 
+  async findByReservationAndProperty(
+    reservationId: string,
+    propertyId: string,
+  ): Promise<AgodaCaseItem | null> {
+    try {
+      return await this.db.agodaCaseItem.findFirst({
+        where: { reservation_id: reservationId, property_id: propertyId },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Error finding agoda case item by reservation ${reservationId} / property ${propertyId}:`,
+        error,
+      );
+      throw error;
+    }
+  }
+
   async update(
     id: string,
     data: UpdateAgodaCaseItemDto,

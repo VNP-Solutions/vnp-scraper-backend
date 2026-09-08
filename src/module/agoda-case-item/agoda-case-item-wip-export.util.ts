@@ -29,7 +29,6 @@ export const AGODA_CASE_ITEM_WIP_EXPORT_HEADER = [
   'Card CVV',
   'isMissing',
   'Charge Status',
-  'Declined Status',
   'KIRAT COMMENTS',
   'Charge Before Date',
   'Created By',
@@ -84,7 +83,6 @@ function buildWipRow(item: AgodaCaseItemForExport): WipExportRow {
     'Card CVV': item.card_cvv ?? '',
     isMissing: item.is_missing ? 'Yes' : 'No',
     'Charge Status': item.charge_status ?? '',
-    'Declined Status': item.is_declined ? 'Yes' : 'No',
     // Not tracked anywhere yet — always blank until there's somewhere to
     // read/write these from.
     'KIRAT COMMENTS': '',

@@ -111,6 +111,13 @@ export class SupportEmailRepository implements ISupportEmailRepository {
           should_reopen: email.reopen.shouldReopen,
           reopen_booking_ids: email.reopen.reopenBookingIds,
           collect_booking_ids: email.reopen.collectBookingIds,
+          collect_booking_amounts: email.reopen.collectBookingAmounts.map(
+            (entry) => ({
+              booking_id: entry.bookingId,
+              amount: entry.amount,
+              currency: entry.currency,
+            }),
+          ),
           reply_status: context.replyStatus ?? null,
         },
       });
