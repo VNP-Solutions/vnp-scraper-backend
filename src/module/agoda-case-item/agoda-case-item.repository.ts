@@ -331,15 +331,35 @@ export class AgodaCaseItemRepository implements IAgodaCaseItemRepository {
     }
   }
 
+  /**
+   * createMany only accepts scalar FK columns — not relation connect syntax.
+   */
+  private toCreateManyInput(
+    data: CreateAgodaCaseItemDto,
+  ): Prisma.AgodaCaseItemCreateManyInput {
+    const {
+      property_id,
+      batch_id,
+      portfolio_id,
+      retrieval_id,
+      createdBy,
+      ...rest
+    } = data;
+
+    return {
+      ...rest,
+      property_id: property_id ?? undefined,
+      batch_id: batch_id ?? undefined,
+      portfolio_id: portfolio_id ?? undefined,
+      retrieval_id: retrieval_id ?? undefined,
+      createdBy: createdBy ?? undefined,
+    };
+  }
+
   async bulkCreate(data: CreateAgodaCaseItemDto[]): Promise<AgodaCaseItem[]> {
     try {
-      // Convert to relation input format
-      const createData = data.map((item) => this.toRelationInput(item));
-
-      // Use createMany for bulk insert (faster but doesn't return created records)
-      // Then fetch the created records
       await this.db.agodaCaseItem.createMany({
-        data: createData,
+        data: data.map((item) => this.toCreateManyInput(item)),
       });
 
       // Return empty array since createMany doesn't return created records
