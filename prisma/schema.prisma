@@ -202,7 +202,9 @@ model ConnectedEntity {
 model Portfolio {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   parent_id String?
-  name      String   @unique
+  // Not unique: the DBMS is the source of truth for names and permits
+  // duplicates. Portfolios are identified by parent_id, not by name.
+  name      String
   createdBy String?
   updatedBy String?
   createdAt DateTime @default(now())

@@ -771,20 +771,16 @@ export class PropertyService implements IPropertyService {
     let propertyId: string;
     let action: 'created' | 'updated';
 
+    // Identity is the DBMS parent_id, never the name. The DBMS owns names and
+    // allows duplicates, so a name check here would reject legitimate syncs —
+    // and, because a failed upsert aborts the whole payload, would freeze every
+    // other field for that property too.
     if (existing) {
-      if (item.name !== existing.name) {
-        const clash = await this.repository.findByName(item.name);
-        if (clash && clash.id !== existing.id) {
-          throw new Error('Property with this name already exists');
-        }
-      }
       const updated = await this.repository.update(existing.id, propertyData);
       if (!updated) throw new Error('Failed to update property');
       propertyId = updated.id;
       action = 'updated';
     } else {
-      const clash = await this.repository.findByName(item.name);
-      if (clash) throw new Error('Property with this name already exists');
       const created = await this.repository.create(propertyData);
       propertyId = created.id;
       action = 'created';
