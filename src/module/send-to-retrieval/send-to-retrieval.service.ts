@@ -22,7 +22,6 @@ import { IAgodaCaseItemService } from '../agoda-case-item/agoda-case-item.interf
 import { DatabaseService } from '../database/database.service';
 import { resolveAgodaIdForJob } from '../job/agoda-id.util';
 import { IJobRepository } from '../job/job.interface';
-import { REPLY_DEADLINE_HOURS } from '../job/reply-status.util';
 import { IPropertyRepository } from '../property/property.interface';
 import { CreateRetrievalDto } from '../retrieval/retrieval.dto';
 import { IRetrievalService } from '../retrieval/retrieval.interface';
@@ -70,24 +69,6 @@ export class SendToRetrievalService implements ISendToRetrievalService {
     private readonly agodaCaseItemService: IAgodaCaseItemService,
     private readonly db: DatabaseService,
   ) {}
-
-  /**
-   * `job.updatedAt` cannot be the freshness cutoff: capturing the email
-   * writes `reply_status` back onto the job, which bumps `updatedAt` past
-   * the email's own `received_at`. `reply_deadline_at` minus the 48h grace
-   * period gives back the run's actual completion time instead, and that is
-   * never moved by those writes.
-   *
-   * Jobs completed before `reply_deadline_at` existed have no cutoff and
-   * fall back to their newest stored reply — permissive on purpose, since
-   * skipping them outright would be worse.
-   */
-  private runCompletedAt(job: Job): Date | null {
-    if (!job.reply_deadline_at) return null;
-    return new Date(
-      job.reply_deadline_at.getTime() - REPLY_DEADLINE_HOURS * 60 * 60 * 1000,
-    );
-  }
 
   private async createRetrievalForCandidate(
     candidate: CollectCandidate,
@@ -354,21 +335,20 @@ export class SendToRetrievalService implements ISendToRetrievalService {
           continue;
         }
 
-        const since = this.runCompletedAt(job);
-
+        // Just take whatever the latest stored Partner Support reply is for
+        // this Agoda ID — same lookup GET /jobs/:id/support-email uses. No
+        // freshness cutoff: if a reply is stored, use it.
         const email =
           await this.supportEmailRepository.findLatestPartnerSupportReply(
             agodaId,
-            { since },
           );
 
         if (!email) {
           skipped.push({
             jobId,
             agodaId,
-            reason: since
-              ? `No stored Agoda reply that arrived after the run finished (${since.toISOString()}). Capture it with POST /api/agoda/retrive-case-email first.`
-              : 'No stored Agoda reply for this property. Capture it with POST /api/agoda/retrive-case-email first.',
+            reason:
+              'No stored Agoda reply for this property. Capture it with POST /api/agoda/retrive-case-email first.',
           });
           continue;
         }
