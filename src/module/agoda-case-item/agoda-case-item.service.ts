@@ -15,6 +15,34 @@ import {
   PaginatedAgodaCaseItems,
 } from './agoda-case-item.interface';
 
+const MM_DD_YYYY = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+
+/** Normalizes a cell value to MM/DD/YYYY (handles Excel serial dates). */
+function parseImportDateCell(value: unknown): string {
+  if (value == null || value === '') return '';
+
+  if (value instanceof Date) {
+    const mm = String(value.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(value.getUTCDate()).padStart(2, '0');
+    return `${mm}/${dd}/${value.getUTCFullYear()}`;
+  }
+
+  const trimmed = String(value).trim();
+  if (MM_DD_YYYY.test(trimmed)) return trimmed;
+
+  const serial = Number(trimmed);
+  if (!Number.isNaN(serial) && serial > 1000) {
+    const parsed = XLSX.SSF.parse_date_code(serial);
+    if (parsed) {
+      const mm = String(parsed.m).padStart(2, '0');
+      const dd = String(parsed.d).padStart(2, '0');
+      return `${mm}/${dd}/${parsed.y}`;
+    }
+  }
+
+  return trimmed;
+}
+
 @Injectable()
 export class AgodaCaseItemService implements IAgodaCaseItemService {
   private readonly logger = new Logger(AgodaCaseItemService.name);
@@ -267,7 +295,7 @@ export class AgodaCaseItemService implements IAgodaCaseItemService {
     errors: string[];
   }> {
     try {
-      const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+      const workbook = XLSX.read(file.buffer, { type: 'buffer', cellDates: true });
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
       const rows: any[] = XLSX.utils.sheet_to_json(worksheet);
@@ -284,8 +312,8 @@ export class AgodaCaseItemService implements IAgodaCaseItemService {
           const hotelId = row['Hotel ID']?.toString().trim();
           const reservationId = row['Reservation ID']?.toString().trim();
           const guestName = row['Name']?.toString().trim();
-          const checkIn = row['Check In']?.toString().trim();
-          const checkOut = row['Check Out']?.toString().trim();
+          const checkIn = parseImportDateCell(row['Check In']);
+          const checkOut = parseImportDateCell(row['Check Out']);
           const postingType = row['Posting Type']?.toString().trim();
           const otaProvider = row['OTA Provider']?.toString().trim();
           const currency = row['Currency']?.toString().trim();
