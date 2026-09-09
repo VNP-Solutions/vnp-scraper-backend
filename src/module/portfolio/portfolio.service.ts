@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   Inject,
   Injectable,
   Logger,
@@ -86,13 +85,8 @@ export class PortfolioService implements IPortfolioService {
       );
       return { status: 'created', id: created?.id };
     }
-    const clash = await this.repository.findByName(newName);
-    if (clash && clash.id !== existing.id) {
-      this.logger.warn(
-        `[sync] target name already exists, skipping: ${newName}`,
-      );
-      return { status: 'conflict', id: clash.id };
-    }
+    // A rename onto a name another portfolio already holds is allowed —
+    // portfolio names are not unique, identity is the DBMS parent_id.
     const updated = await this.repository.update(
       existing.id,
       { name: newName },
@@ -159,16 +153,12 @@ export class PortfolioService implements IPortfolioService {
     if (!trimmedName)
       throw new BadRequestException('Portfolio name is required');
 
+    // Identity is the DBMS parent_id, never the name. The DBMS owns names and
+    // allows duplicates, so a name check here would reject legitimate syncs —
+    // and, because a failed upsert aborts the whole payload, would block every
+    // property under that portfolio from syncing too.
     const existing = await this.repository.findByParentId(trimmedParent);
     if (existing) {
-      if (trimmedName !== existing.name) {
-        const clash = await this.repository.findByName(trimmedName);
-        if (clash && clash.id !== existing.id) {
-          throw new ConflictException(
-            'Portfolio with this name already exists',
-          );
-        }
-      }
       const updated = await this.repository.update(
         existing.id,
         { name: trimmedName, parent_id: trimmedParent } as any,
@@ -178,10 +168,6 @@ export class PortfolioService implements IPortfolioService {
       return { action: 'updated', portfolio: updated };
     }
 
-    const nameClash = await this.repository.findByName(trimmedName);
-    if (nameClash) {
-      throw new ConflictException('Portfolio with this name already exists');
-    }
     const created = await this.repository.create(
       { name: trimmedName, parent_id: trimmedParent } as any,
       'dbms-sync',

@@ -19,6 +19,7 @@ import {
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiConsumes,
   ApiOperation,
   ApiParam,
   ApiQuery,
@@ -425,10 +426,26 @@ export class AgodaCaseItemController {
 
   @Post('import-wip-declined')
   @UseInterceptors(ExcelFileInterceptor)
+  @ApiConsumes('multipart/form-data')
   @ApiOperation({
     summary: 'Import AgodaCaseItems from WIP Excel file for declined items',
     description:
       'Upload an Excel file with the same format as the WIP export. All imported items will have is_declined=true and retrieval_status="pending". Use ?archive=true to also set is_archived=true.',
+  })
+  @ApiBody({
+    description: 'WIP import Excel file (.xlsx)',
+    schema: {
+      type: 'object',
+      required: ['file'],
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+          description:
+            'Excel file with WIP columns (Hotel ID, Reservation ID, Name, Check In, Check Out, Currency, Amount to charge, Card first 4, Card last 12, Card Expire, Card CVV, etc.)',
+        },
+      },
+    },
   })
   @ApiQuery({
     name: 'archive',
