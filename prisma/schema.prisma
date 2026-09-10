@@ -41,6 +41,12 @@ enum ReplyStatus {
   RepliedRed
   /// Agoda replied and nothing needs reopening — the balance is collectable.
   RepliedGreen
+  /// Still NoReplied 48h after the job completed — auto-set by the support
+  /// email cron once `reply_deadline_at` has passed with no reply at all.
+  Reopen
+  /// The job's collectable balance was successfully handed off via
+  /// send-to-retrieval — auto-set once that endpoint processes the job.
+  SendToRetrieval
 }
 
 /// Identifies which "kind" of evaluation a JobTagEntry represents.

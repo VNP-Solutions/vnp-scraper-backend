@@ -25,6 +25,18 @@ export class SupportEmailSchedulerService {
     );
 
     try {
+      // Anything still NoReplied past its 48h reply_deadline_at is overdue —
+      // flip it to Reopen before polling Gmail so it stops being picked up
+      // by findJobsForAutomaticEmailCheck below (which only looks at
+      // NoReplied/RepliedRed) and instead waits for a manual reopen.
+      const reopenedCount =
+        await this.jobRepository.markOverdueNoRepliedJobsAsReopen();
+      if (reopenedCount > 0) {
+        this.logger.log(
+          `Marked ${reopenedCount} overdue NoReplied job(s) as Reopen (past 48h reply_deadline_at)`,
+        );
+      }
+
       // Calculate date 5 days ago
       const fiveDaysAgo = new Date();
       fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);

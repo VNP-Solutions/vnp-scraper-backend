@@ -154,6 +154,15 @@ export interface IJobRepository {
   findJobsForAutomaticEmailCheck(
     updatedSince: Date,
   ): Promise<Array<{ id: string }>>;
+  /**
+   * Bulk-flips every job still `NoReplied` whose `reply_deadline_at`
+   * (completion + 48h) has already passed to `Reopen`. Called from the
+   * support-email cron right before it re-polls Gmail, so anything that
+   * timed out with no reply at all stops being auto re-checked and instead
+   * needs a manual reopen. Only ever matches Agoda jobs since
+   * `reply_deadline_at` is only set for those. Returns how many were flipped.
+   */
+  markOverdueNoRepliedJobsAsReopen(): Promise<number>;
 }
 
 export interface IJobService {

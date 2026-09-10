@@ -527,8 +527,9 @@ export class JobRepository implements IJobRepository {
       }
 
       // Filter by reply_status (Agoda Partner Support reply outcome:
-      // NoReplied / RepliedRed / RepliedGreen). Only Agoda jobs ever have
-      // this set — filtering by it implicitly narrows to Agoda jobs.
+      // NoReplied / RepliedRed / RepliedGreen / Reopen / SendToRetrieval).
+      // Only Agoda jobs ever have this set — filtering by it implicitly
+      // narrows to Agoda jobs.
       if (reply_status) {
         allFilters.reply_status = reply_status.toString();
       }
@@ -2349,6 +2350,33 @@ export class JobRepository implements IJobRepository {
     } catch (error) {
       this.logger.error(
         `Error finding jobs for automatic email check: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async markOverdueNoRepliedJobsAsReopen(): Promise<number> {
+    try {
+      const result = await this.db.job.updateMany({
+        where: {
+          // ota_provider/job_status guard so a job that completed once (and
+          // got a NoReplied + reply_deadline_at) but has since moved to a
+          // non-Completed status (e.g. re-queued and Failed) without
+          // completing again isn't wrongly flipped to Reopen — mirrors the
+          // scoping findJobsForAutomaticEmailCheck already uses.
+          ota_provider: 'Agoda',
+          job_status: 'Completed',
+          reply_status: 'NoReplied',
+          reply_deadline_at: { lt: new Date() },
+        },
+        data: { reply_status: 'Reopen' },
+      });
+
+      return result.count;
+    } catch (error) {
+      this.logger.error(
+        `Error marking overdue NoReplied jobs as Reopen: ${error.message}`,
         error.stack,
       );
       throw error;
