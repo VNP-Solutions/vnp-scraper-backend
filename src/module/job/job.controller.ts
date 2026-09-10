@@ -311,7 +311,7 @@ export class JobController {
     required: false,
     enum: ReplyStatus,
     description:
-      'Filter jobs by Agoda Partner Support reply status (NoReplied, RepliedRed, RepliedGreen). Only meaningful for Agoda jobs — reply_status is null for Expedia/Booking jobs and for Agoda jobs that have never completed a run.',
+      'Filter jobs by Agoda Partner Support reply status (NoReplied, RepliedRed, RepliedGreen, Reopen, SendToRetrieval). Only meaningful for Agoda jobs — reply_status is null for Expedia/Booking jobs and for Agoda jobs that have never completed a run.',
   })
   @ApiQuery({
     name: 'recurring_id',

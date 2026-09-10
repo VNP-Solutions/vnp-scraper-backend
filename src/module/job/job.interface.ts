@@ -27,6 +27,16 @@ export interface IJobRepository {
     portfolioId?: string,
     subPortfolioId?: string,
   ): Promise<any>;
+  createPortfolio(name: string): Promise<any>;
+  createSubPortfolio(name: string, portfolioId: string): Promise<any>;
+  createProperty(data: {
+    name: string;
+    portfolio_id?: string | null;
+    sub_portfolio_id?: string | null;
+    expedia_id?: number | null;
+    booking_id?: number | null;
+    agoda_id?: number | null;
+  }): Promise<any>;
   findLatestCheckoutDateByJobId(
     jobId: string,
   ): Promise<{ check_out_date: Date } | null>;
@@ -144,6 +154,15 @@ export interface IJobRepository {
   findJobsForAutomaticEmailCheck(
     updatedSince: Date,
   ): Promise<Array<{ id: string }>>;
+  /**
+   * Bulk-flips every job still `NoReplied` whose `reply_deadline_at`
+   * (completion + 48h) has already passed to `Reopen`. Called from the
+   * support-email cron right before it re-polls Gmail, so anything that
+   * timed out with no reply at all stops being auto re-checked and instead
+   * needs a manual reopen. Only ever matches Agoda jobs since
+   * `reply_deadline_at` is only set for those. Returns how many were flipped.
+   */
+  markOverdueNoRepliedJobsAsReopen(): Promise<number>;
 }
 
 export interface IJobService {

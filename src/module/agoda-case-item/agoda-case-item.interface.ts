@@ -2,7 +2,6 @@ import {
   AgodaCaseItem,
   Batch,
   Portfolio,
-  PostingType,
   Property,
   PropertyCredentials,
   User,
@@ -20,7 +19,6 @@ export interface AgodaCaseItemFilters {
   retrival_status?: string;
   charge_status?: string;
   is_missing?: boolean;
-  posting_type?: PostingType;
   /** Filter by the user who created the item (`createdBy` on the model). */
   createdBy?: string;
   is_archived?: boolean;

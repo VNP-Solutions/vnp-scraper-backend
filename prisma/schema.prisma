@@ -41,6 +41,12 @@ enum ReplyStatus {
   RepliedRed
   /// Agoda replied and nothing needs reopening — the balance is collectable.
   RepliedGreen
+  /// Still NoReplied 48h after the job completed — auto-set by the support
+  /// email cron once `reply_deadline_at` has passed with no reply at all.
+  Reopen
+  /// The job's collectable balance was successfully handed off via
+  /// send-to-retrieval — auto-set once that endpoint processes the job.
+  SendToRetrieval
 }
 
 /// Identifies which "kind" of evaluation a JobTagEntry represents.
@@ -202,9 +208,7 @@ model ConnectedEntity {
 model Portfolio {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   parent_id String?
-  // Not unique: the DBMS is the source of truth for names and permits
-  // duplicates. Portfolios are identified by parent_id, not by name.
-  name      String
+  name      String   @unique
   createdBy String?
   updatedBy String?
   createdAt DateTime @default(now())
@@ -294,6 +298,8 @@ model Job {
   /// Completion time + 48h. Past this, NoReplied means overdue rather than
   /// merely "too early". Rewritten every time the job completes.
   reply_deadline_at                       DateTime?
+  /// updatedAt keeps moving forward on later, unrelated edits (e.g. a
+  /// manual reply_status correction).
   job_completed_date                      String?
   createdAt                               DateTime           @default(now())
   updatedAt                               DateTime           @updatedAt
@@ -1042,11 +1048,11 @@ model SupportEmail {
 
   attachments SupportEmailAttachment[]
 
-  should_reopen       Boolean  @default(false)
-  reopen_booking_ids  String[] @default([])
-  collect_booking_ids String[] @default([])
+  should_reopen           Boolean                @default(false)
+  reopen_booking_ids      String[]               @default([])
+  collect_booking_ids     String[]               @default([])
   collect_booking_amounts CollectBookingAmount[]
-  reply_status        ReplyStatus?
+  reply_status            ReplyStatus?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
