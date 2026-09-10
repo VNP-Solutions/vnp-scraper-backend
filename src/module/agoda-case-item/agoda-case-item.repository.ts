@@ -152,13 +152,17 @@ export class AgodaCaseItemRepository implements IAgodaCaseItemRepository {
             property: { select: { id: true, name: true, agoda_id: true } },
             batch: { select: { id: true, name: true } },
             portfolio: { select: { id: true, name: true } },
+            _count: { select: { notes: true } },
           },
         }),
         this.db.agodaCaseItem.count({ where }),
       ]);
 
       return {
-        items,
+        items: items.map(({ _count, ...item }) => ({
+          ...item,
+          total_notes: _count.notes,
+        })),
         totalDocuments,
         currentPage: page,
         totalPage: Math.ceil(totalDocuments / limit),
