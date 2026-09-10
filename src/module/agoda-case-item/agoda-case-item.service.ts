@@ -314,7 +314,6 @@ export class AgodaCaseItemService implements IAgodaCaseItemService {
           const guestName = row['Name']?.toString().trim();
           const checkIn = parseImportDateCell(row['Check In']);
           const checkOut = parseImportDateCell(row['Check Out']);
-          const postingType = row['Posting Type']?.toString().trim();
           const otaProvider = row['OTA Provider']?.toString().trim();
           const currency = row['Currency']?.toString().trim();
           const amountToCharge = row['Amount to charge']?.toString().trim();
@@ -427,7 +426,6 @@ export class AgodaCaseItemService implements IAgodaCaseItemService {
             charge_status: row['Charge Status']?.toString().trim() || undefined,
             retrival_status: 'pending',
             ota_provider: otaProvider as any || 'Agoda',
-            posting_type: postingType as any,
             is_declined: true,
             is_archived: archive,
             // createdBy not set - will be null

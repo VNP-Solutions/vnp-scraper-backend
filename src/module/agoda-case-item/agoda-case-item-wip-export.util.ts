@@ -10,7 +10,6 @@ import { AgodaCaseItemForExport } from './agoda-case-item.interface';
 export const AGODA_CASE_ITEM_WIP_EXPORT_HEADER = [
   'Hotel ID',
   'Batch',
-  'Posting Type',
   'OTA Provider',
   'Portfolio',
   'Hotel Name',
@@ -64,7 +63,6 @@ function buildWipRow(item: AgodaCaseItemForExport): WipExportRow {
     'Hotel ID':
       item.property?.agoda_id != null ? String(item.property.agoda_id) : '',
     Batch: item.batch?.name ?? '',
-    'Posting Type': item.posting_type ?? '',
     'OTA Provider': item.ota_provider ?? '',
     Portfolio: item.portfolio?.name ?? '',
     'Hotel Name': item.property?.name ?? '',

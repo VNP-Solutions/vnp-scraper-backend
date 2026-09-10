@@ -26,7 +26,6 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { PostingType } from '@prisma/client';
 import { Response } from 'express';
 import { ParseQuery } from 'src/common/decorators/parse-query.decorator';
 import { ValidateBody } from 'src/common/decorators/validate.decorator';
@@ -84,7 +83,6 @@ export class AgodaCaseItemController {
       retrival_status,
       charge_status,
       is_missing,
-      posting_type,
       createdBy,
       is_archived,
       is_declined,
@@ -108,7 +106,6 @@ export class AgodaCaseItemController {
     if (charge_status) filters.charge_status = charge_status;
     if (is_missing !== undefined)
       filters.is_missing = is_missing === true || is_missing === 'true';
-    if (posting_type) filters.posting_type = posting_type;
     if (createdBy) filters.createdBy = createdBy;
     if (is_archived !== undefined)
       filters.is_archived = is_archived === true || is_archived === 'true';
@@ -194,12 +191,6 @@ export class AgodaCaseItemController {
     required: false,
     type: Boolean,
     description: 'Filter by missing flag',
-  })
-  @ApiQuery({
-    name: 'posting_type',
-    required: false,
-    enum: PostingType,
-    description: 'Filter by posting type',
   })
   @ApiQuery({
     name: 'createdBy',
@@ -310,12 +301,6 @@ export class AgodaCaseItemController {
     required: false,
     type: Boolean,
     description: 'Filter by missing flag',
-  })
-  @ApiQuery({
-    name: 'posting_type',
-    required: false,
-    enum: PostingType,
-    description: 'Filter by posting type',
   })
   @ApiQuery({
     name: 'createdBy',
@@ -531,7 +516,7 @@ export class AgodaCaseItemController {
   @ApiOperation({
     summary: 'Get all agoda case items with pagination, search and filters',
     description:
-      'Filterable by charge_status, ota_provider, createdBy (user), portfolio_id, property_id, batch_id, is_archived and is_declined. ' +
+      'Filterable by charge_status, createdBy (user), portfolio_id, property_id, batch_id, is_archived and is_declined. ' +
       'search matches against id, reservation_id, guest_name or vcc_card_number.',
   })
   @ApiQuery({
@@ -569,12 +554,6 @@ export class AgodaCaseItemController {
     required: false,
     type: Boolean,
     description: 'Filter by missing flag',
-  })
-  @ApiQuery({
-    name: 'posting_type',
-    required: false,
-    enum: PostingType,
-    description: 'Filter by posting type',
   })
   @ApiQuery({
     name: 'createdBy',
