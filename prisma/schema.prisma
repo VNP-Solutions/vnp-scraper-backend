@@ -191,6 +191,7 @@ model User {
   receivedInvitations          UserInvitation[]              @relation("InvitedUser")
   notifications                Notification[]
   agodaCaseItems               AgodaCaseItem[]
+  agodaCaseItemNotes           AgodaCaseItemNote[]
 
   @@map("users")
 }
@@ -1092,11 +1093,12 @@ model AgodaCaseItem {
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
-  property  Property?  @relation(fields: [property_id], references: [id], onDelete: Cascade)
-  batch     Batch?     @relation(fields: [batch_id], references: [id], onDelete: Cascade)
-  portfolio Portfolio? @relation(fields: [portfolio_id], references: [id], onDelete: Cascade)
-  retrieval Retrieval? @relation(fields: [retrieval_id], references: [id], onDelete: Cascade)
-  creator   User?      @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  property  Property?           @relation(fields: [property_id], references: [id], onDelete: Cascade)
+  batch     Batch?              @relation(fields: [batch_id], references: [id], onDelete: Cascade)
+  portfolio Portfolio?          @relation(fields: [portfolio_id], references: [id], onDelete: Cascade)
+  retrieval Retrieval?          @relation(fields: [retrieval_id], references: [id], onDelete: Cascade)
+  creator   User?               @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  notes     AgodaCaseItemNote[]
 
   @@index([property_id])
   @@index([batch_id])
@@ -1110,4 +1112,26 @@ model AgodaCaseItem {
   @@index([is_archived])
   @@index([is_declined])
   @@map("agoda_case_items")
+}
+
+/// A free-text note a user leaves on an AgodaCaseItem (e.g. call log,
+/// follow-up reminder). `note_time` is fixed at creation — same instant as
+/// `createdAt` — and never changes even if the note text is edited later;
+/// `updatedAt` tracks the last edit instead. Only the creator may edit or
+/// delete their own note (enforced in the service layer, not here).
+model AgodaCaseItemNote {
+  id                 String   @id @default(auto()) @map("_id") @db.ObjectId
+  agoda_case_item_id String   @db.ObjectId
+  note               String
+  note_time          DateTime @default(now())
+  createdBy          String   @db.ObjectId
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  agodaCaseItem AgodaCaseItem @relation(fields: [agoda_case_item_id], references: [id], onDelete: Cascade)
+  creator       User          @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@index([agoda_case_item_id])
+  @@index([createdBy])
+  @@map("agoda_case_item_notes")
 }
