@@ -267,6 +267,12 @@ export class AgodaCaseItemResponseDto {
 
   @ApiProperty({ description: 'Updated timestamp' })
   updatedAt: Date;
+
+  @ApiProperty({
+    required: false,
+    description: 'How many notes are attached to this case item',
+  })
+  total_notes?: number;
 }
 
 export class AgodaCaseItemListResponseDto {

@@ -47,6 +47,7 @@ export type AgodaCaseItemListItem = AgodaCaseItem & {
   property: Pick<Property, 'id' | 'name' | 'agoda_id'> | null;
   batch: Pick<Batch, 'id' | 'name'> | null;
   portfolio: Pick<Portfolio, 'id' | 'name'> | null;
+  total_notes: number;
 };
 
 export interface PaginatedAgodaCaseItems {
