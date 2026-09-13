@@ -71,7 +71,13 @@ export class PropertyRepository implements IPropertyRepository {
       return property;
     } catch (error) {
       this.logger.error(error);
-      return null;
+      // Rethrow instead of returning null: callers (e.g. Excel import,
+      // sync upsert) assume a Property is returned and immediately read
+      // properties off it (`.name`, `.id`), which previously caused a
+      // confusing "Cannot read properties of null" crash instead of the
+      // real underlying error (e.g. a duplicate OTA ID unique-constraint
+      // violation).
+      throw error;
     }
   }
 
@@ -1512,11 +1518,42 @@ export class PropertyRepository implements IPropertyRepository {
           }
 
           // Check if property already exists
-          const existingProperty = await this.findPropertyByNameAndRelations(
+          let existingProperty = await this.findPropertyByNameAndRelations(
             rowData['Property Name'].toString(),
             portfolioId,
             subPortfolioId,
           );
+
+          const parsedExpediaId = rowData['Expedia ID']
+            ? Number(rowData['Expedia ID'])
+            : null;
+          const parsedBookingId = rowData['Booking ID']
+            ? Number(rowData['Booking ID'])
+            : null;
+          const parsedAgodaId = rowData['Agoda ID']
+            ? Number(rowData['Agoda ID'])
+            : null;
+
+          if (
+            !existingProperty &&
+            (parsedExpediaId || parsedBookingId || parsedAgodaId)
+          ) {
+            // Name/portfolio didn't match, but the OTA ID might already
+            // belong to another property. Match on that instead of trying
+            // to create a duplicate, which would violate the unique OTA-id
+            // index and abort this row with an error.
+            const otaMatch = await this.findByOtaIds({
+              expedia_id: parsedExpediaId,
+              booking_id: parsedBookingId,
+              agoda_id: parsedAgodaId,
+            });
+            if (otaMatch) {
+              existingProperty = otaMatch;
+              this.logger.log(
+                `Property '${rowData['Property Name']}' matched existing property '${otaMatch.name}' (${otaMatch.id}) by OTA ID`,
+              );
+            }
+          }
 
           if (!existingProperty) {
             // Create property data
@@ -1529,15 +1566,15 @@ export class PropertyRepository implements IPropertyRepository {
               agoda_status: rowData['Agoda Status'] || 'Access Required',
             };
 
-            if (rowData['Expedia ID']) {
-              propertyData.expedia_id = Number(rowData['Expedia ID']);
+            if (parsedExpediaId) {
+              propertyData.expedia_id = parsedExpediaId;
             }
 
-            if (rowData['Booking ID']) {
-              propertyData.booking_id = Number(rowData['Booking ID']);
+            if (parsedBookingId) {
+              propertyData.booking_id = parsedBookingId;
             }
-            if (rowData['Agoda ID']) {
-              propertyData.agoda_id = Number(rowData['Agoda ID']);
+            if (parsedAgodaId) {
+              propertyData.agoda_id = parsedAgodaId;
             }
 
             const parsedPhoneSlot =

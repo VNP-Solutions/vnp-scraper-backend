@@ -29,6 +29,7 @@ import {
 import { IRecurringJobService } from '../recurring-job/recurring-job.interface';
 import { IScheduledJobService } from '../scraper/scheduled-job.interface';
 import { IServerService } from '../server/server.interface';
+import { EncryptionUtil } from 'src/common/utils/encryption.util';
 import {
   BulkCreateJobFromDbmsItemDto,
   BulkCreateJobFromDbmsResultDto,
@@ -76,6 +77,7 @@ export class JobService implements IJobService {
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     private readonly logger: Logger,
+    private readonly encryptionUtil: EncryptionUtil,
   ) {}
 
   private convertToPostingType(value: string): PostingType {
@@ -764,12 +766,43 @@ export class JobService implements IJobService {
             rowData['Property Name'].trim() !== ''
           ) {
             propertyName = rowData['Property Name'].toString().trim();
-            const existingProperty =
+            const parsedExpediaId = this.parseOtaIdFromRow(
+              rowData['Expedia ID'],
+            );
+            const parsedBookingId = this.parseOtaIdFromRow(
+              rowData['Booking ID'],
+            );
+            const parsedAgodaId = this.parseOtaIdFromRow(
+              rowData['Agoda ID'],
+            );
+
+            let existingProperty =
               await this.repository.findPropertyByNameAndRelations(
                 propertyName,
                 portfolioId,
                 subPortfolioId,
               );
+
+            if (
+              !existingProperty &&
+              (parsedExpediaId || parsedBookingId || parsedAgodaId)
+            ) {
+              // Name/portfolio didn't match, but the OTA ID might already
+              // belong to another property. Match on that instead of
+              // creating a duplicate, which would violate the unique OTA-id
+              // index and crash the whole import.
+              const otaMatch = await this.propertyRepository.findByOtaIds({
+                expedia_id: parsedExpediaId,
+                booking_id: parsedBookingId,
+                agoda_id: parsedAgodaId,
+              });
+              if (otaMatch) {
+                existingProperty = otaMatch;
+                this.logger.log(
+                  `Property '${propertyName}' matched existing property '${otaMatch.name}' (${otaMatch.id}) by OTA ID`,
+                );
+              }
+            }
 
             if (existingProperty) {
               propertyId = existingProperty.id;
@@ -778,14 +811,73 @@ export class JobService implements IJobService {
                 name: propertyName,
                 portfolio_id: portfolioId,
                 sub_portfolio_id: subPortfolioId,
-                expedia_id: this.parseOtaIdFromRow(rowData['Expedia ID']),
-                booking_id: this.parseOtaIdFromRow(rowData['Booking ID']),
-                agoda_id: this.parseOtaIdFromRow(rowData['Agoda ID']),
+                expedia_id: parsedExpediaId,
+                booking_id: parsedBookingId,
+                agoda_id: parsedAgodaId,
               });
               propertyId = newProperty.id;
               this.logger.log(
                 `Created property: ${propertyName} (${propertyId})`,
               );
+            }
+
+            // Merge any OTA credentials present on this row into the
+            // property, whether it was just created or already existed
+            // (matched by name or by OTA ID). Previously this data was
+            // parsed from the sheet but silently dropped on the floor.
+            if (propertyId) {
+              const credentialsData: any = {};
+              if (rowData['Expedia Username']) {
+                credentialsData.expediaUsername = rowData['Expedia Username']
+                  .toString()
+                  .trim();
+              }
+              if (rowData['Expedia Password']) {
+                credentialsData.expediaPassword =
+                  this.encryptionUtil.encryptPassword(
+                    rowData['Expedia Password'].toString().trim(),
+                  );
+              }
+              if (rowData['Agoda Username']) {
+                credentialsData.agodaUsername = rowData['Agoda Username']
+                  .toString()
+                  .trim();
+              }
+              if (rowData['Agoda Password']) {
+                credentialsData.agodaPassword =
+                  this.encryptionUtil.encryptPassword(
+                    rowData['Agoda Password'].toString().trim(),
+                  );
+              }
+              if (rowData['Booking Username']) {
+                credentialsData.bookingUsername = rowData['Booking Username']
+                  .toString()
+                  .trim();
+              }
+              if (rowData['Booking Password']) {
+                credentialsData.bookingPassword =
+                  this.encryptionUtil.encryptPassword(
+                    rowData['Booking Password'].toString().trim(),
+                  );
+              }
+
+              if (Object.keys(credentialsData).length > 0) {
+                try {
+                  await this.propertyRepository.mergePropertyCredentials(
+                    propertyId,
+                    credentialsData,
+                  );
+                  this.logger.log(
+                    `Merged OTA credentials for property: ${propertyName} (${propertyId})`,
+                  );
+                } catch (credentialError: any) {
+                  this.logger.error(
+                    `Error merging credentials for property ${propertyName}: ${credentialError.message}`,
+                  );
+                  // Don't fail the whole row/job just because credential
+                  // merge failed.
+                }
+              }
             }
           }
 
