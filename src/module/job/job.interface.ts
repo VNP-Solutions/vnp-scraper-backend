@@ -108,11 +108,24 @@ export interface IJobRepository {
   findManyForMasterExport(jobIds: string[]): Promise<any[]>;
   /**
    * Pre-scan that returns just enough info to define the XLSX column
-   * shape (Expedia presence + max packed transaction count) and which
-   * job IDs actually exist. Used by the streaming export path so we can
-   * decide headers BEFORE pulling row data.
+   * shape (Expedia presence + max approved-authorization count) and
+   * which job IDs actually exist. Used by the streaming export path so
+   * we can decide headers BEFORE pulling row data.
    */
   precomputeMasterExportContext(jobIds: string[]): Promise<{
+    hasExpedia: boolean;
+    maxApprovedCount: number;
+    foundIds: Set<string>;
+  }>;
+  /**
+   * "Card Activity Wide" sibling of {@link precomputeMasterExportContext}
+   * — same pre-scan pattern, but returns `maxTransactionCount` (the
+   * widest PACKED authorizations+settlements count on any single
+   * reservation) instead of `maxApprovedCount`, since the wide export
+   * renders both authorizations and settlements into a shared
+   * `Transaction N` sequence.
+   */
+  precomputeCardActivityWideExportContext(jobIds: string[]): Promise<{
     hasExpedia: boolean;
     maxTransactionCount: number;
     foundIds: Set<string>;
@@ -292,6 +305,37 @@ export interface IJobService {
     recurringId: string,
     bucketId: string,
   ): Promise<{ buffer: Buffer; fileName: string }>;
+
+  /**
+   * "Card Activity Wide" export — a SIBLING of the plain master export
+   * methods above, sharing the same 26 static columns but additionally
+   * rendering the full Card Activity / Calculated Amount to Charge /
+   * Amount Match / Transaction Count / dynamic `Transaction N` column
+   * groups (authorizations + settlements, PACKED per reservation). See
+   * `card-activity-wide-export.util.ts` for the row-building details.
+   */
+  exportCardActivityWideCsv(
+    jobIds: string[],
+  ): Promise<{ buffer: Buffer; fileName: string }>;
+  buildConsolidatedCardActivityWideXlsx(
+    jobIds: string[],
+  ): Promise<{ buffer: Buffer; fileName: string }>;
+  streamConsolidatedCardActivityWideXlsx(
+    jobIds: string[],
+    writable: Writable,
+  ): Promise<{ fileName: string }>;
+  streamCardActivityWideXlsxZip(
+    jobIds: string[],
+    writable: Writable,
+  ): Promise<{ fileName: string }>;
+  exportSingleJobCardActivityWideCsv(
+    jobId: string,
+  ): Promise<{ buffer: Buffer; fileName: string }>;
+  exportCardActivityWideCsvByRecurring(
+    recurringId: string,
+    bucketId: string,
+  ): Promise<{ buffer: Buffer; fileName: string }>;
+
   triggerLambdaForPlatform(platform: string): Promise<void>;
   /**
    * Records how Agoda answered, derived from the newest Partner Support

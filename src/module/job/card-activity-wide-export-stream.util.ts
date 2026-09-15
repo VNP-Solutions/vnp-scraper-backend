@@ -2,51 +2,57 @@ import { Logger } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
 import { Writable } from 'stream';
 import {
-  buildMasterRowsForJob,
-  computeMasterExportContext,
-  MasterExportContext,
-} from './master-export.util';
+  buildCardActivityWideExportHeaderMatrix,
+  buildCardActivityWideRowsForJob,
+  computeCardActivityWideExportContext,
+  isCardActivityWideDynamicGroupTextColumn,
+  CardActivityWideExportContext,
+} from './card-activity-wide-export.util';
 
-const logger = new Logger('MasterExportStream');
+const logger = new Logger('CardActivityWideExportStream');
 
 /**
- * True-streaming counterpart to `buildMasterXlsxBuffer` (master-export.util.ts).
+ * Writes the 2-row MERGED XLSX header (mirrors `buildCardActivityWideXlsxBuffer`'s
+ * non-streaming header — see `buildCardActivityWideExportHeaderMatrix`): row 1
+ * has each "Transaction N" label merged across its 5 sub-columns, row 2 has
+ * the per-column sub-labels, and every other column's single label is
+ * merged vertically across both rows.
  *
- * Memory profile (the whole point of this file):
- *   - Headers + ExcelJS internal high-water mark   .... ≲ 50 MB
- *   - ONE in-flight job's rows + cell coercion buffer ≲ 5 MB
- *   - One Mongo batch in flight inside the cursor   .... ≲ 20 MB
- *   - S3 multipart upload's queued parts            .... ≲ 20 MB
- *                                                 ─────────────
- *   peak heap                                       ~100 MB
- *
- * — and this is INDEPENDENT of how many jobs we export. The earlier
- * implementation took an `any[]` of pre-loaded jobs and materialized
- * every row up front; with 944 Expedia jobs × ~563 items each that was
- * a 1.7 GB allocation, which OOM-crashed the worker process.
- *
- * Why the writer accepts both an `AsyncIterable<job>` and a precomputed
- * `MasterExportContext`: ExcelJS's `WorkbookWriter` requires column
- * definitions BEFORE the first row is committed (no late column
- * additions). The Expedia "Approved Amount K" column count depends on
- * the maximum number of approved authorizations across the whole batch,
- * so the caller pre-scans cheaply (no row materialization — see
- * `JobRepository.precomputeMasterExportContext`) and hands us the
- * resulting context up front.
- *
- * Forced text format (Card Number / Expiry date / CVV): in ExcelJS the
- * idiomatic way is `column.numFmt = '@'` AND writing the value as a
- * string (so Excel doesn't pre-interpret it). We do both — see
- * `TEXT_COLUMNS` and the per-row coercion below.
- *
- * Unwrapping the `="..."` CSV-text-marker: the row builder still emits
- * `="3700 2145 0852 239"` style values to keep the CSV path working.
- * For XLSX cells we strip that wrapper since the column-level text
- * format already handles the same problem.
+ * MUST be called immediately after `worksheet.columns` is set and BEFORE
+ * any data row is committed — ExcelJS's streaming `mergeCells` throws
+ * ("Cannot merge already merged cells" / row-out-of-bounds) once a row
+ * inside the merge range has already been flushed to the output stream.
  */
-export async function writeMasterXlsxToStream(
+function writeMergedHeaderRows(
+  worksheet: ExcelJS.Worksheet,
+  headers: string[],
+): void {
+  const { row1, row2, merges } = buildCardActivityWideExportHeaderMatrix(headers);
+  const headerRow1 = worksheet.getRow(1);
+  const headerRow2 = worksheet.getRow(2);
+  headers.forEach((_, idx) => {
+    headerRow1.getCell(idx + 1).value = row1[idx];
+    headerRow2.getCell(idx + 1).value = row2[idx];
+  });
+  for (const m of merges) {
+    worksheet.mergeCells(m.startRow + 1, m.startCol + 1, m.endRow + 1, m.endCol + 1);
+  }
+  headerRow1.commit();
+  headerRow2.commit();
+}
+
+/**
+ * True-streaming counterpart to `buildCardActivityWideXlsxBuffer`
+ * (card-activity-wide-export.util.ts). Same pipeline and memory profile
+ * as `writeMasterXlsxToStream` in `master-export-stream.util.ts` — see
+ * that file's docs for the full rationale. This is the "wide" sibling
+ * used specifically for the `/card-activity-wide-export` endpoints,
+ * which add the full Card Activity / Transaction N column set that the
+ * plain master export no longer includes.
+ */
+export async function writeCardActivityWideXlsxToStream(
   jobs: AsyncIterable<any>,
-  ctx: MasterExportContext,
+  ctx: CardActivityWideExportContext,
   writable: Writable,
 ): Promise<{ rowsWritten: number; jobsProcessed: number }> {
   const headers = ctx.headers;
@@ -74,15 +80,18 @@ export async function writeMasterXlsxToStream(
 
   // Define columns up-front so we can address them by key when writing
   // rows (and so we can set per-column numFmt for the text columns).
-  worksheet.columns = headers.map((h) => ({ header: h, key: h, width: 20 }));
+  // Deliberately omit `header` here — the 2-row merged header below
+  // fully replaces ExcelJS's own "write column.header into row 1" trick.
+  worksheet.columns = headers.map((h) => ({ key: h, width: 20 }));
   for (const col of worksheet.columns) {
-    if (col.key && TEXT_COLUMNS.has(col.key)) {
+    if (
+      col.key &&
+      (TEXT_COLUMNS.has(col.key) || isCardActivityWideDynamicGroupTextColumn(col.key))
+    ) {
       col.numFmt = '@'; // Excel "Text" format
     }
   }
-  // exceljs writes the header row as soon as columns are defined when
-  // using WorkbookWriter — but we still need to .commit() it.
-  worksheet.getRow(1).commit();
+  writeMergedHeaderRows(worksheet, headers);
 
   let rowsWritten = 0;
   let jobsProcessed = 0;
@@ -98,7 +107,7 @@ export async function writeMasterXlsxToStream(
   // so we never get ahead of either pipeline.
   for await (const job of jobs) {
     jobsProcessed += 1;
-    const jobRows = buildMasterRowsForJob(job, ctx);
+    const jobRows = buildCardActivityWideRowsForJob(job, ctx);
     if (jobRows.length > 0) {
       jobsWithRows += 1;
       for (const row of jobRows) {
@@ -115,7 +124,8 @@ export async function writeMasterXlsxToStream(
             if (m) value = m[1].replace(/""/g, '"');
           }
           if (
-            TEXT_COLUMNS.has(header) &&
+            (TEXT_COLUMNS.has(header) ||
+              isCardActivityWideDynamicGroupTextColumn(header)) &&
             value !== null &&
             value !== undefined
           ) {
@@ -134,7 +144,7 @@ export async function writeMasterXlsxToStream(
 
     if (jobsProcessed % LOG_EVERY_JOBS === 0) {
       logger.log(
-        `[Master XLSX] ${jobsProcessed} jobs streamed ` +
+        `[CardActivityWide XLSX] ${jobsProcessed} jobs streamed ` +
           `(${rowsWritten} rows written, ` +
           `${Date.now() - writeStartedAt}ms elapsed)`,
       );
@@ -146,7 +156,7 @@ export async function writeMasterXlsxToStream(
   // await it before considering the upload finished.
   await workbook.commit();
   logger.log(
-    `[Master XLSX] Stream finalized — ${rowsWritten} rows across ` +
+    `[CardActivityWide XLSX] Stream finalized — ${rowsWritten} rows across ` +
       `${jobsWithRows}/${jobsProcessed} jobs in ${Date.now() - writeStartedAt}ms`,
   );
 
@@ -158,21 +168,19 @@ export async function writeMasterXlsxToStream(
  * bytes directly into `writable` as they are produced — no intermediate
  * buffer is ever held in heap.
  *
- * Used by `streamMasterXlsxZip` to feed each per-job XLSX entry directly
- * into archiver via a PassThrough pipe, so archiver can compress and flush
- * to S3 concurrently while ExcelJS is still writing rows. Peak heap cost
- * for a single entry: ExcelJS worksheet rows in flight (~2–5 MB) plus
- * archiver's compression window (~256 KB).
+ * Used by `streamCardActivityWideXlsxZip` to feed each per-job XLSX entry
+ * directly into archiver via a PassThrough pipe, so archiver can compress
+ * and flush to S3 concurrently while ExcelJS is still writing rows.
  *
- * Column headers, field order, text-column formatting (Card Number /
- * Expiry date / CVV → Excel Text format) and `="..."` unwrapping are
- * identical to the consolidated-sheet path so the output is byte-compatible.
+ * Column headers, field order, text-column formatting and `="..."`
+ * unwrapping are identical to the consolidated-sheet path so the output
+ * is byte-compatible.
  *
  * Returns the number of data rows written (0 if the job has no items —
  * the caller should skip empty jobs BEFORE calling this to avoid producing
  * a header-only entry in the ZIP).
  */
-export async function writePerJobXlsxToWritable(
+export async function writePerJobCardActivityWideXlsxToWritable(
   job: any,
   writable: Writable,
 ): Promise<number> {
@@ -186,9 +194,9 @@ export async function writePerJobXlsxToWritable(
     'CVV',
   ]);
 
-  // computeMasterExportContext for a single job is instant: one pass
-  // over one job's items, no DB round-trips.
-  const ctx = computeMasterExportContext([job]);
+  // computeCardActivityWideExportContext for a single job is instant: one
+  // pass over one job's items, no DB round-trips.
+  const ctx = computeCardActivityWideExportContext([job]);
   const { headers } = ctx;
 
   const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
@@ -198,15 +206,20 @@ export async function writePerJobXlsxToWritable(
   });
 
   const worksheet = workbook.addWorksheet('Master');
-  worksheet.columns = headers.map((h) => ({ header: h, key: h, width: 20 }));
+  // Deliberately omit `header` here — the 2-row merged header below
+  // fully replaces ExcelJS's own "write column.header into row 1" trick.
+  worksheet.columns = headers.map((h) => ({ key: h, width: 20 }));
   for (const col of worksheet.columns) {
-    if (col.key && TEXT_COLUMNS.has(col.key)) {
+    if (
+      col.key &&
+      (TEXT_COLUMNS.has(col.key) || isCardActivityWideDynamicGroupTextColumn(col.key))
+    ) {
       col.numFmt = '@'; // Excel "Text" format — preserves leading zeros
     }
   }
-  worksheet.getRow(1).commit();
+  writeMergedHeaderRows(worksheet, headers);
 
-  const rows = buildMasterRowsForJob(job, ctx);
+  const rows = buildCardActivityWideRowsForJob(job, ctx);
   for (const row of rows) {
     const out: Record<string, string | number> = {};
     for (const header of headers) {
@@ -216,7 +229,11 @@ export async function writePerJobXlsxToWritable(
         const m = value.match(/^="(.*)"$/s);
         if (m) value = m[1].replace(/""/g, '"');
       }
-      if (TEXT_COLUMNS.has(header) && value !== null && value !== undefined) {
+      if (
+        (TEXT_COLUMNS.has(header) || isCardActivityWideDynamicGroupTextColumn(header)) &&
+        value !== null &&
+        value !== undefined
+      ) {
         value = String(value);
       }
       out[header] = value;

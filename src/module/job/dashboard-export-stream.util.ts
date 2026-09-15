@@ -17,7 +17,7 @@ const logger = new Logger('DashboardExportStream');
  * exporting. The dashboard's column shape is fully static — no
  * Expedia-only columns, no cross-job aggregates — so no precomputed
  * context is needed (the master writer takes one for the Expedia
- * "Transaction K" columns; the dashboard does not).
+ * "Approved Amount K" columns; the dashboard does not).
  *
  * Forced text format: only `Hotel ID*` here (the equivalent in the
  * synchronous path applies the same column-text format). The trailing
