@@ -1312,25 +1312,33 @@ export class ReportsController {
       '  columns are appended after the static set: `Card Activity`, ' +
       '  `Calculated Amount to Charge`, `Amount Match`, N × ' +
       '  `Card Activity Approved Amount K` columns (N = maximum approved ' +
-      '  authorizations across all Expedia items in the export), and M × ' +
-      '  `Transaction K` column groups — `Transaction K Auth Date`, ' +
-      '  `Transaction K Posted Date`, `Transaction K Auth Code`, ' +
-      '  `Transaction K Amount`, `Transaction K Status / Decline Reason` ' +
-      '  (M = maximum total holds — approved AND declined — on any single ' +
-      '  card activity in the export; `Posted Date` is looked up from ' +
-      '  `settlements` by matching `authCode`, blank until something has ' +
-      '  posted for that hold). Non-Expedia rows simply leave those cells ' +
-      '  blank.\n' +
+      '  authorizations across all Expedia items in the export), and ' +
+      '  then dynamic `Transaction K` column groups — one 5-cell group ' +
+      '  per authorization, immediately followed by one 5-cell group per ' +
+      '  settlement, ALL sharing the SAME `K` counter (e.g. 2 ' +
+      '  authorizations + 1 settlement on a card renders `Transaction 1`, ' +
+      '  `Transaction 2` for the authorizations, then `Transaction 3` for ' +
+      '  the settlement). Authorization-sourced groups are ' +
+      '  `Transaction K Auth Date`, `Transaction K Posted Date`, ' +
+      '  `Transaction K Auth Code`, `Transaction K Amount`, ' +
+      '  `Transaction K Status / Decline Reason` (`Posted Date` is always ' +
+      "  `\"N/A\"` here — an authorization never carries its own posted " +
+      '  date). Settlement-sourced groups are ' +
+      '  `Transaction K Transaction Date`, `Transaction K Post Date`, ' +
+      '  `Transaction K Auth Code`, `Transaction K Reference Number`, ' +
+      '  `Transaction K Amount`. The two sources are never cross-matched ' +
+      '  by `authCode` — only the numbering is shared. Non-Expedia rows ' +
+      '  simply leave those cells blank.\n' +
       '- `Card Number`, `Expiry date`, `CVV`, and the `Transaction K` ' +
-      '  date/Auth Code cells are forced to Excel "Text" format so ' +
-      '  leading zeros and long digit strings are preserved instead of ' +
-      '  being mangled into scientific notation.\n' +
+      '  date/Auth Code/Reference Number cells are forced to Excel ' +
+      '  "Text" format so leading zeros and long digit strings are ' +
+      '  preserved instead of being mangled into scientific notation.\n' +
       '- **XLSX only**: the header is 2 rows with real merged cells — ' +
       '  each `Transaction K` label spans its 5 sub-columns, and every ' +
       '  other column\'s single label is merged vertically across both ' +
-      '  header rows. The CSV/per-job-CSV variants keep a flat single-row ' +
-      '  header (e.g. `Transaction 1 Auth Date`) since CSV has no concept ' +
-      '  of merged cells.\n' +
+      '  header rows. The CSV/per-job-CSV variants keep a flat ' +
+      '  single-row header (e.g. `Transaction 1 Auth Date`) since CSV ' +
+      '  has no concept of merged cells.\n' +
       '- For **Booking** rows, `Check In` / `Check Out` / `Over 160` / ' +
       '  `Number of days since chargeback date` are all `"N/A"`, ' +
       '  matching the spec for the per-job CSV.\n\n' +

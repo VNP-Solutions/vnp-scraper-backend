@@ -1759,7 +1759,8 @@ export class JobService implements IJobService {
         `[Consolidated XLSX] Building XLSX with ${totalItemRows} rows across ` +
           `${prescan.foundIds.size} jobs (hasExpedia=${prescan.hasExpedia}, ` +
           `maxApproved=${prescan.maxApprovedCount}, ` +
-          `maxTransaction=${prescan.maxTransactionCount})`,
+          `maxAuthorization=${prescan.maxAuthorizationCount}, ` +
+          `maxSettlement=${prescan.maxSettlementCount})`,
       );
 
       // Step 3: hand the writer a precomputed context (headers + Expedia

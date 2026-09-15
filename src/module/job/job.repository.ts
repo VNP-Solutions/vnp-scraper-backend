@@ -33,7 +33,7 @@ import { IJobRepository } from './job.interface';
  * — only the fields the exporters actually read are projected. The
  * biggest cuts vs a full `include`: dropping `JobItem.raw_response`,
  * scraper booleans, derived caches; dropping `CardActivity.totalSettlement
- * Amount` and join keys (we only need `authorizations`).
+ * Amount` and join keys (we only need `authorizations` and `settlements`).
  *
  * If you add a column to a builder, add the field here too — otherwise
  * it'll silently come back as `undefined`. NEVER add `Job.batch_name` —
@@ -84,9 +84,10 @@ const MASTER_EXPORT_JOB_ITEM_SELECT = {
     select: {
       id: true,
       authorizations: true,
-      // Needed by the "Transaction N Posted Date" column in
-      // master-export.util.ts — matched back to an authorization by
-      // `authCode` (see the VCC Remaining Balance Engine schema doc).
+      // Needed by the "Transaction N" columns in master-export.util.ts
+      // (settlements continue the SAME counter right after the
+      // authorization slots — NOT matched back to `authorizations` by
+      // `authCode`).
       settlements: true,
     },
   },
@@ -2045,18 +2046,26 @@ export class JobRepository implements IJobRepository {
    *                            jobs in this batch. Determines N for
    *                            `Card Activity Approved Amount {1..N}`.
    *                            Always 0 when `hasExpedia` is false.
-   *   - `maxTransactionCount` — max TOTAL authorizations (approved AND
+   *   - `maxAuthorizationCount` — max TOTAL authorizations (approved AND
    *                            declined) across the same batch. Determines
-   *                            N for the `Transaction {1..N} ...` column
+   *                            N for the `Authorization {1..N} ...` column
    *                            groups. Always 0 when `hasExpedia` is false.
+   *   - `maxSettlementCount` — max TOTAL settlements across the same
+   *                            batch. Determines N for the
+   *                            `Settlement {1..N} ...` column groups
+   *                            (independent of `maxAuthorizationCount` —
+   *                            authorizations and settlements are never
+   *                            cross-matched). Always 0 when `hasExpedia`
+   *                            is false.
    *   - `foundIds`           — set of job IDs that actually exist. The
    *                            caller diffs against `jobIds` to emit
    *                            the "missing IDs" warning.
    *
    * Cost: two queries — one tiny `{ id, ota_provider }` projection over
    * the full id list, then (only when Expedia is present) chunked scans
-   * of `JobItem.cardActivity.authorizations` (just the array field) for
-   * the Expedia subset. Peak memory: one chunk's authorizations, ~10 MB.
+   * of `JobItem.cardActivity.authorizations`/`.settlements` (just the
+   * array fields) for the Expedia subset. Peak memory: one chunk's
+   * authorizations/settlements, ~10-20 MB.
    */
   /**
    * Returns which of the requested job IDs actually exist. Per-job ZIP
@@ -2087,7 +2096,8 @@ export class JobRepository implements IJobRepository {
   async precomputeMasterExportContext(jobIds: string[]): Promise<{
     hasExpedia: boolean;
     maxApprovedCount: number;
-    maxTransactionCount: number;
+    maxAuthorizationCount: number;
+    maxSettlementCount: number;
     foundIds: Set<string>;
   }> {
     try {
@@ -2096,7 +2106,8 @@ export class JobRepository implements IJobRepository {
         return {
           hasExpedia: false,
           maxApprovedCount: 0,
-          maxTransactionCount: 0,
+          maxAuthorizationCount: 0,
+          maxSettlementCount: 0,
           foundIds: new Set<string>(),
         };
       }
@@ -2117,17 +2128,24 @@ export class JobRepository implements IJobRepository {
         .map((r) => r.id);
       const hasExpedia = expediaIds.length > 0;
 
-      // Step 2: max-approved-authorization AND max-total-authorization
-      // scan — only matters for Expedia exports (the non-Expedia path
-      // doesn't emit Approved Amount K / Transaction K columns at all,
-      // so both values are irrelevant there).
+      // Step 2: max-approved-authorization, max-total-authorization AND
+      // max-total-settlement scan — only matters for Expedia exports
+      // (the non-Expedia path doesn't emit Approved Amount K /
+      // Transaction K columns at all, so all three values are
+      // irrelevant there). Authorizations and settlements are
+      // independent arrays — NOT cross-matched by authCode — so each
+      // gets its own max, computed off its own array's length (the two
+      // maxes are later combined into one shared "Transaction K"
+      // counter when the headers are assembled).
       let maxApprovedCount = 0;
-      let maxTransactionCount = 0;
+      let maxAuthorizationCount = 0;
+      let maxSettlementCount = 0;
       if (hasExpedia) {
         // Chunk size kept conservative: each chunk pulls jobItem.card
-        // Activity.authorizations for `CHUNK` jobs, which on Expedia
-        // payloads is ~50 items/job × ~3 auths/item × ~200 B = ~30 KB/job.
-        // 50 jobs/chunk ≈ 1.5 MB on the wire. Safely under Mongo's 16 MB.
+        // Activity.authorizations/.settlements for `CHUNK` jobs, which on
+        // Expedia payloads is ~50 items/job × ~3 auths/item × ~200 B =
+        // ~30 KB/job (settlements add a similar order of magnitude).
+        // 50 jobs/chunk stays safely under Mongo's 16 MB doc limit.
         const CHUNK = 50;
         const totalChunks = Math.ceil(expediaIds.length / CHUNK);
         const logEvery = Math.max(1, Math.floor(totalChunks / 5));
@@ -2138,7 +2156,7 @@ export class JobRepository implements IJobRepository {
             where: { job_id: { in: chunk } },
             select: {
               cardActivity: {
-                select: { authorizations: true },
+                select: { authorizations: true, settlements: true },
               },
             },
           });
@@ -2147,23 +2165,35 @@ export class JobRepository implements IJobRepository {
               ((item as any).cardActivity?.authorizations as
                 | any[]
                 | undefined) ?? [];
+            const settlements =
+              ((item as any).cardActivity?.settlements as
+                | any[]
+                | undefined) ?? [];
             let approvedLen = 0;
             for (const a of auths) {
               if (a?.status === 'Approved') approvedLen += 1;
             }
             if (approvedLen > maxApprovedCount) maxApprovedCount = approvedLen;
-            // "Transaction N" columns count every authorization — approved
-            // AND declined — so this is just the raw array length.
-            if (auths.length > maxTransactionCount) {
-              maxTransactionCount = auths.length;
+            // The "Transaction N" columns' first block counts every
+            // authorization — approved AND declined — so this is just
+            // the raw array length.
+            if (auths.length > maxAuthorizationCount) {
+              maxAuthorizationCount = auths.length;
+            }
+            // The "Transaction N" columns' second block (settlements)
+            // is sized off settlements[]'s own length — independent of
+            // the authorization count, even though both blocks share
+            // one counter when the headers are assembled.
+            if (settlements.length > maxSettlementCount) {
+              maxSettlementCount = settlements.length;
             }
           }
           if (chunkIdx % logEvery === 0 || chunkIdx === totalChunks) {
             this.logger.log(
-              `[MasterExport.prescan] Expedia auth scan ` +
+              `[MasterExport.prescan] Expedia auth/settlement scan ` +
                 `${chunkIdx}/${totalChunks} chunks ` +
-                `(maxApproved=${maxApprovedCount}, maxTransaction=${maxTransactionCount}, ` +
-                `${Date.now() - startedAt}ms)`,
+                `(maxApproved=${maxApprovedCount}, maxAuthorization=${maxAuthorizationCount}, ` +
+                `maxSettlement=${maxSettlementCount}, ${Date.now() - startedAt}ms)`,
             );
           }
           // `items` falls out of scope at the next iteration → GC-eligible.
@@ -2172,11 +2202,18 @@ export class JobRepository implements IJobRepository {
 
       this.logger.log(
         `[MasterExport.prescan] ${uniqueIds.length} jobs (${expediaIds.length} Expedia), ` +
-          `maxApproved=${maxApprovedCount}, maxTransaction=${maxTransactionCount}, ` +
+          `maxApproved=${maxApprovedCount}, maxAuthorization=${maxAuthorizationCount}, ` +
+          `maxSettlement=${maxSettlementCount}, ` +
           `missing=${uniqueIds.length - foundIds.size}, ${Date.now() - startedAt}ms`,
       );
 
-      return { hasExpedia, maxApprovedCount, maxTransactionCount, foundIds };
+      return {
+        hasExpedia,
+        maxApprovedCount,
+        maxAuthorizationCount,
+        maxSettlementCount,
+        foundIds,
+      };
     } catch (error) {
       this.logger.error(
         `Error in master-export pre-scan: ${error.message}`,

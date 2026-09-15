@@ -5,7 +5,7 @@ import {
   buildMasterExportHeaderMatrix,
   buildMasterRowsForJob,
   computeMasterExportContext,
-  isTransactionTextColumn,
+  isDynamicGroupTextColumn,
   MasterExportContext,
 } from './master-export.util';
 
@@ -112,7 +112,7 @@ export async function writeMasterXlsxToStream(
   for (const col of worksheet.columns) {
     if (
       col.key &&
-      (TEXT_COLUMNS.has(col.key) || isTransactionTextColumn(col.key))
+      (TEXT_COLUMNS.has(col.key) || isDynamicGroupTextColumn(col.key))
     ) {
       col.numFmt = '@'; // Excel "Text" format
     }
@@ -150,7 +150,7 @@ export async function writeMasterXlsxToStream(
             if (m) value = m[1].replace(/""/g, '"');
           }
           if (
-            (TEXT_COLUMNS.has(header) || isTransactionTextColumn(header)) &&
+            (TEXT_COLUMNS.has(header) || isDynamicGroupTextColumn(header)) &&
             value !== null &&
             value !== undefined
           ) {
@@ -239,7 +239,7 @@ export async function writePerJobXlsxToWritable(
   for (const col of worksheet.columns) {
     if (
       col.key &&
-      (TEXT_COLUMNS.has(col.key) || isTransactionTextColumn(col.key))
+      (TEXT_COLUMNS.has(col.key) || isDynamicGroupTextColumn(col.key))
     ) {
       col.numFmt = '@'; // Excel "Text" format — preserves leading zeros
     }
@@ -257,7 +257,7 @@ export async function writePerJobXlsxToWritable(
         if (m) value = m[1].replace(/""/g, '"');
       }
       if (
-        (TEXT_COLUMNS.has(header) || isTransactionTextColumn(header)) &&
+        (TEXT_COLUMNS.has(header) || isDynamicGroupTextColumn(header)) &&
         value !== null &&
         value !== undefined
       ) {
