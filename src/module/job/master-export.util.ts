@@ -39,10 +39,11 @@ export const MASTER_EXPORT_HEADER: string[] = [
 
 const NA = 'N/A';
 const CARD_ACTIVITY_HEADER = 'Card Activity';
-const APPROVED_AMOUNT_HEADER_PREFIX = 'Card Activity Approved Amount';
 const CALCULATED_AMOUNT_HEADER = 'Calculated Amount to Charge';
 const AMOUNT_MATCH_HEADER = 'Amount Match';
 const OVER_160_HEADER = 'Over 160';
+/** Total count of authorizations + settlements on THIS reservation's own card activity (not the export-wide max — see {@link buildMasterRow}). */
+const TRANSACTION_COUNT_HEADER = 'Transaction Count';
 // `authorizations[]` and `settlements[]` are two INDEPENDENT lists on
 // cardActivity — deliberately NOT cross-matched by authCode anywhere in
 // this file (each authorization's own fields never borrow a settlement's
@@ -51,11 +52,13 @@ const OVER_160_HEADER = 'Over 160';
 // a spreadsheet by hand would: THIS reservation's own authorizations fill
 // slots 1..authCount, then THIS reservation's own settlements continue
 // immediately after at authCount+1..authCount+settlementCount, with no
-// gap, regardless of what any other reservation in the export has. Since
-// a given slot can be an authorization on one row and a settlement on
-// another, every slot uses the SAME generic 6-column shape (Type / Date /
-// Posted Date / Auth Code / Amount / Detail) — see
-// buildTransactionSlotHeaderGroup and buildTransactionSlotValues.
+// gap, regardless of what any other reservation in the export has. Every
+// slot uses the SAME 5-column shape (Auth Date / Posted Date / Auth Code
+// / Amount / Status / Decline Reason) regardless of which source filled
+// it — see buildTransactionSlotHeaderGroup. `Posted Date` doubles as the
+// implicit type indicator: "N/A" means the slot came from an
+// authorization (which never carries its own posted date), a real date
+// means it came from a settlement.
 const TRANSACTION_HEADER_PREFIX = 'Transaction';
 
 /**
@@ -144,26 +147,30 @@ function formatStatusOrDeclineReasonCell(auth: any): string {
 }
 
 /**
- * Sub-columns for one "Transaction N" slot. Generic on purpose — a given
- * slot index can hold an authorization on one reservation's row and a
- * settlement on another's (each reservation packs its OWN authorizations
- * then its OWN settlements starting from slot 1, so slot N's underlying
- * source varies row to row). `Type` disambiguates which source produced
- * the row's data in that slot; `Detail` holds whichever free-text field
- * that source has (`Status / Decline Reason` for an authorization,
- * `Reference Number` for a settlement).
+ * Sub-columns for one "Transaction N" slot — fixed shape regardless of
+ * whether the slot is filled from an authorization or a settlement (a
+ * given slot index can be either, depending on the row — see
+ * {@link buildMasterRow}). `Status / Decline Reason` holds the
+ * authorization's own status/decline text when the slot is an
+ * authorization, or the settlement's reference number when the slot is
+ * a settlement — there's no separate "Type" column; `Posted Date` being
+ * `"N/A"` vs a real date is what tells the two apart.
  */
 const TRANSACTION_SLOT_SUFFIXES = [
-  'Type',
-  'Date',
+  'Auth Date',
   'Posted Date',
   'Auth Code',
   'Amount',
-  'Detail',
+  'Status / Decline Reason',
 ];
 
-/** Every sub-column suffix that must render as Excel Text (dates + alphanumeric codes/reference numbers; never `Type` or `Amount`). */
-const TRANSACTION_TEXT_SUFFIXES = ['Date', 'Posted Date', 'Auth Code', 'Detail'];
+/** Every sub-column suffix that must render as Excel Text (dates + alphanumeric codes; `Status / Decline Reason` can hold a long settlement reference number too, so it's included for safety). */
+const TRANSACTION_TEXT_SUFFIXES = [
+  'Auth Date',
+  'Posted Date',
+  'Auth Code',
+  'Status / Decline Reason',
+];
 
 /**
  * Flattened sub-header labels for one "Transaction N" slot (CSV/XLSX
@@ -212,9 +219,9 @@ const DYNAMIC_GROUP_HEADER_RE = new RegExp(
  * are what any downstream CSV-parsing tooling should keep matching on).
  *
  * Row 1 carries each "Transaction N" group label, merged horizontally
- * across its 6 sub-columns (see {@link buildTransactionSlotHeaderGroup}
+ * across its 5 sub-columns (see {@link buildTransactionSlotHeaderGroup}
  * — a slot can be an authorization on one reservation's row and a
- * settlement on another's, so every slot shares the same generic shape).
+ * settlement on another's, so every slot shares the same fixed shape).
  * Every other column's single label is merged VERTICALLY across both
  * header rows instead, so it still reads as one header cell rather than
  * leaving row 2 blank underneath it.
@@ -227,7 +234,7 @@ export function buildMasterExportHeaderMatrix(headers: string[]): {
   const row1: string[] = [];
   const row2: string[] = [];
   const merges: MasterExportHeaderMerge[] = [];
-  const GROUP_SIZE = 6; // every "Transaction N" slot has 6 sub-columns
+  const GROUP_SIZE = 5; // every "Transaction N" slot has 5 sub-columns
 
   let col = 0;
   while (col < headers.length) {
@@ -335,14 +342,11 @@ function asExcelText(value: string | number | null | undefined): string {
  * OTA-specific rules described in the spec.
  *
  * Keys in the returned object must exactly match MASTER_EXPORT_HEADER (and
- * the dynamic Card Activity / Approved Amount N columns) so XLSX's
+ * the dynamic Card Activity / Transaction N columns) so XLSX's
  * json_to_sheet(..., { header }) emits columns in the right order.
  *
- * `approvedAmountColumns` is the number of "Approved Amount N" columns the
- * caller has decided to render for this CSV (the maximum across all rows in
- * the same export). Each row pads its own approved-amount cells up to that
- * count so every row has the same shape. `transactionColumns` is the same
- * idea for the "Transaction N" slots — sized off the export-wide MAX of
+ * `transactionColumns` is the number of "Transaction N" slots the caller
+ * has decided to render for this CSV — sized off the export-wide MAX of
  * (a single reservation's own authorization count + its own settlement
  * count). Each row PACKS its own authorizations into slots `1..authCount`
  * then its own settlements into `authCount+1..authCount+settlementCount`
@@ -354,7 +358,6 @@ function asExcelText(value: string | number | null | undefined): string {
 export function buildMasterRow(
   job: any,
   item: any,
-  approvedAmountColumns = 0,
   today: Date = new Date(),
   transactionColumns = 0,
 ): Record<string, string | number> {
@@ -443,9 +446,10 @@ export function buildMasterRow(
   row[MASTER_EXPORT_HEADER[25]] = ''; // Reporting Contact
 
   // Card Activity + Calculated Amount to Charge + Amount Match + dynamic
-  // Approved Amount columns are EXPEDIA-ONLY. For Booking and Agoda these
-  // keys are not written at all; buildMasterRows() also omits them from
-  // the header so the resulting CSV has just the 26 static columns.
+  // Transaction Count / Transaction N columns are EXPEDIA-ONLY. For
+  // Booking and Agoda these keys are not written at all; buildMasterRows()
+  // also omits them from the header so the resulting CSV has just the 26
+  // static columns.
   if (isExpedia) {
     const approved = getApprovedAuthorizations(item);
     row[CARD_ACTIVITY_HEADER] = JSON.stringify(approved);
@@ -479,35 +483,24 @@ export function buildMasterRow(
         ? 'Yes'
         : 'No';
 
-    for (let i = 0; i < approvedAmountColumns; i++) {
-      const header = `${APPROVED_AMOUNT_HEADER_PREFIX} ${i + 1}`;
-      if (i < approved.length) {
-        row[header] = formatApprovedAmountCell(approved[i]);
-      } else {
-        row[header] = '';
-      }
-    }
-
     // "Transaction N" slots — PACKED per reservation, like a person
     // filling a spreadsheet by hand would: this item's own authorizations
-    // (approved OR declined; unlike the "Approved Amount N" columns
-    // above, nothing here is filtered by status) fill slots
-    // 1..allAuths.length, then this item's own settlements continue
+    // (approved OR declined; nothing here is filtered by status) fill
+    // slots 1..allAuths.length, then this item's own settlements continue
     // IMMEDIATELY after — no gap — at allAuths.length+1..allAuths.length
     // +allSettlements.length. `transactionColumns` is the export-wide
     // widest packed sequence seen on any single reservation; any slots
-    // beyond this item's own total are padded blank.
+    // beyond this item's own total are padded blank. `Transaction Count`
+    // reports THIS reservation's own total (allAuths.length +
+    // allSettlements.length) so the reader knows how many of the
+    // reserved slots are actually populated for this row.
     const allAuths = getAllAuthorizations(item);
     const allSettlements = getSettlements(item);
+    row[TRANSACTION_COUNT_HEADER] = allAuths.length + allSettlements.length;
+
     for (let i = 0; i < transactionColumns; i++) {
-      const [
-        typeHeader,
-        dateHeader,
-        postedDateHeader,
-        authCodeHeader,
-        amountHeader,
-        detailHeader,
-      ] = buildTransactionSlotHeaderGroup(i + 1);
+      const [authDateHeader, postedDateHeader, authCodeHeader, amountHeader, statusHeader] =
+        buildTransactionSlotHeaderGroup(i + 1);
 
       if (i < allAuths.length) {
         // Slot sourced from this reservation's authorizations[]. `Posted
@@ -515,34 +508,37 @@ export function buildMasterRow(
         // posted date, and this is deliberately NOT looked up from
         // settlements[] by matching authCode (that would re-introduce
         // the cross-matching the settlement slots below exist to avoid).
+        // This "N/A" is also the implicit signal that the slot is an
+        // authorization, since there's no separate "Type" column.
         const auth = allAuths[i];
-        row[typeHeader] = 'Authorization';
-        row[dateHeader] = asImportDateCell(auth?.dateTime);
+        row[authDateHeader] = asImportDateCell(auth?.dateTime);
         row[postedDateHeader] = NA;
         row[authCodeHeader] = asExcelText(auth?.authCode ?? '');
         row[amountHeader] = formatApprovedAmountCell(auth);
-        row[detailHeader] = formatStatusOrDeclineReasonCell(auth);
+        row[statusHeader] = formatStatusOrDeclineReasonCell(auth);
       } else if (i < allAuths.length + allSettlements.length) {
         // Slot sourced from this reservation's settlements[] — NOT
         // matched back to a specific authorization by authCode; it just
         // continues the packed sequence right after this item's own
-        // authorization slots.
+        // authorization slots. `Posted Date` gets the settlement's REAL
+        // post date here (vs "N/A" above), which is what distinguishes a
+        // settlement slot from an authorization slot. `Status / Decline
+        // Reason` holds the settlement's reference number instead, since
+        // there's no separate "Reference Number" column.
         const settlement = allSettlements[i - allAuths.length];
-        row[typeHeader] = 'Settlement';
-        row[dateHeader] = asImportDateCell(settlement?.transactionDate);
+        row[authDateHeader] = asImportDateCell(settlement?.transactionDate);
         row[postedDateHeader] = asImportDateCell(settlement?.postDate);
         row[authCodeHeader] = asExcelText(settlement?.authCode ?? '');
         row[amountHeader] = formatApprovedAmountCell(settlement);
-        row[detailHeader] = asExcelText(settlement?.referenceNumber ?? '');
+        row[statusHeader] = asExcelText(settlement?.referenceNumber ?? '');
       } else {
         // Beyond this item's own total — padding to match the widest
         // reservation elsewhere in the export.
-        row[typeHeader] = '';
-        row[dateHeader] = '';
+        row[authDateHeader] = '';
         row[postedDateHeader] = '';
         row[authCodeHeader] = '';
         row[amountHeader] = '';
-        row[detailHeader] = '';
+        row[statusHeader] = '';
       }
     }
   }
@@ -559,15 +555,16 @@ export function buildMasterRow(
  * the resulting CSV always represents one OTA. Headers are tailored to
  * the OTA:
  *   - Expedia → static columns + Card Activity + Calculated Amount to
- *     Charge + Amount Match + N "Card Activity Approved Amount K" columns
- *     (N = max approved authorizations on any Expedia job item passed in).
+ *     Charge + Amount Match + Transaction Count + N "Transaction K"
+ *     column groups (N = max, across every reservation, of that
+ *     reservation's own authorization count + settlement count).
  *   - Booking / Agoda → static columns only (no Expedia-specific columns).
  */
 /**
  * Precomputed cross-job context that every row in a master export shares:
  * the resolved header order (including dynamic Expedia-only columns), the
- * Expedia flag, the `maxApprovedCount` (= count of "Approved Amount K"
- * columns the headers reserve), and the anchor `today` Date used for the
+ * Expedia flag, the `maxTransactionCount` (= number of "Transaction K"
+ * slots the headers reserve), and the anchor `today` Date used for the
  * chargeback-days header and per-row derived fields.
  *
  * Computed once per export by {@link computeMasterExportContext} and then
@@ -578,7 +575,6 @@ export function buildMasterRow(
 export interface MasterExportContext {
   headers: string[];
   isExpediaCsv: boolean;
-  maxApprovedCount: number;
   /**
    * Number of "Transaction N" slots reserved in `headers` — the
    * export-wide MAX, across every reservation, of (that reservation's
@@ -605,7 +601,6 @@ export interface MasterExportContext {
 export function buildMasterExportContextFromPrescan(
   prescan: {
     hasExpedia: boolean;
-    maxApprovedCount: number;
     maxTransactionCount?: number;
   },
   today: Date = new Date(),
@@ -622,10 +617,7 @@ export function buildMasterExportContextFromPrescan(
           CARD_ACTIVITY_HEADER,
           CALCULATED_AMOUNT_HEADER,
           AMOUNT_MATCH_HEADER,
-          ...Array.from(
-            { length: prescan.maxApprovedCount },
-            (_, i) => `${APPROVED_AMOUNT_HEADER_PREFIX} ${i + 1}`,
-          ),
+          TRANSACTION_COUNT_HEADER,
           ...Array.from({ length: maxTransactionCount }, (_, i) =>
             buildTransactionSlotHeaderGroup(i + 1),
           ).flat(),
@@ -635,7 +627,6 @@ export function buildMasterExportContextFromPrescan(
   return {
     headers,
     isExpediaCsv: prescan.hasExpedia,
-    maxApprovedCount: prescan.maxApprovedCount,
     maxTransactionCount,
     today,
   };
@@ -662,15 +653,12 @@ export function computeMasterExportContext(jobs: any[]): MasterExportContext {
   const today = new Date();
   const chargebackHeader = buildChargebackDaysHeader(today);
 
-  let maxApprovedCount = 0;
   let maxTransactionCount = 0;
   if (isExpediaCsv) {
     for (const job of jobs || []) {
       if (job?.ota_provider !== OTAProvider.Expedia) continue;
       const items = Array.isArray(job?.jobItem) ? job.jobItem : [];
       for (const item of items) {
-        const approvedCount = getApprovedAuthorizations(item).length;
-        if (approvedCount > maxApprovedCount) maxApprovedCount = approvedCount;
         // Packed total for THIS reservation — its own authorizations
         // plus its own settlements. The header only needs to reserve the
         // widest single reservation's packed total, not the sum of two
@@ -696,10 +684,7 @@ export function computeMasterExportContext(jobs: any[]): MasterExportContext {
           CARD_ACTIVITY_HEADER,
           CALCULATED_AMOUNT_HEADER,
           AMOUNT_MATCH_HEADER,
-          ...Array.from(
-            { length: maxApprovedCount },
-            (_, i) => `${APPROVED_AMOUNT_HEADER_PREFIX} ${i + 1}`,
-          ),
+          TRANSACTION_COUNT_HEADER,
           ...Array.from({ length: maxTransactionCount }, (_, i) =>
             buildTransactionSlotHeaderGroup(i + 1),
           ).flat(),
@@ -710,7 +695,6 @@ export function computeMasterExportContext(jobs: any[]): MasterExportContext {
   return {
     headers,
     isExpediaCsv,
-    maxApprovedCount,
     maxTransactionCount,
     today,
   };
@@ -732,13 +716,7 @@ export function buildMasterRowsForJob(
   if (items.length === 0) return [];
   const rows: Record<string, string | number>[] = new Array(items.length);
   for (let i = 0; i < items.length; i++) {
-    rows[i] = buildMasterRow(
-      job,
-      items[i],
-      ctx.maxApprovedCount,
-      ctx.today,
-      ctx.maxTransactionCount,
-    );
+    rows[i] = buildMasterRow(job, items[i], ctx.today, ctx.maxTransactionCount);
   }
   return rows;
 }
@@ -781,7 +759,7 @@ function unwrapExcelTextValue(value: unknown): unknown {
 }
 
 /** Header strings forced to Excel "Text" format (besides the dynamic
- * "Transaction N ..." date/Auth Code/Detail cells, handled separately
+ * "Transaction N ..." date/Auth Code/Status cells, handled separately
  * via {@link isDynamicGroupTextColumn}). MUST match labels in
  * `MASTER_EXPORT_HEADER`. */
 const STATIC_TEXT_COLUMN_HEADERS = [
@@ -797,13 +775,13 @@ const STATIC_TEXT_COLUMN_HEADERS = [
 /**
  * Build an XLSX buffer from the same master rows that {@link buildMasterRows}
  * produces for the CSV path. Card Number / Expiry date / CVV (+ the
- * "Transaction N" date/Auth Code/Detail cells) are forced to Excel
+ * "Transaction N" date/Auth Code/Status cells) are forced to Excel
  * "Text" format so leading zeros and long digit strings are preserved
  * instead of being mangled into scientific notation.
  *
  * Unlike the CSV path, the header here is a proper 2-row MERGED header
  * (see {@link buildMasterExportHeaderMatrix}): row 1 has each
- * "Transaction N" label spanning its 6 sub-columns, row 2 has the
+ * "Transaction N" label spanning its 5 sub-columns, row 2 has the
  * per-column sub-labels; every other column's single label is merged
  * vertically across both rows. Data rows start at (0-indexed) row 2.
  */

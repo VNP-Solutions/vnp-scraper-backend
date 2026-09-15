@@ -14,7 +14,7 @@ const logger = new Logger('MasterExportStream');
 /**
  * Writes the 2-row MERGED XLSX header (mirrors `buildMasterXlsxBuffer`'s
  * non-streaming header — see `buildMasterExportHeaderMatrix`): row 1 has
- * each "Transaction N" label merged across its 6 sub-columns, row 2 has
+ * each "Transaction N" label merged across its 5 sub-columns, row 2 has
  * the per-column sub-labels, and every other column's single label is
  * merged vertically across both rows.
  *
@@ -60,9 +60,10 @@ function writeMergedHeaderRows(
  * Why the writer accepts both an `AsyncIterable<job>` and a precomputed
  * `MasterExportContext`: ExcelJS's `WorkbookWriter` requires column
  * definitions BEFORE the first row is committed (no late column
- * additions). The Expedia "Approved Amount K" column count depends on
- * the maximum number of approved authorizations across the whole batch,
- * so the caller pre-scans cheaply (no row materialization — see
+ * additions). The Expedia "Transaction N" column count depends on the
+ * maximum packed (authorizations + settlements) count on any single
+ * reservation across the whole batch, so the caller pre-scans cheaply
+ * (no row materialization — see
  * `JobRepository.precomputeMasterExportContext`) and hands us the
  * resulting context up front.
  *

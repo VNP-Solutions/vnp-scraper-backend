@@ -108,13 +108,12 @@ export interface IJobRepository {
   findManyForMasterExport(jobIds: string[]): Promise<any[]>;
   /**
    * Pre-scan that returns just enough info to define the XLSX column
-   * shape (Expedia presence + max approved-authorization count) and
-   * which job IDs actually exist. Used by the streaming export path so
-   * we can decide headers BEFORE pulling row data.
+   * shape (Expedia presence + max packed transaction count) and which
+   * job IDs actually exist. Used by the streaming export path so we can
+   * decide headers BEFORE pulling row data.
    */
   precomputeMasterExportContext(jobIds: string[]): Promise<{
     hasExpedia: boolean;
-    maxApprovedCount: number;
     maxTransactionCount: number;
     foundIds: Set<string>;
   }>;

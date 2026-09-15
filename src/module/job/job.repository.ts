@@ -2039,13 +2039,8 @@ export class JobRepository implements IJobRepository {
    * Returns:
    *   - `hasExpedia`         — true iff at least one job in `jobIds` is
    *                            ota_provider === Expedia. Drives whether
-   *                            we emit the Card Activity / Approved
-   *                            Amount K columns.
-   *   - `maxApprovedCount`   — max number of `"Approved"` authorizations
-   *                            across all card_activities for Expedia
-   *                            jobs in this batch. Determines N for
-   *                            `Card Activity Approved Amount {1..N}`.
-   *                            Always 0 when `hasExpedia` is false.
+   *                            we emit the Card Activity / Transaction
+   *                            Count / Transaction K columns.
    *   - `maxTransactionCount` — max, across every single reservation in
    *                            the batch, of (that reservation's OWN
    *                            authorization count + its OWN settlement
@@ -2096,7 +2091,6 @@ export class JobRepository implements IJobRepository {
 
   async precomputeMasterExportContext(jobIds: string[]): Promise<{
     hasExpedia: boolean;
-    maxApprovedCount: number;
     maxTransactionCount: number;
     foundIds: Set<string>;
   }> {
@@ -2105,7 +2099,6 @@ export class JobRepository implements IJobRepository {
       if (uniqueIds.length === 0) {
         return {
           hasExpedia: false,
-          maxApprovedCount: 0,
           maxTransactionCount: 0,
           foundIds: new Set<string>(),
         };
@@ -2127,16 +2120,14 @@ export class JobRepository implements IJobRepository {
         .map((r) => r.id);
       const hasExpedia = expediaIds.length > 0;
 
-      // Step 2: max-approved-authorization AND max-packed-transaction
-      // scan — only matters for Expedia exports (the non-Expedia path
-      // doesn't emit Approved Amount K / Transaction K columns at all,
-      // so both values are irrelevant there). "Packed transaction count"
-      // for a reservation = its own authorization count + its own
+      // Step 2: max-packed-transaction scan — only matters for Expedia
+      // exports (the non-Expedia path doesn't emit Transaction K columns
+      // at all, so this value is irrelevant there). "Packed transaction
+      // count" for a reservation = its own authorization count + its own
       // settlement count (the two arrays are NOT cross-matched by
       // authCode — this is purely a per-reservation total used to size
       // the shared "Transaction K" slots so every reservation's own
       // authorizations-then-settlements pack with no gap).
-      let maxApprovedCount = 0;
       let maxTransactionCount = 0;
       if (hasExpedia) {
         // Chunk size kept conservative: each chunk pulls jobItem.card
@@ -2167,11 +2158,6 @@ export class JobRepository implements IJobRepository {
               ((item as any).cardActivity?.settlements as
                 | any[]
                 | undefined) ?? [];
-            let approvedLen = 0;
-            for (const a of auths) {
-              if (a?.status === 'Approved') approvedLen += 1;
-            }
-            if (approvedLen > maxApprovedCount) maxApprovedCount = approvedLen;
             // Packed total for THIS reservation only — its own
             // authorizations plus its own settlements. The header only
             // needs to reserve the widest single reservation's packed
@@ -2185,7 +2171,7 @@ export class JobRepository implements IJobRepository {
             this.logger.log(
               `[MasterExport.prescan] Expedia auth/settlement scan ` +
                 `${chunkIdx}/${totalChunks} chunks ` +
-                `(maxApproved=${maxApprovedCount}, maxTransaction=${maxTransactionCount}, ` +
+                `(maxTransaction=${maxTransactionCount}, ` +
                 `${Date.now() - startedAt}ms)`,
             );
           }
@@ -2195,13 +2181,12 @@ export class JobRepository implements IJobRepository {
 
       this.logger.log(
         `[MasterExport.prescan] ${uniqueIds.length} jobs (${expediaIds.length} Expedia), ` +
-          `maxApproved=${maxApprovedCount}, maxTransaction=${maxTransactionCount}, ` +
+          `maxTransaction=${maxTransactionCount}, ` +
           `missing=${uniqueIds.length - foundIds.size}, ${Date.now() - startedAt}ms`,
       );
 
       return {
         hasExpedia,
-        maxApprovedCount,
         maxTransactionCount,
         foundIds,
       };

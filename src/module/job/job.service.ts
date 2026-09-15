@@ -1485,8 +1485,9 @@ export class JobService implements IJobService {
    *
    * Notes on mixed-OTA inputs:
    * - If ANY job in the input is Expedia, the Expedia-specific columns
-   *   (`Card Activity`, `Calculated Amount to Charge`, `Amount Match`, and
-   *   `Card Activity Approved Amount N`) are appended to the header.
+   *   (`Card Activity`, `Calculated Amount to Charge`, `Amount Match`,
+   *   `Transaction Count`, and dynamic `Transaction N` column groups) are
+   *   appended to the header.
    *   Non-Expedia rows simply leave those cells blank — exactly how the
    *   underlying `buildMasterRow` function already behaves.
    * - `Over 160` / `Number of days since chargeback date` use "N/A" for
@@ -1726,7 +1727,7 @@ export class JobService implements IJobService {
       );
 
       // Step 1: lightweight pre-scan. Tells us whether to emit Expedia-only
-      // columns, how many Approved Amount K columns the workbook needs,
+      // columns, how many Transaction K column groups the workbook needs,
       // and which IDs actually exist in Mongo. NO row data loaded yet.
       const prescan =
         await this.repository.precomputeMasterExportContext(uniqueJobIds);
@@ -1758,7 +1759,6 @@ export class JobService implements IJobService {
       this.logger.log(
         `[Consolidated XLSX] Building XLSX with ${totalItemRows} rows across ` +
           `${prescan.foundIds.size} jobs (hasExpedia=${prescan.hasExpedia}, ` +
-          `maxApproved=${prescan.maxApprovedCount}, ` +
           `maxTransaction=${prescan.maxTransactionCount})`,
       );
 
@@ -2068,8 +2068,9 @@ export class JobService implements IJobService {
    *
    * The headers are computed across all jobs together, so if the bucket
    * contains any Expedia jobs the Expedia-specific columns (Card Activity,
-   * Calculated Amount to Charge, Amount Match, dynamic Approved Amount K)
-   * appear in the file. Non-Expedia rows simply leave those cells blank.
+   * Calculated Amount to Charge, Amount Match, Transaction Count, dynamic
+   * Transaction N column groups) appear in the file. Non-Expedia rows
+   * simply leave those cells blank.
    */
   async exportMasterCsvByRecurring(
     recurringId: string,

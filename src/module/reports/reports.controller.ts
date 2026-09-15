@@ -1310,14 +1310,14 @@ export class ReportsController {
       '  `Reporting Contact (From DBMS)`.\n' +
       '- If any of the selected jobs is **Expedia**, the Expedia-only ' +
       '  columns are appended after the static set: `Card Activity`, ' +
-      '  `Calculated Amount to Charge`, `Amount Match`, N × ' +
-      '  `Card Activity Approved Amount K` columns (N = maximum approved ' +
-      '  authorizations across all Expedia items in the export), and ' +
-      '  then dynamic `Transaction K` column groups, **PACKED per ' +
-      '  reservation** — like a person filling a spreadsheet by hand: ' +
-      '  each reservation\'s own authorizations (approved AND declined) ' +
-      '  fill slots `1..authCount`, then that SAME reservation\'s own ' +
-      '  settlements continue immediately after with NO gap, at ' +
+      '  `Calculated Amount to Charge`, `Amount Match`, ' +
+      '  `Transaction Count` (this reservation\'s own total ' +
+      '  authorizations + settlements), and then dynamic `Transaction K` ' +
+      '  column groups, **PACKED per reservation** — like a person ' +
+      '  filling a spreadsheet by hand: each reservation\'s own ' +
+      '  authorizations (approved AND declined) fill slots ' +
+      '  `1..authCount`, then that SAME reservation\'s own settlements ' +
+      '  continue immediately after with NO gap, at ' +
       '  `authCount+1..authCount+settlementCount` (e.g. a reservation ' +
       '  with 2 authorizations + 1 settlement renders `Transaction 1`, ' +
       '  `Transaction 2` as authorizations then `Transaction 3` as the ' +
@@ -1328,28 +1328,29 @@ export class ReportsController {
       '  `authCount + settlementCount` — NOT the sum of two separate ' +
       '  per-type maxes, so unused slots are minimized. Because the SAME ' +
       '  slot index can be an authorization on one row and a settlement ' +
-      '  on another, every `Transaction K` group shares one generic ' +
-      '  6-column shape: `Transaction K Type` (`Authorization` or ' +
-      '  `Settlement`), `Transaction K Date` (Auth Date or Transaction ' +
-      '  Date), `Transaction K Posted Date` (always `"N/A"` for an ' +
-      '  authorization slot — an authorization never carries its own ' +
-      '  posted date; the settlement\'s Post Date for a settlement ' +
-      '  slot), `Transaction K Auth Code`, `Transaction K Amount`, ' +
-      '  `Transaction K Detail` (Status / Decline Reason for an ' +
-      '  authorization slot, Reference Number for a settlement slot). ' +
-      '  Authorizations and settlements are never cross-matched by ' +
-      '  `authCode` — only the slot numbering is shared. Non-Expedia ' +
-      '  rows simply leave those cells blank.\n' +
+      '  on another, every `Transaction K` group shares one fixed ' +
+      '  5-column shape: `Transaction K Auth Date` (Auth Date or ' +
+      '  Transaction Date), `Transaction K Posted Date` (always ' +
+      '  `"N/A"` for an authorization slot — an authorization never ' +
+      '  carries its own posted date, and this doubles as the implicit ' +
+      '  signal that the slot is an authorization; the settlement\'s ' +
+      '  real Post Date for a settlement slot), `Transaction K Auth ' +
+      '  Code`, `Transaction K Amount`, `Transaction K Status / ' +
+      '  Decline Reason` (status/decline text for an authorization ' +
+      '  slot, Reference Number for a settlement slot). Authorizations ' +
+      '  and settlements are never cross-matched by `authCode` — only ' +
+      '  the slot numbering is shared. Non-Expedia rows simply leave ' +
+      '  those cells blank.\n' +
       '- `Card Number`, `Expiry date`, `CVV`, and the `Transaction K` ' +
-      '  date/Auth Code/Detail cells are forced to Excel "Text" format ' +
+      '  date/Auth Code/Status cells are forced to Excel "Text" format ' +
       '  so leading zeros and long digit strings are preserved instead ' +
       '  of being mangled into scientific notation.\n' +
       '- **XLSX only**: the header is 2 rows with real merged cells — ' +
-      '  each `Transaction K` label spans its 6 sub-columns, and every ' +
+      '  each `Transaction K` label spans its 5 sub-columns, and every ' +
       '  other column\'s single label is merged vertically across both ' +
       '  header rows. The CSV/per-job-CSV variants keep a flat ' +
-      '  single-row header (e.g. `Transaction 1 Type`) since CSV has no ' +
-      '  concept of merged cells.\n' +
+      '  single-row header (e.g. `Transaction 1 Auth Date`) since CSV ' +
+      '  has no concept of merged cells.\n' +
       '- For **Booking** rows, `Check In` / `Check Out` / `Over 160` / ' +
       '  `Number of days since chargeback date` are all `"N/A"`, ' +
       '  matching the spec for the per-job CSV.\n\n' +
