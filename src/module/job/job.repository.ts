@@ -84,6 +84,10 @@ const MASTER_EXPORT_JOB_ITEM_SELECT = {
     select: {
       id: true,
       authorizations: true,
+      // Needed by the "Transaction N Posted Date" column in
+      // master-export.util.ts — matched back to an authorization by
+      // `authCode` (see the VCC Remaining Balance Engine schema doc).
+      settlements: true,
     },
   },
 } satisfies Prisma.JobItemSelect;
@@ -2041,6 +2045,10 @@ export class JobRepository implements IJobRepository {
    *                            jobs in this batch. Determines N for
    *                            `Card Activity Approved Amount {1..N}`.
    *                            Always 0 when `hasExpedia` is false.
+   *   - `maxTransactionCount` — max TOTAL authorizations (approved AND
+   *                            declined) across the same batch. Determines
+   *                            N for the `Transaction {1..N} ...` column
+   *                            groups. Always 0 when `hasExpedia` is false.
    *   - `foundIds`           — set of job IDs that actually exist. The
    *                            caller diffs against `jobIds` to emit
    *                            the "missing IDs" warning.
@@ -2079,6 +2087,7 @@ export class JobRepository implements IJobRepository {
   async precomputeMasterExportContext(jobIds: string[]): Promise<{
     hasExpedia: boolean;
     maxApprovedCount: number;
+    maxTransactionCount: number;
     foundIds: Set<string>;
   }> {
     try {
@@ -2087,6 +2096,7 @@ export class JobRepository implements IJobRepository {
         return {
           hasExpedia: false,
           maxApprovedCount: 0,
+          maxTransactionCount: 0,
           foundIds: new Set<string>(),
         };
       }
@@ -2107,10 +2117,12 @@ export class JobRepository implements IJobRepository {
         .map((r) => r.id);
       const hasExpedia = expediaIds.length > 0;
 
-      // Step 2: max-approved-authorization scan — only matters for Expedia
-      // exports (the non-Expedia path doesn't emit Approved Amount K
-      // columns at all, so the value is irrelevant).
+      // Step 2: max-approved-authorization AND max-total-authorization
+      // scan — only matters for Expedia exports (the non-Expedia path
+      // doesn't emit Approved Amount K / Transaction K columns at all,
+      // so both values are irrelevant there).
       let maxApprovedCount = 0;
+      let maxTransactionCount = 0;
       if (hasExpedia) {
         // Chunk size kept conservative: each chunk pulls jobItem.card
         // Activity.authorizations for `CHUNK` jobs, which on Expedia
@@ -2140,12 +2152,18 @@ export class JobRepository implements IJobRepository {
               if (a?.status === 'Approved') approvedLen += 1;
             }
             if (approvedLen > maxApprovedCount) maxApprovedCount = approvedLen;
+            // "Transaction N" columns count every authorization — approved
+            // AND declined — so this is just the raw array length.
+            if (auths.length > maxTransactionCount) {
+              maxTransactionCount = auths.length;
+            }
           }
           if (chunkIdx % logEvery === 0 || chunkIdx === totalChunks) {
             this.logger.log(
               `[MasterExport.prescan] Expedia auth scan ` +
                 `${chunkIdx}/${totalChunks} chunks ` +
-                `(maxApproved=${maxApprovedCount}, ${Date.now() - startedAt}ms)`,
+                `(maxApproved=${maxApprovedCount}, maxTransaction=${maxTransactionCount}, ` +
+                `${Date.now() - startedAt}ms)`,
             );
           }
           // `items` falls out of scope at the next iteration → GC-eligible.
@@ -2154,11 +2172,11 @@ export class JobRepository implements IJobRepository {
 
       this.logger.log(
         `[MasterExport.prescan] ${uniqueIds.length} jobs (${expediaIds.length} Expedia), ` +
-          `maxApproved=${maxApprovedCount}, missing=${uniqueIds.length - foundIds.size}, ` +
-          `${Date.now() - startedAt}ms`,
+          `maxApproved=${maxApprovedCount}, maxTransaction=${maxTransactionCount}, ` +
+          `missing=${uniqueIds.length - foundIds.size}, ${Date.now() - startedAt}ms`,
       );
 
-      return { hasExpedia, maxApprovedCount, foundIds };
+      return { hasExpedia, maxApprovedCount, maxTransactionCount, foundIds };
     } catch (error) {
       this.logger.error(
         `Error in master-export pre-scan: ${error.message}`,

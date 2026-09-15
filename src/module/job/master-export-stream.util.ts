@@ -2,12 +2,44 @@ import { Logger } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
 import { Writable } from 'stream';
 import {
+  buildMasterExportHeaderMatrix,
   buildMasterRowsForJob,
   computeMasterExportContext,
+  isTransactionTextColumn,
   MasterExportContext,
 } from './master-export.util';
 
 const logger = new Logger('MasterExportStream');
+
+/**
+ * Writes the 2-row MERGED XLSX header (mirrors `buildMasterXlsxBuffer`'s
+ * non-streaming header — see `buildMasterExportHeaderMatrix`): row 1 has
+ * each "Transaction N" label merged across its 5 sub-columns, row 2 has
+ * the per-column sub-labels, and every other column's single label is
+ * merged vertically across both rows.
+ *
+ * MUST be called immediately after `worksheet.columns` is set and BEFORE
+ * any data row is committed — ExcelJS's streaming `mergeCells` throws
+ * ("Cannot merge already merged cells" / row-out-of-bounds) once a row
+ * inside the merge range has already been flushed to the output stream.
+ */
+function writeMergedHeaderRows(
+  worksheet: ExcelJS.Worksheet,
+  headers: string[],
+): void {
+  const { row1, row2, merges } = buildMasterExportHeaderMatrix(headers);
+  const headerRow1 = worksheet.getRow(1);
+  const headerRow2 = worksheet.getRow(2);
+  headers.forEach((_, idx) => {
+    headerRow1.getCell(idx + 1).value = row1[idx];
+    headerRow2.getCell(idx + 1).value = row2[idx];
+  });
+  for (const m of merges) {
+    worksheet.mergeCells(m.startRow + 1, m.startCol + 1, m.endRow + 1, m.endCol + 1);
+  }
+  headerRow1.commit();
+  headerRow2.commit();
+}
 
 /**
  * True-streaming counterpart to `buildMasterXlsxBuffer` (master-export.util.ts).
@@ -74,15 +106,18 @@ export async function writeMasterXlsxToStream(
 
   // Define columns up-front so we can address them by key when writing
   // rows (and so we can set per-column numFmt for the text columns).
-  worksheet.columns = headers.map((h) => ({ header: h, key: h, width: 20 }));
+  // Deliberately omit `header` here — the 2-row merged header below
+  // fully replaces ExcelJS's own "write column.header into row 1" trick.
+  worksheet.columns = headers.map((h) => ({ key: h, width: 20 }));
   for (const col of worksheet.columns) {
-    if (col.key && TEXT_COLUMNS.has(col.key)) {
+    if (
+      col.key &&
+      (TEXT_COLUMNS.has(col.key) || isTransactionTextColumn(col.key))
+    ) {
       col.numFmt = '@'; // Excel "Text" format
     }
   }
-  // exceljs writes the header row as soon as columns are defined when
-  // using WorkbookWriter — but we still need to .commit() it.
-  worksheet.getRow(1).commit();
+  writeMergedHeaderRows(worksheet, headers);
 
   let rowsWritten = 0;
   let jobsProcessed = 0;
@@ -115,7 +150,7 @@ export async function writeMasterXlsxToStream(
             if (m) value = m[1].replace(/""/g, '"');
           }
           if (
-            TEXT_COLUMNS.has(header) &&
+            (TEXT_COLUMNS.has(header) || isTransactionTextColumn(header)) &&
             value !== null &&
             value !== undefined
           ) {
@@ -198,13 +233,18 @@ export async function writePerJobXlsxToWritable(
   });
 
   const worksheet = workbook.addWorksheet('Master');
-  worksheet.columns = headers.map((h) => ({ header: h, key: h, width: 20 }));
+  // Deliberately omit `header` here — the 2-row merged header below
+  // fully replaces ExcelJS's own "write column.header into row 1" trick.
+  worksheet.columns = headers.map((h) => ({ key: h, width: 20 }));
   for (const col of worksheet.columns) {
-    if (col.key && TEXT_COLUMNS.has(col.key)) {
+    if (
+      col.key &&
+      (TEXT_COLUMNS.has(col.key) || isTransactionTextColumn(col.key))
+    ) {
       col.numFmt = '@'; // Excel "Text" format — preserves leading zeros
     }
   }
-  worksheet.getRow(1).commit();
+  writeMergedHeaderRows(worksheet, headers);
 
   const rows = buildMasterRowsForJob(job, ctx);
   for (const row of rows) {
@@ -216,7 +256,11 @@ export async function writePerJobXlsxToWritable(
         const m = value.match(/^="(.*)"$/s);
         if (m) value = m[1].replace(/""/g, '"');
       }
-      if (TEXT_COLUMNS.has(header) && value !== null && value !== undefined) {
+      if (
+        (TEXT_COLUMNS.has(header) || isTransactionTextColumn(header)) &&
+        value !== null &&
+        value !== undefined
+      ) {
         value = String(value);
       }
       out[header] = value;

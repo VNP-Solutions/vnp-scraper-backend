@@ -1,7 +1,6 @@
 import { OTAProvider, PostingType } from '@prisma/client';
 import * as XLSX from 'xlsx';
 import { formatImportCompatibleDate } from '../../common/utils/import-compatible-date.util';
-import { applyExcelTextColumnFormat } from '../../common/utils/excel-text-column.util';
 import { computeDerivedJobItemFields } from './job-item-derived.util';
 import { resolveOtaPropertyIdForJob } from './ota-property-id.util';
 
@@ -44,6 +43,7 @@ const APPROVED_AMOUNT_HEADER_PREFIX = 'Card Activity Approved Amount';
 const CALCULATED_AMOUNT_HEADER = 'Calculated Amount to Charge';
 const AMOUNT_MATCH_HEADER = 'Amount Match';
 const OVER_160_HEADER = 'Over 160';
+const TRANSACTION_HEADER_PREFIX = 'Transaction';
 
 /**
  * Builds the dynamic header label for the "days since chargeback date"
@@ -84,6 +84,150 @@ function getApprovedAuthorizations(item: any): any[] {
       typeof a?.status === 'string' &&
       a.status.trim().toLowerCase() === 'approved',
   );
+}
+
+/**
+ * Returns EVERY authorization on a job item's cardActivity payload —
+ * approved, declined, or anything else — used by the "Transaction N"
+ * columns. Unlike {@link getApprovedAuthorizations}, nothing is filtered
+ * out by status, since these columns exist specifically to also surface
+ * declined holds (with their decline reason).
+ */
+function getAllAuthorizations(item: any): any[] {
+  const auths = item?.cardActivity?.authorizations;
+  if (!Array.isArray(auths)) return [];
+  return auths.filter((a: any) => a !== null && a !== undefined);
+}
+
+/**
+ * Finds the posted/settled date for a given authorization, by matching
+ * `settlements[].authCode` back to the authorization's own `authCode`
+ * (the same relationship documented for the VCC Remaining Balance Engine
+ * schema — `authorizations` is holds-only and never carries a posted
+ * date; `settlements` is where that lives). Returns `null` when there's
+ * no `authCode` to match on, or no settlement has posted for it yet —
+ * that's expected for an open hold, not an error.
+ */
+function findPostedDateForAuthCode(
+  item: any,
+  authCode: unknown,
+): Date | string | null {
+  if (!authCode) return null;
+  const settlements = item?.cardActivity?.settlements;
+  if (!Array.isArray(settlements)) return null;
+  const match = settlements.find((s: any) => s?.authCode === authCode);
+  return match?.postDate ?? null;
+}
+
+/**
+ * Renders the combined "Status / Decline Reason" cell for one
+ * authorization: just the status when it's an approved hold, or the
+ * status plus whatever decline detail is available (`declineCode` /
+ * `responseDescription`) when it isn't.
+ */
+function formatStatusOrDeclineReasonCell(auth: any): string {
+  const status = typeof auth?.status === 'string' ? auth.status.trim() : '';
+  if (!status) return '';
+  if (status.toLowerCase() === 'approved') return status;
+  const parts = [status];
+  if (auth?.declineCode) parts.push(String(auth.declineCode));
+  if (auth?.responseDescription) parts.push(String(auth.responseDescription));
+  return parts.join(' - ');
+}
+
+/**
+ * Flattened sub-header labels for one "Transaction N" column group
+ * (CSV/XLSX headers are single-row, so the "Transaction N" grouping is
+ * expressed as a common prefix rather than a merged cell).
+ */
+function buildTransactionHeaderGroup(n: number): string[] {
+  return [
+    `${TRANSACTION_HEADER_PREFIX} ${n} Auth Date`,
+    `${TRANSACTION_HEADER_PREFIX} ${n} Posted Date`,
+    `${TRANSACTION_HEADER_PREFIX} ${n} Auth Code`,
+    `${TRANSACTION_HEADER_PREFIX} ${n} Amount`,
+    `${TRANSACTION_HEADER_PREFIX} ${n} Status / Decline Reason`,
+  ];
+}
+
+/**
+ * True for the date/auth-code cells inside a "Transaction N" column
+ * group — the ones that need to be forced to Excel Text format for the
+ * same reason Card Number / Check In / Check Out already are (avoid
+ * Excel auto-parsing dates or reinterpreting alphanumeric auth codes as
+ * numbers). Exported so the ExcelJS streaming writers
+ * (`master-export-stream.util.ts`) can apply the same rule without
+ * hardcoding the "Transaction" naming scheme twice.
+ */
+export function isTransactionTextColumn(header: string): boolean {
+  return (
+    header.startsWith(TRANSACTION_HEADER_PREFIX) &&
+    (header.endsWith('Auth Date') ||
+      header.endsWith('Posted Date') ||
+      header.endsWith('Auth Code'))
+  );
+}
+
+/** One merge range for an XLSX header, expressed as 0-indexed [row, col]. */
+export interface MasterExportHeaderMerge {
+  startRow: number;
+  startCol: number;
+  endRow: number;
+  endCol: number;
+}
+
+/**
+ * Builds a 2-ROW header matrix for the XLSX renderers only (the CSV
+ * renderer keeps `ctx.headers` as a single flat row — CSV has no concept
+ * of merged cells, and flat column names like "Transaction 1 Auth Date"
+ * are what any downstream CSV-parsing tooling should keep matching on).
+ *
+ * Row 1 carries each "Transaction N" group label, merged horizontally
+ * across its 5 sub-columns (Auth Date / Posted Date / Auth Code / Amount
+ * / Status / Decline Reason — see {@link buildTransactionHeaderGroup}).
+ * Every other column's single label is merged VERTICALLY across both
+ * header rows instead, so it still reads as one header cell rather than
+ * leaving row 2 blank underneath it.
+ */
+export function buildMasterExportHeaderMatrix(headers: string[]): {
+  row1: string[];
+  row2: string[];
+  merges: MasterExportHeaderMerge[];
+} {
+  const row1: string[] = [];
+  const row2: string[] = [];
+  const merges: MasterExportHeaderMerge[] = [];
+  const TRANSACTION_GROUP_SIZE = 5; // keep in sync with buildTransactionHeaderGroup
+
+  let col = 0;
+  while (col < headers.length) {
+    const header = headers[col];
+    const groupMatch = header.match(
+      new RegExp(`^${TRANSACTION_HEADER_PREFIX} (\\d+) `),
+    );
+    if (groupMatch) {
+      const groupLabel = `${TRANSACTION_HEADER_PREFIX} ${groupMatch[1]}`;
+      for (let i = 0; i < TRANSACTION_GROUP_SIZE; i++) {
+        const subHeader = headers[col + i] ?? '';
+        row1.push(i === 0 ? groupLabel : '');
+        row2.push(subHeader.slice(groupLabel.length + 1));
+      }
+      merges.push({
+        startRow: 0,
+        startCol: col,
+        endRow: 0,
+        endCol: col + TRANSACTION_GROUP_SIZE - 1,
+      });
+      col += TRANSACTION_GROUP_SIZE;
+    } else {
+      row1.push(header);
+      row2.push('');
+      merges.push({ startRow: 0, startCol: col, endRow: 1, endCol: col });
+      col += 1;
+    }
+  }
+
+  return { row1, row2, merges };
 }
 
 /**
@@ -169,13 +313,16 @@ function asExcelText(value: string | number | null | undefined): string {
  * `approvedAmountColumns` is the number of "Approved Amount N" columns the
  * caller has decided to render for this CSV (the maximum across all rows in
  * the same export). Each row pads its own approved-amount cells up to that
- * count so every row has the same shape.
+ * count so every row has the same shape. `transactionColumns` is the same
+ * idea for the "Transaction N" column groups (max total authorizations —
+ * approved AND declined — across the export).
  */
 export function buildMasterRow(
   job: any,
   item: any,
   approvedAmountColumns = 0,
   today: Date = new Date(),
+  transactionColumns = 0,
 ): Record<string, string | number> {
   const ota = job?.ota_provider as OTAProvider | undefined;
   const isExpedia = ota === OTAProvider.Expedia;
@@ -306,6 +453,38 @@ export function buildMasterRow(
         row[header] = '';
       }
     }
+
+    // "Transaction N" columns — one group of 5 cells per authorization
+    // (approved OR declined; unlike the "Approved Amount N" columns
+    // above, nothing here is filtered by status). Posted Date is looked
+    // up from `settlements` by matching `authCode`; blank when nothing
+    // has posted for that hold yet.
+    const allAuths = getAllAuthorizations(item);
+    for (let i = 0; i < transactionColumns; i++) {
+      const [
+        authDateHeader,
+        postedDateHeader,
+        authCodeHeader,
+        amountHeader,
+        statusHeader,
+      ] = buildTransactionHeaderGroup(i + 1);
+      const auth = allAuths[i];
+      if (auth) {
+        row[authDateHeader] = asImportDateCell(auth.dateTime);
+        row[postedDateHeader] = asImportDateCell(
+          findPostedDateForAuthCode(item, auth.authCode),
+        );
+        row[authCodeHeader] = asExcelText(auth.authCode ?? '');
+        row[amountHeader] = formatApprovedAmountCell(auth);
+        row[statusHeader] = formatStatusOrDeclineReasonCell(auth);
+      } else {
+        row[authDateHeader] = '';
+        row[postedDateHeader] = '';
+        row[authCodeHeader] = '';
+        row[amountHeader] = '';
+        row[statusHeader] = '';
+      }
+    }
   }
   return row;
 }
@@ -340,6 +519,8 @@ export interface MasterExportContext {
   headers: string[];
   isExpediaCsv: boolean;
   maxApprovedCount: number;
+  /** Number of "Transaction N" column groups reserved in `headers`. */
+  maxTransactionCount: number;
   today: Date;
 }
 
@@ -355,9 +536,14 @@ export interface MasterExportContext {
  * byte-for-byte the same regardless of which builder produced it.
  */
 export function buildMasterExportContextFromPrescan(
-  prescan: { hasExpedia: boolean; maxApprovedCount: number },
+  prescan: {
+    hasExpedia: boolean;
+    maxApprovedCount: number;
+    maxTransactionCount?: number;
+  },
   today: Date = new Date(),
 ): MasterExportContext {
+  const maxTransactionCount = prescan.maxTransactionCount ?? 0;
   const chargebackHeader = buildChargebackDaysHeader(today);
   const headers: string[] = [
     ...MASTER_EXPORT_HEADER.slice(0, 12),
@@ -373,6 +559,9 @@ export function buildMasterExportContextFromPrescan(
             { length: prescan.maxApprovedCount },
             (_, i) => `${APPROVED_AMOUNT_HEADER_PREFIX} ${i + 1}`,
           ),
+          ...Array.from({ length: maxTransactionCount }, (_, i) =>
+            buildTransactionHeaderGroup(i + 1),
+          ).flat(),
         ]
       : []),
   ];
@@ -380,6 +569,7 @@ export function buildMasterExportContextFromPrescan(
     headers,
     isExpediaCsv: prescan.hasExpedia,
     maxApprovedCount: prescan.maxApprovedCount,
+    maxTransactionCount,
     today,
   };
 }
@@ -406,13 +596,16 @@ export function computeMasterExportContext(jobs: any[]): MasterExportContext {
   const chargebackHeader = buildChargebackDaysHeader(today);
 
   let maxApprovedCount = 0;
+  let maxTransactionCount = 0;
   if (isExpediaCsv) {
     for (const job of jobs || []) {
       if (job?.ota_provider !== OTAProvider.Expedia) continue;
       const items = Array.isArray(job?.jobItem) ? job.jobItem : [];
       for (const item of items) {
-        const count = getApprovedAuthorizations(item).length;
-        if (count > maxApprovedCount) maxApprovedCount = count;
+        const approvedCount = getApprovedAuthorizations(item).length;
+        if (approvedCount > maxApprovedCount) maxApprovedCount = approvedCount;
+        const allCount = getAllAuthorizations(item).length;
+        if (allCount > maxTransactionCount) maxTransactionCount = allCount;
       }
     }
   }
@@ -434,11 +627,14 @@ export function computeMasterExportContext(jobs: any[]): MasterExportContext {
             { length: maxApprovedCount },
             (_, i) => `${APPROVED_AMOUNT_HEADER_PREFIX} ${i + 1}`,
           ),
+          ...Array.from({ length: maxTransactionCount }, (_, i) =>
+            buildTransactionHeaderGroup(i + 1),
+          ).flat(),
         ]
       : []),
   ];
 
-  return { headers, isExpediaCsv, maxApprovedCount, today };
+  return { headers, isExpediaCsv, maxApprovedCount, maxTransactionCount, today };
 }
 
 /**
@@ -457,7 +653,13 @@ export function buildMasterRowsForJob(
   if (items.length === 0) return [];
   const rows: Record<string, string | number>[] = new Array(items.length);
   for (let i = 0; i < items.length; i++) {
-    rows[i] = buildMasterRow(job, items[i], ctx.maxApprovedCount, ctx.today);
+    rows[i] = buildMasterRow(
+      job,
+      items[i],
+      ctx.maxApprovedCount,
+      ctx.today,
+      ctx.maxTransactionCount,
+    );
   }
   return rows;
 }
@@ -499,22 +701,39 @@ function unwrapExcelTextValue(value: unknown): unknown {
   return m[1].replace(/""/g, '"');
 }
 
+/** Header strings forced to Excel "Text" format (besides the dynamic
+ * "Transaction N ..." date/Auth Code cells, handled separately via
+ * {@link isTransactionTextColumn}). MUST match labels in
+ * `MASTER_EXPORT_HEADER`. */
+const STATIC_TEXT_COLUMN_HEADERS = [
+  'OTA ID',
+  'Review Collection Date',
+  'Check In',
+  'Check Out',
+  'Card Number',
+  'Expiry date',
+  'CVV',
+];
+
 /**
  * Build an XLSX buffer from the same master rows that {@link buildMasterRows}
- * produces for the CSV path. Card Number / Expiry date / CVV columns are
- * forced to Excel "Text" format so leading zeros and long digit strings are
- * preserved instead of being mangled into scientific notation.
+ * produces for the CSV path. Card Number / Expiry date / CVV (+ the
+ * "Transaction N" date/Auth Code cells) are forced to Excel "Text" format
+ * so leading zeros and long digit strings are preserved instead of being
+ * mangled into scientific notation.
  *
- * The headers / column order are guaranteed to match the per-job CSV byte
- * for byte (modulo CSV-specific quoting), so downstream consumers can use
- * either CSV or XLSX interchangeably.
+ * Unlike the CSV path, the header here is a proper 2-row MERGED header
+ * (see {@link buildMasterExportHeaderMatrix}): row 1 has each
+ * "Transaction N" label spanning its 5 sub-columns, row 2 has the
+ * per-column sub-labels; every other column's single label is merged
+ * vertically across both rows. Data rows start at (0-indexed) row 2.
  */
 export function buildMasterXlsxBuffer(jobs: any[]): Buffer {
   const { headers, rows } = buildMasterRows(jobs);
 
   // Unwrap the `="..."` Excel-text trick on the way out — XLSX cells are
   // typed, so we don't need the CSV hack. We instead opt into Excel's
-  // built-in Text format via applyExcelTextColumnFormat() below.
+  // built-in Text format via the per-cell `z: '@'` below.
   const xlsxRows: Record<string, unknown>[] = rows.map((row) => {
     const next: Record<string, unknown> = {};
     for (const header of headers) {
@@ -523,16 +742,36 @@ export function buildMasterXlsxBuffer(jobs: any[]): Buffer {
     return next;
   });
 
-  const worksheet = XLSX.utils.json_to_sheet(xlsxRows, { header: headers });
-  // Force the card-related columns to text so Excel doesn't reformat them.
-  // Header strings here MUST match the labels in MASTER_EXPORT_HEADER.
-  applyExcelTextColumnFormat(worksheet, xlsxRows, 'OTA ID');
-  applyExcelTextColumnFormat(worksheet, xlsxRows, 'Review Collection Date');
-  applyExcelTextColumnFormat(worksheet, xlsxRows, 'Check In');
-  applyExcelTextColumnFormat(worksheet, xlsxRows, 'Check Out');
-  applyExcelTextColumnFormat(worksheet, xlsxRows, 'Card Number');
-  applyExcelTextColumnFormat(worksheet, xlsxRows, 'Expiry date');
-  applyExcelTextColumnFormat(worksheet, xlsxRows, 'CVV');
+  const { row1, row2, merges } = buildMasterExportHeaderMatrix(headers);
+  const dataAoa: unknown[][] = xlsxRows.map((row) =>
+    headers.map((h) => (row as any)[h] ?? ''),
+  );
+
+  const worksheet = XLSX.utils.aoa_to_sheet([row1, row2, ...dataAoa]);
+  worksheet['!merges'] = merges.map((m) => ({
+    s: { r: m.startRow, c: m.startCol },
+    e: { r: m.endRow, c: m.endCol },
+  }));
+
+  // Force text format on the designated columns. Data rows are offset by
+  // 2 (two header rows) instead of the usual 1 — the header cells
+  // themselves are already plain strings via aoa_to_sheet, so only the
+  // data cells need the explicit `z: '@'` rewrite.
+  const textColumnHeaders = [
+    ...STATIC_TEXT_COLUMN_HEADERS,
+    ...headers.filter((h) => isTransactionTextColumn(h)),
+  ];
+  for (const header of textColumnHeaders) {
+    const columnIndex = headers.indexOf(header);
+    if (columnIndex < 0) continue;
+    for (let r = 0; r < dataAoa.length; r++) {
+      const raw = dataAoa[r][columnIndex];
+      const cellValue =
+        raw === null || raw === undefined || raw === '' ? '' : String(raw);
+      const address = XLSX.utils.encode_cell({ r: r + 2, c: columnIndex });
+      worksheet[address] = { t: 's', v: cellValue, z: '@' };
+    }
+  }
 
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Master');

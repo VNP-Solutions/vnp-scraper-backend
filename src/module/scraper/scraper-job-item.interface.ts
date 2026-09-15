@@ -98,4 +98,16 @@ export interface IScraperJobItemService {
   exportJobItemsWithDetails(
     jobId: string,
   ): Promise<{ buffer: Buffer; fileName: string }>;
+
+  /**
+   * Multi-job counterpart to {@link exportJobItemsWithDetails} — mirrors
+   * how `POST /jobs/export-master` relates to `GET /jobs/:id/export-master`.
+   * Builds one "items with details" XLSX per job ID (same builder as the
+   * single-job method) and bundles them into a single ZIP, regardless of
+   * whether `jobIds` has one entry or many. Jobs with no items are
+   * skipped (not an error) unless EVERY job ends up empty.
+   */
+  exportJobItemsWithDetailsForJobs(
+    jobIds: string[],
+  ): Promise<{ buffer: Buffer; fileName: string }>;
 }

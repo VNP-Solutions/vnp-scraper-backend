@@ -22,6 +22,10 @@ import {
   JobItemUploadRow,
 } from './scraper-job-item.interface';
 import { buildJobItemDetailsXlsxBuffer } from './job-item-details-export.util';
+import {
+  ensureUniqueFilename,
+  zipFiles,
+} from '../../common/utils/zip-and-filename.util';
 
 /**
  * Type of a JobItem row after the repo `include: { job: true }` step.
@@ -413,6 +417,75 @@ export class ScraperJobItemService implements IScraperJobItemService {
     } catch (error) {
       this.logger.error(
         `Error exporting job item details for job ${jobId}: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Multi-job "export with details" — mirrors how `exportMasterCsv`
+   * (job.service.ts) relates to the single-job Master CSV endpoint:
+   * builds one "items with details" XLSX per job ID (same builder as
+   * {@link exportJobItemsWithDetails}) and always bundles the result
+   * into a ZIP, even when `jobIds` has exactly one entry. Callers that
+   * want a single job as a plain, unzipped XLSX should keep using
+   * {@link exportJobItemsWithDetails} directly.
+   *
+   * Jobs with no items are skipped (not an error) — same "best effort"
+   * behavior as `exportMasterCsv` — unless EVERY job ends up empty, in
+   * which case this throws `NotFoundException` like the single-job path.
+   */
+  async exportJobItemsWithDetailsForJobs(
+    jobIds: string[],
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    try {
+      const uniqueJobIds = Array.from(new Set(jobIds ?? [])).filter(Boolean);
+      if (uniqueJobIds.length === 0) {
+        throw new BadRequestException('job_ids array cannot be empty');
+      }
+
+      const usedNames = new Set<string>();
+      const entries: Array<{ name: string; data: Buffer }> = [];
+      const skippedJobIds: string[] = [];
+
+      for (const jobId of uniqueJobIds) {
+        const jobItems = await this.jobItemRepository.findAllByJobId(jobId);
+        if (!jobItems || jobItems.length === 0) {
+          skippedJobIds.push(jobId);
+          continue;
+        }
+
+        const decorated = await this.decorateWithDerivedFields(
+          jobItems as JobItemWithJob[],
+        );
+        const buffer = buildJobItemDetailsXlsxBuffer(decorated);
+        const fileName = ensureUniqueFilename(
+          this.buildJobItemDetailsFileName(decorated),
+          usedNames,
+        );
+        entries.push({ name: fileName, data: buffer });
+      }
+
+      if (skippedJobIds.length > 0) {
+        this.logger.warn(
+          `[ExportDetails ZIP] ${skippedJobIds.length} job ID(s) had no items and were skipped: ${skippedJobIds.join(', ')}`,
+        );
+      }
+
+      if (entries.length === 0) {
+        throw new NotFoundException(
+          'No job items found for the given jobs to export',
+        );
+      }
+
+      const zipBuffer = await zipFiles(entries);
+      const fileName = `job-items-detail-exports-${this.buildHumanReadableTimestamp()}.zip`;
+
+      return { buffer: zipBuffer, fileName };
+    } catch (error) {
+      this.logger.error(
+        `Error exporting job item details for jobs ${(jobIds ?? []).join(', ')}: ${error.message}`,
         error.stack,
       );
       throw error;

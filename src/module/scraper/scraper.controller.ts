@@ -60,6 +60,10 @@ import {
   reopenAllReservationsSchema,
   reopenCaseRunJobSchema,
 } from './agoda-reopen.validation';
+import {
+  exportJobItemsWithDetailsSchema,
+  type ExportJobItemsWithDetailsType,
+} from './scraper-job-item.validation';
 import { IScraperJobItemService } from './scraper-job-item.interface';
 import { pushJobsToQueue } from '../../helpers/sqsHelper';
 import { triggerLambda } from '../../helpers/lambdaHelper';
@@ -74,6 +78,7 @@ import {
   CreateScheduledJobDto,
   CreateScheduledJobResponseDto,
   ErrorResponseDto,
+  ExportJobItemsWithDetailsDto,
   GetJobsByScheduleDateAndStatusQueryDto,
   HealthResponseDto,
   JobsWithScheduledJobResponseDto,
@@ -2501,29 +2506,24 @@ export class ScraperController {
 
   @Get('/api/jobs/:jobId/items/export-details')
   @ApiOperation({
-    summary: 'Export job items with full VCC/card-activity details (XLSX)',
+    summary: 'Export job items with VCC Remaining Balance Engine details (XLSX)',
     description:
       'Separate from the Master CSV export (`POST /jobs/export-master` and ' +
       '`GET /jobs/:id/export-master`, which are unchanged) — this returns ' +
       'an XLSX file with one row per job item for the given job, including:\n' +
-      '- The core item fields (Reservation ID, Guest Name, Check In/Out, ' +
-      'Booking Amount, Booked Date, Reservation Status).\n' +
+      '- The core item fields (Reservation ID, Confirmation Number, Guest ' +
+      'Name, Check In/Out, Room Type, Booking Amount, Booked Date, ' +
+      'Reservation Status).\n' +
       '- Every VCC Remaining Balance Engine field (`activityRows`, ' +
       '`postedCharges`, `postedRefunds`, `netCollected`, ' +
       '`impliedCardLimit`, `stillOwed`, `safeToChargeNow`, ' +
       '`phantomBalance`, `owedButNotOnCard`, `verdict`, `redFlags`, ' +
       '`timesDeclinedAtThisAmount`, `recommendedAction`). Blank cells mean ' +
       'the engine did not run for that item (Booking/Agoda, or a row ' +
-      'scraped before this feature) — never invented.\n' +
-      '- Every entry in that item\'s card activity `authorizations` (holds) ' +
-      'and `settlements` (posted/settled money movement) arrays, as ' +
-      'dynamic numbered columns: "Authorization 1 Date/Status/Auth Code/' +
-      'Decline Code/Amount", "Authorization 2 ...", and so on up to ' +
-      'whichever item in this job has the most holds; same pattern for ' +
-      '"Settlement 1 Transaction Date/Post Date/Auth Code/Reference ' +
-      'Number/Amount", "Settlement 2 ...", etc. Items with fewer ' +
-      'authorizations/settlements than the export-wide max simply have ' +
-      'blank cells for the unused numbered columns.',
+      'scraped before this feature) — never invented.\n\n' +
+      'This export does NOT include card activity data (no ' +
+      '`authorizations` / `settlements`) — it is scoped to the item-level ' +
+      'VCC fields only.',
   })
   @ApiParam({
     name: 'jobId',
@@ -2565,6 +2565,65 @@ export class ScraperController {
       return res.status(status).json({
         success: false,
         message: error.message || 'Error exporting job item details',
+      });
+    }
+  }
+
+  @Post('/api/jobs/items/export-details')
+  @ValidateBody(exportJobItemsWithDetailsSchema)
+  @ApiOperation({
+    summary:
+      'Export job items with VCC Remaining Balance Engine details for one or more jobs (zipped)',
+    description:
+      'Multi-job counterpart to GET /scraper/api/jobs/:jobId/items/export-details — ' +
+      'same mirror relationship as POST /jobs/export-master has to ' +
+      'GET /jobs/:id/export-master. Accepts an array of one or more job ' +
+      'IDs and ALWAYS returns a ZIP file (even for a single ID) containing ' +
+      'one "items with details" XLSX per job. Each XLSX is named ' +
+      '"{OTA}-{property}-items-detail-{D Month YYYY-HH.MM AM/PM}.xlsx" ' +
+      '(collisions get a numeric suffix). Jobs with no items are silently ' +
+      'skipped — the request only 404s if EVERY given job ends up empty. ' +
+      'The zip itself is named ' +
+      '"job-items-detail-exports-{D Month YYYY-HH.MM AM/PM}.zip". To export ' +
+      'a single job directly as a plain, unzipped XLSX, use ' +
+      'GET /scraper/api/jobs/:jobId/items/export-details instead.',
+  })
+  @ApiBody({ type: ExportJobItemsWithDetailsDto })
+  @ApiResponse({
+    status: 200,
+    description: 'ZIP file containing one "items with details" XLSX per job',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - job_ids array cannot be empty',
+  })
+  @ApiResponse({ status: 404, description: 'No jobs / job items found' })
+  @ApiResponse({ status: 500, description: 'Server error' })
+  async exportJobItemsWithDetailsForJobs(
+    @Body() body: ExportJobItemsWithDetailsType,
+    @Res() res: Response,
+  ) {
+    try {
+      const { buffer, fileName } =
+        await this.jobItemService.exportJobItemsWithDetailsForJobs(
+          body.job_ids,
+        );
+
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${fileName}"`,
+      );
+      return res.status(HttpStatus.OK).send(buffer);
+    } catch (error: any) {
+      this.logger.error(
+        `Error exporting job item details for jobs ${(body?.job_ids ?? []).join(', ')}: ${error.message}`,
+        error.stack,
+      );
+      const status = error?.status || HttpStatus.INTERNAL_SERVER_ERROR;
+      return res.status(status).json({
+        success: false,
+        message: error.message || 'Error exporting job item details zip',
       });
     }
   }

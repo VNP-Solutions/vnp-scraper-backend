@@ -115,6 +115,7 @@ export interface IJobRepository {
   precomputeMasterExportContext(jobIds: string[]): Promise<{
     hasExpedia: boolean;
     maxApprovedCount: number;
+    maxTransactionCount: number;
     foundIds: Set<string>;
   }>;
   /** Cheap `{ id }` lookup — used by per-job ZIP export pre-flight only. */
