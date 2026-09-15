@@ -1313,32 +1313,43 @@ export class ReportsController {
       '  `Calculated Amount to Charge`, `Amount Match`, N × ' +
       '  `Card Activity Approved Amount K` columns (N = maximum approved ' +
       '  authorizations across all Expedia items in the export), and ' +
-      '  then dynamic `Transaction K` column groups — one 5-cell group ' +
-      '  per authorization, immediately followed by one 5-cell group per ' +
-      '  settlement, ALL sharing the SAME `K` counter (e.g. 2 ' +
-      '  authorizations + 1 settlement on a card renders `Transaction 1`, ' +
-      '  `Transaction 2` for the authorizations, then `Transaction 3` for ' +
-      '  the settlement). Authorization-sourced groups are ' +
-      '  `Transaction K Auth Date`, `Transaction K Posted Date`, ' +
-      '  `Transaction K Auth Code`, `Transaction K Amount`, ' +
-      '  `Transaction K Status / Decline Reason` (`Posted Date` is always ' +
-      "  `\"N/A\"` here — an authorization never carries its own posted " +
-      '  date). Settlement-sourced groups are ' +
-      '  `Transaction K Transaction Date`, `Transaction K Post Date`, ' +
-      '  `Transaction K Auth Code`, `Transaction K Reference Number`, ' +
-      '  `Transaction K Amount`. The two sources are never cross-matched ' +
-      '  by `authCode` — only the numbering is shared. Non-Expedia rows ' +
-      '  simply leave those cells blank.\n' +
+      '  then dynamic `Transaction K` column groups, **PACKED per ' +
+      '  reservation** — like a person filling a spreadsheet by hand: ' +
+      '  each reservation\'s own authorizations (approved AND declined) ' +
+      '  fill slots `1..authCount`, then that SAME reservation\'s own ' +
+      '  settlements continue immediately after with NO gap, at ' +
+      '  `authCount+1..authCount+settlementCount` (e.g. a reservation ' +
+      '  with 2 authorizations + 1 settlement renders `Transaction 1`, ' +
+      '  `Transaction 2` as authorizations then `Transaction 3` as the ' +
+      '  settlement; a different reservation with 5 authorizations + 3 ' +
+      '  settlements renders `Transaction 1`-`5` as authorizations then ' +
+      '  `Transaction 6`-`8` as settlements). `K` is the export-wide max, ' +
+      '  across every reservation, of that reservation\'s OWN ' +
+      '  `authCount + settlementCount` — NOT the sum of two separate ' +
+      '  per-type maxes, so unused slots are minimized. Because the SAME ' +
+      '  slot index can be an authorization on one row and a settlement ' +
+      '  on another, every `Transaction K` group shares one generic ' +
+      '  6-column shape: `Transaction K Type` (`Authorization` or ' +
+      '  `Settlement`), `Transaction K Date` (Auth Date or Transaction ' +
+      '  Date), `Transaction K Posted Date` (always `"N/A"` for an ' +
+      '  authorization slot — an authorization never carries its own ' +
+      '  posted date; the settlement\'s Post Date for a settlement ' +
+      '  slot), `Transaction K Auth Code`, `Transaction K Amount`, ' +
+      '  `Transaction K Detail` (Status / Decline Reason for an ' +
+      '  authorization slot, Reference Number for a settlement slot). ' +
+      '  Authorizations and settlements are never cross-matched by ' +
+      '  `authCode` — only the slot numbering is shared. Non-Expedia ' +
+      '  rows simply leave those cells blank.\n' +
       '- `Card Number`, `Expiry date`, `CVV`, and the `Transaction K` ' +
-      '  date/Auth Code/Reference Number cells are forced to Excel ' +
-      '  "Text" format so leading zeros and long digit strings are ' +
-      '  preserved instead of being mangled into scientific notation.\n' +
+      '  date/Auth Code/Detail cells are forced to Excel "Text" format ' +
+      '  so leading zeros and long digit strings are preserved instead ' +
+      '  of being mangled into scientific notation.\n' +
       '- **XLSX only**: the header is 2 rows with real merged cells — ' +
-      '  each `Transaction K` label spans its 5 sub-columns, and every ' +
+      '  each `Transaction K` label spans its 6 sub-columns, and every ' +
       '  other column\'s single label is merged vertically across both ' +
       '  header rows. The CSV/per-job-CSV variants keep a flat ' +
-      '  single-row header (e.g. `Transaction 1 Auth Date`) since CSV ' +
-      '  has no concept of merged cells.\n' +
+      '  single-row header (e.g. `Transaction 1 Type`) since CSV has no ' +
+      '  concept of merged cells.\n' +
       '- For **Booking** rows, `Check In` / `Check Out` / `Over 160` / ' +
       '  `Number of days since chargeback date` are all `"N/A"`, ' +
       '  matching the spec for the per-job CSV.\n\n' +

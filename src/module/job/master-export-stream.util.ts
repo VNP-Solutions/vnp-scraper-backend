@@ -14,7 +14,7 @@ const logger = new Logger('MasterExportStream');
 /**
  * Writes the 2-row MERGED XLSX header (mirrors `buildMasterXlsxBuffer`'s
  * non-streaming header — see `buildMasterExportHeaderMatrix`): row 1 has
- * each "Transaction N" label merged across its 5 sub-columns, row 2 has
+ * each "Transaction N" label merged across its 6 sub-columns, row 2 has
  * the per-column sub-labels, and every other column's single label is
  * merged vertically across both rows.
  *
