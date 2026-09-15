@@ -156,7 +156,15 @@ export class AllJobItemsResponseDto {
       'Array of job items. Each item also includes two Expedia-only derived fields used by the chargeback dashboard:\n' +
       '- `over_160` (boolean | null): `true` when (today − check_out_date) is more than 160 days. `null` for Booking / Agoda or when check_out_date is missing.\n' +
       '- `days_since_checkout` (number | null): whole-day count from check_out_date to today. `null` for Booking / Agoda or when check_out_date is missing.\n' +
-      'These values are lazily refreshed once per day on the first read, so the response always reflects the current day.',
+      'These values are lazily refreshed once per day on the first read, so the response always reflects the current day.\n\n' +
+      'Each item may also carry VCC Remaining Balance Engine fields (Expedia GraphQL flow only; camelCase is intentional). These are written at scrape time and are not recomputed on read. Booking / Agoda items and rows scraped before this feature omit the keys entirely — treat absence and `null` identically.\n' +
+      '- `activityRows`, `postedCharges`, `postedRefunds`, `netCollected`\n' +
+      '- `impliedCardLimit`, `stillOwed`\n' +
+      '- `safeToChargeNow`, `phantomBalance`, `owedButNotOnCard` (`null` means not determinable, distinct from `0`)\n' +
+      '- `verdict` (R0–R7 string, or null if the engine did not run)\n' +
+      '- `redFlags` (string[]; empty array when none)\n' +
+      '- `timesDeclinedAtThisAmount`, `recommendedAction`\n' +
+      'Nested `cardActivity.settlements` holds posted/settled money movement (matched to `authorizations` by `authCode`). `authorizations` remains holds-only.',
     type: 'array',
   })
   data: any[];

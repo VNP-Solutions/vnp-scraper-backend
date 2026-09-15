@@ -21,6 +21,7 @@ import {
   JobItemUploadResult,
   JobItemUploadRow,
 } from './scraper-job-item.interface';
+import { buildJobItemDetailsXlsxBuffer } from './job-item-details-export.util';
 
 /**
  * Type of a JobItem row after the repo `include: { job: true }` step.
@@ -379,6 +380,87 @@ export class ScraperJobItemService implements IScraperJobItemService {
       );
       throw error;
     }
+  }
+
+  /**
+   * "Export with details" — separate from the Master CSV/XLSX export
+   * (job.service.ts / master-export.util.ts), which is left untouched.
+   * Pulls every item for `jobId` (same source data as
+   * GET /jobs/:jobId/all-items) and renders one XLSX row per item,
+   * including the VCC Remaining Balance Engine fields plus dynamic
+   * per-authorization / per-settlement columns sized to whatever the
+   * biggest card activity in this job actually has.
+   */
+  async exportJobItemsWithDetails(
+    jobId: string,
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    try {
+      const jobItems = await this.jobItemRepository.findAllByJobId(jobId);
+      if (!jobItems || jobItems.length === 0) {
+        throw new NotFoundException(
+          `No job items found for job ${jobId} to export`,
+        );
+      }
+
+      const decorated = await this.decorateWithDerivedFields(
+        jobItems as JobItemWithJob[],
+      );
+
+      const buffer = buildJobItemDetailsXlsxBuffer(decorated);
+      const fileName = this.buildJobItemDetailsFileName(decorated);
+
+      return { buffer, fileName };
+    } catch (error) {
+      this.logger.error(
+        `Error exporting job item details for job ${jobId}: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Builds "{OTA}-{property}-items-detail-{D Month YYYY-HH.MM AM/PM}.xlsx"
+   * from the first item's joined `job`/`property`. Falls back to generic
+   * labels if either is missing (defensive — `findAllByJobId` always
+   * includes both, but this is a filename, not user-facing data).
+   */
+  private buildJobItemDetailsFileName(items: any[]): string {
+    const job = items?.[0]?.job;
+    const ota = this.sanitizeForFilename(
+      (job?.ota_provider ?? '').toString() || 'OTA',
+    );
+    const property = this.sanitizeForFilename(
+      job?.property_name ?? items?.[0]?.property?.name ?? 'property',
+    );
+    return `${ota}-${property}-items-detail-${this.buildHumanReadableTimestamp()}.xlsx`;
+  }
+
+  /** Strips characters that are unsafe in a filename on any OS. */
+  private sanitizeForFilename(value: string): string {
+    return String(value ?? '')
+      .replace(/[\\/:*?"<>|]+/g, ' ')
+      .trim()
+      .replace(/\s+/g, ' ') || 'unknown';
+  }
+
+  /**
+   * Produces e.g. "23 April 2026-04.44 PM". A dot is used as the time
+   * separator instead of ":" so the filename is valid on every OS
+   * (matches job.service.ts's buildHumanReadableTimestamp).
+   */
+  private buildHumanReadableTimestamp(d: Date = new Date()): string {
+    const day = d.getDate();
+    const month = d.toLocaleString('en-US', { month: 'long' });
+    const year = d.getFullYear();
+    const time = d
+      .toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      })
+      .replace(':', '.');
+    return `${day} ${month} ${year}-${time}`;
   }
 
   async updateJobCurrentUrl(jobId: string, currentUrl: string): Promise<void> {

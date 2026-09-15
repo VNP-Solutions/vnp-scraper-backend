@@ -25,6 +25,28 @@ function parseQueryBoolean(value: unknown): boolean | undefined {
 }
 
 /**
+ * Builds a Prisma `verdict` where-clause from the `?verdict=` query param.
+ *
+ * - `R0`…`R7` (prefix only) → `startsWith`, so a "needs action" queue can
+ *   ask for `?verdict=R1` and match both R1 COLLECT variants.
+ * - Any other non-empty string → exact match on the full stored verdict.
+ *   Absence and `null` are not filtered (engine didn't run for that item).
+ */
+function buildVerdictFilter(
+  verdict: unknown,
+): string | { startsWith: string } | undefined {
+  if (verdict === undefined || verdict === null || verdict === '') {
+    return undefined;
+  }
+  const value = String(verdict).trim();
+  if (!value) return undefined;
+  if (/^R[0-7]$/i.test(value)) {
+    return { startsWith: value.toUpperCase() };
+  }
+  return value;
+}
+
+/**
  * Returns the threshold date used by the `over_160` filter:
  *   check_out_date < (today − 160 days)  →  over_160 = true
  *
@@ -91,6 +113,7 @@ export class ScraperJobItemRepository implements IScraperJobItemRepository {
         end_date,
         reason_for_charge,
         over_160,
+        verdict,
         ...filters
       } = query || {};
 
@@ -148,6 +171,11 @@ export class ScraperJobItemRepository implements IScraperJobItemRepository {
         allFilters.check_out_date = over160Bool
           ? { lt: threshold }
           : { gte: threshold };
+      }
+
+      const verdictFilter = buildVerdictFilter(verdict);
+      if (verdictFilter !== undefined) {
+        allFilters.verdict = verdictFilter;
       }
 
       if (search) {

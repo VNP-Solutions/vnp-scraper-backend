@@ -2301,7 +2301,24 @@ export class ScraperController {
       'check_out_date to today. `null` for Booking / Agoda or when ' +
       'check_out_date is missing.\n\n' +
       'These values are lazily refreshed once per day on the first read, ' +
-      'so the response always reflects the current calendar day.',
+      'so the response always reflects the current calendar day.\n\n' +
+      'Each item may also carry VCC Remaining Balance Engine fields ' +
+      '(Expedia GraphQL flow only; camelCase is intentional). These are ' +
+      'written at scrape time and are not recomputed on read. Booking / ' +
+      'Agoda items and rows scraped before this feature omit the keys ' +
+      'entirely — treat absence and `null` identically. `0` is a real ' +
+      'computed zero; `null` on `safeToChargeNow` / `phantomBalance` / ' +
+      '`owedButNotOnCard` means the engine could not produce a confident ' +
+      'number.\n' +
+      '- `activityRows`, `postedCharges`, `postedRefunds`, `netCollected`\n' +
+      '- `impliedCardLimit`, `stillOwed`\n' +
+      '- `safeToChargeNow`, `phantomBalance`, `owedButNotOnCard`\n' +
+      '- `verdict` (R0–R7 string, or null if the engine did not run)\n' +
+      '- `redFlags` (string[]; empty array when none)\n' +
+      '- `timesDeclinedAtThisAmount`, `recommendedAction`\n\n' +
+      'Nested `cardActivity.settlements` holds posted/settled money ' +
+      'movement (matched to `authorizations` by `authCode`). ' +
+      '`authorizations` remains holds-only.',
   })
   @ApiParam({
     name: 'jobId',
@@ -2367,6 +2384,19 @@ export class ScraperController {
       'response value even when the cached column is stale.',
     example: true,
   })
+  @ApiQuery({
+    name: 'verdict',
+    required: false,
+    type: String,
+    description:
+      'Filter by the VCC Remaining Balance Engine `verdict`. ' +
+      'Pass a full stored string for an exact match ' +
+      '(e.g. `R1 COLLECT - card matches what is owed`), or just the ' +
+      '`R0`–`R7` prefix to match every verdict in that family ' +
+      '(e.g. `R1` matches both COLLECT variants). Items where the ' +
+      'engine did not run (missing/`null` verdict) are excluded.',
+    example: 'R1',
+  })
   @ApiResponse({ status: 200, description: 'Job items retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Job not found' })
   @ApiResponse({ status: 500, description: 'Server error' })
@@ -2409,7 +2439,14 @@ export class ScraperController {
       'check_out_date to today. `null` for Booking / Agoda or when ' +
       'check_out_date is missing.\n\n' +
       'These values are lazily refreshed once per day on the first read, ' +
-      'so the response always reflects the current calendar day.',
+      'so the response always reflects the current calendar day.\n\n' +
+      'Each item may also carry VCC Remaining Balance Engine fields ' +
+      '(Expedia GraphQL flow only; camelCase is intentional). These are ' +
+      'written at scrape time and are not recomputed on read. Booking / ' +
+      'Agoda items and rows scraped before this feature omit the keys ' +
+      'entirely — treat absence and `null` identically. Nested ' +
+      '`cardActivity.settlements` holds posted/settled money movement; ' +
+      '`authorizations` remains holds-only.',
   })
   @ApiParam({
     name: 'jobId',
@@ -2458,6 +2495,76 @@ export class ScraperController {
           total: 0,
           jobId: jobId,
         },
+      });
+    }
+  }
+
+  @Get('/api/jobs/:jobId/items/export-details')
+  @ApiOperation({
+    summary: 'Export job items with full VCC/card-activity details (XLSX)',
+    description:
+      'Separate from the Master CSV export (`POST /jobs/export-master` and ' +
+      '`GET /jobs/:id/export-master`, which are unchanged) — this returns ' +
+      'an XLSX file with one row per job item for the given job, including:\n' +
+      '- The core item fields (Reservation ID, Guest Name, Check In/Out, ' +
+      'Booking Amount, Booked Date, Reservation Status).\n' +
+      '- Every VCC Remaining Balance Engine field (`activityRows`, ' +
+      '`postedCharges`, `postedRefunds`, `netCollected`, ' +
+      '`impliedCardLimit`, `stillOwed`, `safeToChargeNow`, ' +
+      '`phantomBalance`, `owedButNotOnCard`, `verdict`, `redFlags`, ' +
+      '`timesDeclinedAtThisAmount`, `recommendedAction`). Blank cells mean ' +
+      'the engine did not run for that item (Booking/Agoda, or a row ' +
+      'scraped before this feature) — never invented.\n' +
+      '- Every entry in that item\'s card activity `authorizations` (holds) ' +
+      'and `settlements` (posted/settled money movement) arrays, as ' +
+      'dynamic numbered columns: "Authorization 1 Date/Status/Auth Code/' +
+      'Decline Code/Amount", "Authorization 2 ...", and so on up to ' +
+      'whichever item in this job has the most holds; same pattern for ' +
+      '"Settlement 1 Transaction Date/Post Date/Auth Code/Reference ' +
+      'Number/Amount", "Settlement 2 ...", etc. Items with fewer ' +
+      'authorizations/settlements than the export-wide max simply have ' +
+      'blank cells for the unused numbered columns.',
+  })
+  @ApiParam({
+    name: 'jobId',
+    required: true,
+    description: 'The job ID to export detailed item data for',
+    example: '507f1f77bcf86cd799439011',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'XLSX file generated successfully',
+  })
+  @ApiResponse({ status: 404, description: 'Job or job items not found' })
+  @ApiResponse({ status: 500, description: 'Server error' })
+  async exportJobItemsWithDetails(
+    @Param('jobId') jobId: string,
+    @Res() res: Response,
+  ) {
+    try {
+      const { buffer, fileName } =
+        await this.jobItemService.exportJobItemsWithDetails(jobId);
+
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${fileName}"`,
+      );
+      return res.status(HttpStatus.OK).send(buffer);
+    } catch (error: any) {
+      this.logger.error(
+        `Error exporting job item details for job ${jobId}: ${error.message}`,
+        error.stack,
+      );
+      const status = error.message?.includes('not found')
+        ? HttpStatus.NOT_FOUND
+        : HttpStatus.INTERNAL_SERVER_ERROR;
+      return res.status(status).json({
+        success: false,
+        message: error.message || 'Error exporting job item details',
       });
     }
   }

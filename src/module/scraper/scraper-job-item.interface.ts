@@ -87,4 +87,15 @@ export interface IScraperJobItemService {
     updated: number;
     errors: Array<{ row: number; message: string }>;
   }>;
+
+  /**
+   * "Export with details" — a separate export from the Master CSV/XLSX
+   * export. Returns an XLSX buffer with one row per job item, including
+   * the VCC Remaining Balance Engine fields and every raw
+   * `authorizations` / `settlements` entry on that item's card activity
+   * as dynamic numbered columns (see job-item-details-export.util.ts).
+   */
+  exportJobItemsWithDetails(
+    jobId: string,
+  ): Promise<{ buffer: Buffer; fileName: string }>;
 }
