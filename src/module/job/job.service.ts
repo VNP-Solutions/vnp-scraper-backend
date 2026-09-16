@@ -42,7 +42,6 @@ import {
 import { IJobRepository, IJobService } from './job.interface';
 import type { JobListItem } from './job-list.types';
 import {
-  MASTER_EXPORT_HEADER,
   buildMasterExportContextFromPrescan,
   buildMasterRows,
   buildMasterXlsxBuffer,
@@ -1445,38 +1444,39 @@ export class JobService implements IJobService {
         );
       }
 
-      // Build one CSV buffer per job, keyed by a per-job filename of the
-      // form `{portfolio}-{property}.csv`. Jobs that produce no rows (no
-      // jobItem records) are skipped. Filename collisions are disambiguated
-      // with a numeric suffix so no entry overwrites another in the zip.
+      // Build one XLSX buffer per job, keyed by a per-job filename of the
+      // form `{OTA}-{property}-{startDate}-{endDate}.xlsx`. Jobs that
+      // produce no rows (no jobItem records) are skipped. Filename
+      // collisions are disambiguated with a numeric suffix so no entry
+      // overwrites another in the zip.
       const usedNames = new Set<string>();
-      const csvEntries: Array<{ name: string; data: Buffer }> = [];
+      const xlsxEntries: Array<{ name: string; data: Buffer }> = [];
 
       for (const job of jobs) {
-        const { headers, rows } = buildMasterRows([job]);
+        const { rows } = buildMasterRows([job]);
         if (rows.length === 0) continue;
 
-        const csvBuffer = this.buildMasterCsvBuffer(rows, headers);
-        const csvName = this.ensureUniqueFilename(
-          `${this.buildJobCsvBaseName(job)}.csv`,
+        const xlsxBuffer = buildMasterXlsxBuffer([job]);
+        const xlsxName = this.ensureUniqueFilename(
+          `${this.buildJobCsvBaseName(job)}.xlsx`,
           usedNames,
         );
-        csvEntries.push({ name: csvName, data: csvBuffer });
+        xlsxEntries.push({ name: xlsxName, data: xlsxBuffer });
       }
 
-      if (csvEntries.length === 0) {
+      if (xlsxEntries.length === 0) {
         throw new NotFoundException(
           'No job items found for the given jobs to export',
         );
       }
 
-      const zipBuffer = await zipFiles(csvEntries);
+      const zipBuffer = await zipFiles(xlsxEntries);
       const fileName = `${this.buildMasterZipBaseName(jobs)}.zip`;
 
       return { buffer: zipBuffer, fileName };
     } catch (error) {
       this.logger.error(
-        `Error exporting master CSV zip: ${error.message}`,
+        `Error exporting master XLSX zip: ${error.message}`,
         error.stack,
       );
       throw error;
@@ -1485,7 +1485,7 @@ export class JobService implements IJobService {
 
   /**
    * "Card Activity Wide" sibling of {@link exportMasterCsv} — identical
-   * zip-of-per-job-CSVs shape and filename rules, but each CSV additionally
+   * zip-of-per-job-XLSX shape and filename rules, but each XLSX additionally
    * includes the full Card Activity / Calculated Amount to Charge / Amount
    * Match / Transaction Count / dynamic `Transaction N` (authorizations +
    * settlements, PACKED per reservation) columns for Expedia jobs. See
@@ -1516,38 +1516,39 @@ export class JobService implements IJobService {
         );
       }
 
-      // Build one CSV buffer per job, keyed by a per-job filename of the
-      // form `{portfolio}-{property}.csv`. Jobs that produce no rows (no
-      // jobItem records) are skipped. Filename collisions are disambiguated
-      // with a numeric suffix so no entry overwrites another in the zip.
+      // Build one XLSX buffer per job, keyed by a per-job filename of the
+      // form `{OTA}-{property}-{startDate}-{endDate}.xlsx`. Jobs that
+      // produce no rows (no jobItem records) are skipped. Filename
+      // collisions are disambiguated with a numeric suffix so no entry
+      // overwrites another in the zip.
       const usedNames = new Set<string>();
-      const csvEntries: Array<{ name: string; data: Buffer }> = [];
+      const xlsxEntries: Array<{ name: string; data: Buffer }> = [];
 
       for (const job of jobs) {
-        const { headers, rows } = buildCardActivityWideRows([job]);
+        const { rows } = buildCardActivityWideRows([job]);
         if (rows.length === 0) continue;
 
-        const csvBuffer = this.buildMasterCsvBuffer(rows, headers);
-        const csvName = this.ensureUniqueFilename(
-          `${this.buildJobCsvBaseName(job)}.csv`,
+        const xlsxBuffer = buildCardActivityWideXlsxBuffer([job]);
+        const xlsxName = this.ensureUniqueFilename(
+          `${this.buildJobCsvBaseName(job)}.xlsx`,
           usedNames,
         );
-        csvEntries.push({ name: csvName, data: csvBuffer });
+        xlsxEntries.push({ name: xlsxName, data: xlsxBuffer });
       }
 
-      if (csvEntries.length === 0) {
+      if (xlsxEntries.length === 0) {
         throw new NotFoundException(
           'No job items found for the given jobs to export',
         );
       }
 
-      const zipBuffer = await zipFiles(csvEntries);
+      const zipBuffer = await zipFiles(xlsxEntries);
       const fileName = `${this.buildMasterZipBaseName(jobs)}.zip`;
 
       return { buffer: zipBuffer, fileName };
     } catch (error) {
       this.logger.error(
-        `Error exporting card activity wide CSV zip: ${error.message}`,
+        `Error exporting card activity wide XLSX zip: ${error.message}`,
         error.stack,
       );
       throw error;
@@ -2413,22 +2414,22 @@ export class JobService implements IJobService {
       }
 
       const job = jobs[0];
-      const { headers, rows } = buildMasterRows([job]);
+      const { rows } = buildMasterRows([job]);
       if (rows.length === 0) {
         throw new NotFoundException(
           `No job items found for job ${jobId} to export`,
         );
       }
 
-      const buffer = this.buildMasterCsvBuffer(rows, headers);
-      // Filename format: "{OTA}-{property}-{startDate}-{endDate}.csv"
-      // (same as the inner CSVs produced by POST /jobs/export-master).
-      const fileName = `${this.buildJobCsvBaseName(job)}.csv`;
+      const buffer = buildMasterXlsxBuffer([job]);
+      // Filename format: "{OTA}-{property}-{startDate}-{endDate}.xlsx"
+      // (same as the inner XLSX files produced by POST /jobs/export-master).
+      const fileName = `${this.buildJobCsvBaseName(job)}.xlsx`;
 
       return { buffer, fileName };
     } catch (error) {
       this.logger.error(
-        `Error exporting single job master CSV: ${error.message}`,
+        `Error exporting single job master XLSX: ${error.message}`,
         error.stack,
       );
       throw error;
@@ -2437,7 +2438,7 @@ export class JobService implements IJobService {
 
   /**
    * "Card Activity Wide" sibling of {@link exportSingleJobMasterCsv} —
-   * same single-job CSV, but also includes the Card Activity / Calculated
+   * same single-job XLSX, but also includes the Card Activity / Calculated
    * Amount to Charge / Amount Match / Transaction Count / dynamic
    * `Transaction N` columns for Expedia jobs.
    */
@@ -2455,22 +2456,22 @@ export class JobService implements IJobService {
       }
 
       const job = jobs[0];
-      const { headers, rows } = buildCardActivityWideRows([job]);
+      const { rows } = buildCardActivityWideRows([job]);
       if (rows.length === 0) {
         throw new NotFoundException(
           `No job items found for job ${jobId} to export`,
         );
       }
 
-      const buffer = this.buildMasterCsvBuffer(rows, headers);
-      // Filename format: "{OTA}-{property}-{startDate}-{endDate}.csv"
-      // (same as the inner CSVs produced by POST /jobs/card-activity-wide-export).
-      const fileName = `${this.buildJobCsvBaseName(job)}.csv`;
+      const buffer = buildCardActivityWideXlsxBuffer([job]);
+      // Filename format: "{OTA}-{property}-{startDate}-{endDate}.xlsx"
+      // (same as the inner XLSX files produced by POST /jobs/card-activity-wide-export).
+      const fileName = `${this.buildJobCsvBaseName(job)}.xlsx`;
 
       return { buffer, fileName };
     } catch (error) {
       this.logger.error(
-        `Error exporting single job card activity wide CSV: ${error.message}`,
+        `Error exporting single job card activity wide XLSX: ${error.message}`,
         error.stack,
       );
       throw error;
@@ -2480,7 +2481,7 @@ export class JobService implements IJobService {
   /**
    * Resolves all jobs in a recurring report bucket (by recurring_id +
    * recurring_report_bucket_id) and exports every matching job item into
-   * a SINGLE combined CSV (not a zip-of-CSVs like POST /jobs/export-master).
+   * a SINGLE combined XLSX (not a zip-of-XLSX like POST /jobs/export-master).
    *
    * The headers are computed across all jobs together, so if the bucket
    * contains any Expedia jobs the Expedia-specific columns (Card Activity,
@@ -2516,20 +2517,20 @@ export class JobService implements IJobService {
         );
       }
 
-      const { headers, rows } = buildMasterRows(jobs);
+      const { rows } = buildMasterRows(jobs);
       if (rows.length === 0) {
         throw new NotFoundException(
           'No job items found for the matching jobs to export',
         );
       }
 
-      const buffer = this.buildMasterCsvBuffer(rows, headers);
-      const fileName = `${this.buildMasterZipBaseName(jobs)}.csv`;
+      const buffer = buildMasterXlsxBuffer(jobs);
+      const fileName = `${this.buildMasterZipBaseName(jobs)}.xlsx`;
 
       return { buffer, fileName };
     } catch (error) {
       this.logger.error(
-        `Error exporting master CSV by recurring: ${error.message}`,
+        `Error exporting master XLSX by recurring: ${error.message}`,
         error.stack,
       );
       throw error;
@@ -2538,7 +2539,7 @@ export class JobService implements IJobService {
 
   /**
    * "Card Activity Wide" sibling of {@link exportMasterCsvByRecurring} —
-   * same combined-bucket CSV, but the headers additionally include the
+   * same combined-bucket XLSX, but the headers additionally include the
    * Card Activity / Calculated Amount to Charge / Amount Match /
    * Transaction Count / dynamic `Transaction N` columns if the bucket
    * contains any Expedia jobs.
@@ -2572,37 +2573,24 @@ export class JobService implements IJobService {
         );
       }
 
-      const { headers, rows } = buildCardActivityWideRows(jobs);
+      const { rows } = buildCardActivityWideRows(jobs);
       if (rows.length === 0) {
         throw new NotFoundException(
           'No job items found for the matching jobs to export',
         );
       }
 
-      const buffer = this.buildMasterCsvBuffer(rows, headers);
-      const fileName = `${this.buildMasterZipBaseName(jobs)}.csv`;
+      const buffer = buildCardActivityWideXlsxBuffer(jobs);
+      const fileName = `${this.buildMasterZipBaseName(jobs)}.xlsx`;
 
       return { buffer, fileName };
     } catch (error) {
       this.logger.error(
-        `Error exporting card activity wide CSV by recurring: ${error.message}`,
+        `Error exporting card activity wide XLSX by recurring: ${error.message}`,
         error.stack,
       );
       throw error;
     }
-  }
-
-  private buildMasterCsvBuffer(
-    rows: Record<string, any>[],
-    headers: string[] = MASTER_EXPORT_HEADER,
-  ): Buffer {
-    const worksheet = XLSX.utils.json_to_sheet(rows, {
-      header: headers,
-    });
-    // Prefix UTF-8 BOM so Excel opens the file correctly (accents, the
-    // ="..." text-formula trick for card numbers, etc.).
-    const csv = XLSX.utils.sheet_to_csv(worksheet);
-    return Buffer.from('\uFEFF' + csv, 'utf8');
   }
 
   private buildJobCsvBaseName(job: any): string {
