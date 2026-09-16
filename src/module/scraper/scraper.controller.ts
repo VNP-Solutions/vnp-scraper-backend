@@ -60,6 +60,10 @@ import {
   reopenAllReservationsSchema,
   reopenCaseRunJobSchema,
 } from './agoda-reopen.validation';
+import {
+  exportJobItemsWithDetailsSchema,
+  type ExportJobItemsWithDetailsType,
+} from './scraper-job-item.validation';
 import { IScraperJobItemService } from './scraper-job-item.interface';
 import { pushJobsToQueue } from '../../helpers/sqsHelper';
 import { triggerLambda } from '../../helpers/lambdaHelper';
@@ -74,6 +78,7 @@ import {
   CreateScheduledJobDto,
   CreateScheduledJobResponseDto,
   ErrorResponseDto,
+  ExportJobItemsWithDetailsDto,
   GetJobsByScheduleDateAndStatusQueryDto,
   HealthResponseDto,
   JobsWithScheduledJobResponseDto,
@@ -2301,7 +2306,24 @@ export class ScraperController {
       'check_out_date to today. `null` for Booking / Agoda or when ' +
       'check_out_date is missing.\n\n' +
       'These values are lazily refreshed once per day on the first read, ' +
-      'so the response always reflects the current calendar day.',
+      'so the response always reflects the current calendar day.\n\n' +
+      'Each item may also carry VCC Remaining Balance Engine fields ' +
+      '(Expedia GraphQL flow only; camelCase is intentional). These are ' +
+      'written at scrape time and are not recomputed on read. Booking / ' +
+      'Agoda items and rows scraped before this feature omit the keys ' +
+      'entirely — treat absence and `null` identically. `0` is a real ' +
+      'computed zero; `null` on `safeToChargeNow` / `phantomBalance` / ' +
+      '`owedButNotOnCard` means the engine could not produce a confident ' +
+      'number.\n' +
+      '- `activityRows`, `postedCharges`, `postedRefunds`, `netCollected`\n' +
+      '- `impliedCardLimit`, `stillOwed`\n' +
+      '- `safeToChargeNow`, `phantomBalance`, `owedButNotOnCard`\n' +
+      '- `verdict` (R0–R7 string, or null if the engine did not run)\n' +
+      '- `redFlags` (string[]; empty array when none)\n' +
+      '- `timesDeclinedAtThisAmount`, `recommendedAction`\n\n' +
+      'Nested `cardActivity.settlements` holds posted/settled money ' +
+      'movement (matched to `authorizations` by `authCode`). ' +
+      '`authorizations` remains holds-only.',
   })
   @ApiParam({
     name: 'jobId',
@@ -2367,6 +2389,19 @@ export class ScraperController {
       'response value even when the cached column is stale.',
     example: true,
   })
+  @ApiQuery({
+    name: 'verdict',
+    required: false,
+    type: String,
+    description:
+      'Filter by the VCC Remaining Balance Engine `verdict`. ' +
+      'Pass a full stored string for an exact match ' +
+      '(e.g. `R1 COLLECT - card matches what is owed`), or just the ' +
+      '`R0`–`R7` prefix to match every verdict in that family ' +
+      '(e.g. `R1` matches both COLLECT variants). Items where the ' +
+      'engine did not run (missing/`null` verdict) are excluded.',
+    example: 'R1',
+  })
   @ApiResponse({ status: 200, description: 'Job items retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Job not found' })
   @ApiResponse({ status: 500, description: 'Server error' })
@@ -2409,7 +2444,14 @@ export class ScraperController {
       'check_out_date to today. `null` for Booking / Agoda or when ' +
       'check_out_date is missing.\n\n' +
       'These values are lazily refreshed once per day on the first read, ' +
-      'so the response always reflects the current calendar day.',
+      'so the response always reflects the current calendar day.\n\n' +
+      'Each item may also carry VCC Remaining Balance Engine fields ' +
+      '(Expedia GraphQL flow only; camelCase is intentional). These are ' +
+      'written at scrape time and are not recomputed on read. Booking / ' +
+      'Agoda items and rows scraped before this feature omit the keys ' +
+      'entirely — treat absence and `null` identically. Nested ' +
+      '`cardActivity.settlements` holds posted/settled money movement; ' +
+      '`authorizations` remains holds-only.',
   })
   @ApiParam({
     name: 'jobId',
@@ -2458,6 +2500,130 @@ export class ScraperController {
           total: 0,
           jobId: jobId,
         },
+      });
+    }
+  }
+
+  @Get('/api/jobs/:jobId/items/export-with-verdicts')
+  @ApiOperation({
+    summary: 'Export job items with VCC Remaining Balance Engine details (XLSX)',
+    description:
+      'Separate from the Master CSV export (`POST /jobs/export-master` and ' +
+      '`GET /jobs/:id/export-master`, which are unchanged) — this returns ' +
+      'an XLSX file with one row per job item for the given job, including:\n' +
+      '- The core item fields (Reservation ID, Confirmation Number, Guest ' +
+      'Name, Check In/Out, Room Type, Booking Amount, Booked Date, ' +
+      'Reservation Status).\n' +
+      '- Every VCC Remaining Balance Engine field (`activityRows`, ' +
+      '`postedCharges`, `postedRefunds`, `netCollected`, ' +
+      '`impliedCardLimit`, `stillOwed`, `safeToChargeNow`, ' +
+      '`phantomBalance`, `owedButNotOnCard`, `verdict`, `redFlags`, ' +
+      '`timesDeclinedAtThisAmount`, `recommendedAction`). Blank cells mean ' +
+      'the engine did not run for that item (Booking/Agoda, or a row ' +
+      'scraped before this feature) — never invented.\n\n' +
+      'This export does NOT include card activity data (no ' +
+      '`authorizations` / `settlements`) — it is scoped to the item-level ' +
+      'VCC fields only.',
+  })
+  @ApiParam({
+    name: 'jobId',
+    required: true,
+    description: 'The job ID to export detailed item data for',
+    example: '507f1f77bcf86cd799439011',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'XLSX file generated successfully',
+  })
+  @ApiResponse({ status: 404, description: 'Job or job items not found' })
+  @ApiResponse({ status: 500, description: 'Server error' })
+  async exportJobItemsWithDetails(
+    @Param('jobId') jobId: string,
+    @Res() res: Response,
+  ) {
+    try {
+      const { buffer, fileName } =
+        await this.jobItemService.exportJobItemsWithDetails(jobId);
+
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${fileName}"`,
+      );
+      return res.status(HttpStatus.OK).send(buffer);
+    } catch (error: any) {
+      this.logger.error(
+        `Error exporting job item details for job ${jobId}: ${error.message}`,
+        error.stack,
+      );
+      const status = error.message?.includes('not found')
+        ? HttpStatus.NOT_FOUND
+        : HttpStatus.INTERNAL_SERVER_ERROR;
+      return res.status(status).json({
+        success: false,
+        message: error.message || 'Error exporting job item details',
+      });
+    }
+  }
+
+  @Post('/api/jobs/items/export-with-verdicts')
+  @ValidateBody(exportJobItemsWithDetailsSchema)
+  @ApiOperation({
+    summary:
+      'Export job items with VCC Remaining Balance Engine details for one or more jobs (zipped)',
+    description:
+      'Multi-job counterpart to GET /scraper/api/jobs/:jobId/items/export-with-verdicts — ' +
+      'same mirror relationship as POST /jobs/export-master has to ' +
+      'GET /jobs/:id/export-master. Accepts an array of one or more job ' +
+      'IDs and ALWAYS returns a ZIP file (even for a single ID) containing ' +
+      'one "items with details" XLSX per job. Each XLSX is named ' +
+      '"{OTA}-{property}-items-detail-{D Month YYYY-HH.MM AM/PM}.xlsx" ' +
+      '(collisions get a numeric suffix). Jobs with no items are silently ' +
+      'skipped — the request only 404s if EVERY given job ends up empty. ' +
+      'The zip itself is named ' +
+      '"job-items-detail-exports-{D Month YYYY-HH.MM AM/PM}.zip". To export ' +
+      'a single job directly as a plain, unzipped XLSX, use ' +
+      'GET /scraper/api/jobs/:jobId/items/export-with-verdicts instead.',
+  })
+  @ApiBody({ type: ExportJobItemsWithDetailsDto })
+  @ApiResponse({
+    status: 200,
+    description: 'ZIP file containing one "items with details" XLSX per job',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - job_ids array cannot be empty',
+  })
+  @ApiResponse({ status: 404, description: 'No jobs / job items found' })
+  @ApiResponse({ status: 500, description: 'Server error' })
+  async exportJobItemsWithDetailsForJobs(
+    @Body() body: ExportJobItemsWithDetailsType,
+    @Res() res: Response,
+  ) {
+    try {
+      const { buffer, fileName } =
+        await this.jobItemService.exportJobItemsWithDetailsForJobs(
+          body.job_ids,
+        );
+
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${fileName}"`,
+      );
+      return res.status(HttpStatus.OK).send(buffer);
+    } catch (error: any) {
+      this.logger.error(
+        `Error exporting job item details for jobs ${(body?.job_ids ?? []).join(', ')}: ${error.message}`,
+        error.stack,
+      );
+      const status = error?.status || HttpStatus.INTERNAL_SERVER_ERROR;
+      return res.status(status).json({
+        success: false,
+        message: error.message || 'Error exporting job item details zip',
       });
     }
   }

@@ -150,6 +150,17 @@ type Authorization {
   amount              MoneyAmount?
 }
 
+/// Posted/settled money movement on a card activity, matched back to an
+/// authorization by `authCode`. Distinct from `authorizations`, which only
+/// ever represents a hold and never has a posted date.
+type Settlement {
+  transactionDate DateTime?
+  postDate        DateTime?
+  authCode        String?
+  referenceNumber String?
+  amount          MoneyAmount?
+}
+
 enum ScreenshotUrlType {
   step
   error
@@ -537,6 +548,25 @@ model JobItem {
   days_since_checkout   Int?
   derived_calculated_at DateTime?
 
+  // VCC Remaining Balance Engine — written by the Expedia GraphQL scraper
+  // after card activity is scraped. camelCase is intentional (do not rename
+  // to snake_case). Every field is optional: Booking/Agoda items and rows
+  // scraped before this feature simply omit the keys. Treat missing and
+  // null the same way as over_160 / days_since_checkout.
+  activityRows              Int?
+  postedCharges             Float?
+  postedRefunds             Float?
+  netCollected              Float?
+  impliedCardLimit          Float?
+  stillOwed                 Float?
+  safeToChargeNow           Float?
+  phantomBalance            Float?
+  owedButNotOnCard          Float?
+  verdict                   String?
+  redFlags                  String[] @default([])
+  timesDeclinedAtThisAmount Int?
+  recommendedAction         String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -555,6 +585,7 @@ model JobItem {
   @@index([check_in_date])
   @@index([reservation_status])
   @@index([card_activity_id])
+  @@index([verdict])
   @@map("job_items")
 }
 
@@ -566,6 +597,10 @@ model CardActivity {
   reservation_id        String?
   totalSettlementAmount MoneyAmount?
   authorizations        Authorization[]
+  // Prisma cannot `@default([])` a composite list, so documents that
+  // predate this field need `settlements: []` written or reads throw.
+  // See migrations/add-card-activity-settlements.ts.
+  settlements           Settlement[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

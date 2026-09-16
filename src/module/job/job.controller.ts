@@ -1134,14 +1134,14 @@ export class JobController {
   @UseGuards(JwtAuthGuard)
   @ValidateBody(exportMasterJobsSchema)
   @ApiOperation({
-    summary: 'Export master CSV files (zipped) for one or more jobs',
+    summary: 'Export master XLSX files (zipped) for one or more jobs',
     description:
-      'Accepts an array of one or more job IDs and returns a ZIP file containing one CSV per job. Each CSV is named "{OTA}-{property}-{startDate}-{endDate}.csv" and has one row per job item, with columns populated according to the OTA provider (Expedia / Booking / Agoda). Booking rows always have "N/A" for Check In / Check Out. Card Number, Expiry Date and CVV columns use the Excel `="..."` text-formula trick so Excel preserves them as text. The zip itself is named "job-exports-{D Month YYYY-HH.MM AM/PM}.zip" (e.g. "job-exports-23 April 2026-04.44 PM.zip"). A dot is used instead of ":" in the time so the name is valid on Windows, macOS, and Linux. To export a single job directly as a plain CSV (no zip), use GET /jobs/:id/export-master.',
+      'Accepts an array of one or more job IDs and returns a ZIP file containing one XLSX per job. Each XLSX is named "{OTA}-{property}-{startDate}-{endDate}.xlsx" and has one row per job item, with columns populated according to the OTA provider (Expedia / Booking / Agoda). Booking rows always have "N/A" for Check In / Check Out. Card Number, Expiry Date and CVV columns are forced to Excel "Text" format so leading zeros and long digit strings are preserved. The zip itself is named "job-exports-{D Month YYYY-HH.MM AM/PM}.zip" (e.g. "job-exports-23 April 2026-04.44 PM.zip"). A dot is used instead of ":" in the time so the name is valid on Windows, macOS, and Linux. To export a single job directly as a plain XLSX (no zip), use GET /jobs/:id/export-master. For the version of this export that ALSO includes Card Activity / Transaction details (authorizations + settlements), use POST /jobs/card-activity-wide-export instead.',
   })
   @ApiBody({ type: ExportMasterJobsDto })
   @ApiResponse({
     status: 200,
-    description: 'ZIP file containing per-job CSV files',
+    description: 'ZIP file containing per-job XLSX files',
   })
   @ApiResponse({
     status: 400,
@@ -1165,7 +1165,7 @@ export class JobController {
       response.send(buffer);
     } catch (error) {
       this.logger.error(
-        `Error exporting master CSV zip: ${error.message}`,
+        `Error exporting master XLSX zip: ${error.message}`,
         error.stack,
       );
       return ResponseHandler.handler(
@@ -1174,7 +1174,7 @@ export class JobController {
           const status = error?.status || 500;
           return {
             statusCode: status,
-            message: error?.message || 'Failed to export master CSV zip',
+            message: error?.message || 'Failed to export master XLSX zip',
             data: null,
           };
         },
@@ -1187,9 +1187,9 @@ export class JobController {
   @UseGuards(JwtAuthGuard)
   @ApiOperation({
     summary:
-      'Export a single combined master CSV for all jobs in a recurring report bucket',
+      'Export a single combined master XLSX for all jobs in a recurring report bucket',
     description:
-      'Resolves every non-archived job whose recurring_id and recurring_report_bucket_id match the given query params, then returns a SINGLE combined CSV file containing every job item across all matching jobs (not a ZIP of per-job CSVs). The headers are the union across all OTAs in the bucket: if any Expedia job is included, the Expedia-only columns (Card Activity, Calculated Amount to Charge, Amount Match, dynamic Approved Amount K) appear in the file; non-Expedia rows leave those cells blank. The file is named "job-exports-{D Month YYYY-HH.MM AM/PM}.csv".',
+      'Resolves every non-archived job whose recurring_id and recurring_report_bucket_id match the given query params, then returns a SINGLE combined XLSX file containing every job item across all matching jobs (not a ZIP of per-job XLSX files). The headers are the union across all OTAs in the bucket: if any Expedia job is included, the Expedia-only columns (Card Activity, Calculated Amount to Charge, Amount Match, dynamic Approved Amount K) appear in the file; non-Expedia rows leave those cells blank. The file is named "job-exports-{D Month YYYY-HH.MM AM/PM}.xlsx".',
   })
   @ApiQuery({
     name: 'recurring_id',
@@ -1203,7 +1203,7 @@ export class JobController {
   })
   @ApiResponse({
     status: 200,
-    description: 'Combined CSV file generated successfully',
+    description: 'Combined XLSX file generated successfully',
   })
   @ApiResponse({
     status: 400,
@@ -1224,7 +1224,10 @@ export class JobController {
       const { buffer, fileName } =
         await this.jobService.exportMasterCsvByRecurring(recurringId, bucketId);
 
-      response.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      response.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
       response.setHeader(
         'Content-Disposition',
         `attachment; filename="${fileName}"`,
@@ -1232,7 +1235,7 @@ export class JobController {
       response.send(buffer);
     } catch (error) {
       this.logger.error(
-        `Error exporting master CSV by recurring: ${error.message}`,
+        `Error exporting master XLSX by recurring: ${error.message}`,
         error.stack,
       );
       return ResponseHandler.handler(
@@ -1242,7 +1245,7 @@ export class JobController {
           return {
             statusCode: status,
             message:
-              error?.message || 'Failed to export master CSV by recurring',
+              error?.message || 'Failed to export master XLSX by recurring',
             data: null,
           };
         },
@@ -1254,13 +1257,13 @@ export class JobController {
   @Get('/:id/export-master')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({
-    summary: 'Export master CSV file for a single job',
+    summary: 'Export master XLSX file for a single job',
     description:
-      'Returns a CSV file for a single job, named "{OTA}-{property}-{startDate}-{endDate}.csv" (e.g. "Expedia-Moxy Vienna-01-01-2026-03-31-2026.csv"). The CSV has one row per job item and follows the same columns and OTA-specific rules as the bulk /jobs/export-master endpoint.',
+      'Returns an XLSX file for a single job, named "{OTA}-{property}-{startDate}-{endDate}.xlsx" (e.g. "Expedia-Moxy Vienna-01-01-2026-03-31-2026.xlsx"). The XLSX has one row per job item and follows the same columns and OTA-specific rules as the bulk /jobs/export-master endpoint. For the version that ALSO includes Card Activity / Transaction details, use GET /jobs/:id/card-activity-wide-export instead.',
   })
   @ApiResponse({
     status: 200,
-    description: 'CSV file generated successfully',
+    description: 'XLSX file generated successfully',
   })
   @ApiResponse({ status: 400, description: 'Bad request - invalid job id' })
   @ApiResponse({ status: 404, description: 'Job or job items not found' })
@@ -1272,7 +1275,10 @@ export class JobController {
       const { buffer, fileName } =
         await this.jobService.exportSingleJobMasterCsv(jobId);
 
-      response.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      response.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
       response.setHeader(
         'Content-Disposition',
         `attachment; filename="${fileName}"`,
@@ -1280,7 +1286,7 @@ export class JobController {
       response.send(buffer);
     } catch (error) {
       this.logger.error(
-        `Error exporting single job master CSV: ${error.message}`,
+        `Error exporting single job master XLSX: ${error.message}`,
         error.stack,
       );
       return ResponseHandler.handler(
@@ -1289,7 +1295,188 @@ export class JobController {
           const status = error?.status || 500;
           return {
             statusCode: status,
-            message: error?.message || 'Failed to export single job master CSV',
+            message: error?.message || 'Failed to export single job master XLSX',
+            data: null,
+          };
+        },
+        this.logger,
+      );
+    }
+  }
+
+  @Post('/card-activity-wide-export')
+  @UseGuards(JwtAuthGuard)
+  @ValidateBody(exportMasterJobsSchema)
+  @ApiOperation({
+    summary:
+      'Export "Card Activity Wide" XLSX files (zipped) for one or more jobs',
+    description:
+      'Same as POST /jobs/export-master (one XLSX per job, zipped, "{OTA}-{property}-{startDate}-{endDate}.xlsx" naming, Booking rows have "N/A" for Check In / Check Out), but if the job is Expedia the Expedia-only columns are appended after the static set: `Card Activity`, `Calculated Amount to Charge`, `Amount Match`, `Transaction Count` (this reservation\'s own total authorizations + settlements), and dynamic `Transaction K` column groups, PACKED per reservation — each reservation\'s own authorizations (approved AND declined) fill slots 1..authCount, then its own settlements continue immediately after with no gap (e.g. 2 authorizations + 1 settlement renders `Transaction 1`, `Transaction 2` as authorizations then `Transaction 3` as the settlement; a different reservation with 5 authorizations + 3 settlements renders `Transaction 1`-`5` as authorizations then `Transaction 6`-`8` as settlements). K is the export-wide max of any single reservation\'s own (authCount + settlementCount). Since the same slot index can be an authorization on one row and a settlement on another, every `Transaction K` group shares one fixed 5-column shape: `Transaction K Auth Date` (Auth Date or Transaction Date), `Transaction K Posted Date` (always "N/A" for an authorization slot — this is the implicit signal it\'s an authorization; the settlement\'s real Post Date for a settlement slot), `Transaction K Auth Code`, `Transaction K Amount`, `Transaction K Status / Decline Reason` (status/decline text for an authorization slot; the settlement\'s Reference Number for a settlement slot). Authorizations and settlements are never cross-matched by `authCode` — only the slot numbering is shared. Card Number, Expiry Date, CVV, and the `Transaction K` date/Auth Code/Status cells are forced to Excel "Text" format, and the header is a real 2-row MERGED header (each `Transaction K` label spans its 5 sub-columns). The zip itself is named "job-exports-{D Month YYYY-HH.MM AM/PM}.zip". To export a single job directly as a plain XLSX (no zip), use GET /jobs/:id/card-activity-wide-export.',
+  })
+  @ApiBody({ type: ExportMasterJobsDto })
+  @ApiResponse({
+    status: 200,
+    description: 'ZIP file containing per-job XLSX files',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - job_ids array cannot be empty',
+  })
+  @ApiResponse({ status: 404, description: 'No jobs / job items found' })
+  async exportCardActivityWideJobs(
+    @Body() body: ExportMasterJobsType,
+    @Res() response: Response,
+  ) {
+    try {
+      const { buffer, fileName } =
+        await this.jobService.exportCardActivityWideCsv(body.job_ids);
+
+      response.setHeader('Content-Type', 'application/zip');
+      response.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${fileName}"`,
+      );
+      response.send(buffer);
+    } catch (error) {
+      this.logger.error(
+        `Error exporting card activity wide XLSX zip: ${error.message}`,
+        error.stack,
+      );
+      return ResponseHandler.handler(
+        response,
+        async () => {
+          const status = error?.status || 500;
+          return {
+            statusCode: status,
+            message:
+              error?.message || 'Failed to export card activity wide XLSX zip',
+            data: null,
+          };
+        },
+        this.logger,
+      );
+    }
+  }
+
+  @Get('/card-activity-wide-export/by-recurring')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary:
+      'Export a single combined "Card Activity Wide" XLSX for all jobs in a recurring report bucket',
+    description:
+      'Same as GET /jobs/export-master/by-recurring (one combined XLSX across every matching job, not a ZIP), but if any Expedia job is included, the Expedia-only columns (Card Activity, Calculated Amount to Charge, Amount Match, Transaction Count, and dynamic "Transaction K" column groups, PACKED per reservation — each reservation\'s own authorizations fill slots 1..authCount then its own settlements continue immediately after with no gap; K = the export-wide max of any single reservation\'s own authCount+settlementCount) appear in the file. Since a slot can be an authorization on one row and a settlement on another, every "Transaction K" group shares one fixed shape: Auth Date, Posted Date (always "N/A" for authorization slots, the real Post Date for settlement slots), Auth Code, Amount, Status / Decline Reason (status/decline text for authorization slots, reference number for settlement slots); non-Expedia rows leave those cells blank. The header is a real 2-row MERGED header. The file is named "job-exports-{D Month YYYY-HH.MM AM/PM}.xlsx".',
+  })
+  @ApiQuery({
+    name: 'recurring_id',
+    required: true,
+    description: 'Recurring job ID to filter by',
+  })
+  @ApiQuery({
+    name: 'recurring_report_bucket_id',
+    required: true,
+    description: 'Recurring report bucket ID to filter by',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Combined XLSX file generated successfully',
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Bad request - recurring_id and recurring_report_bucket_id are required',
+  })
+  @ApiResponse({
+    status: 404,
+    description:
+      'No jobs found for the given recurring_id / recurring_report_bucket_id',
+  })
+  async exportCardActivityWideByRecurring(
+    @Query('recurring_id') recurringId: string,
+    @Query('recurring_report_bucket_id') bucketId: string,
+    @Res() response: Response,
+  ) {
+    try {
+      const { buffer, fileName } =
+        await this.jobService.exportCardActivityWideCsvByRecurring(
+          recurringId,
+          bucketId,
+        );
+
+      response.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      response.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${fileName}"`,
+      );
+      response.send(buffer);
+    } catch (error) {
+      this.logger.error(
+        `Error exporting card activity wide XLSX by recurring: ${error.message}`,
+        error.stack,
+      );
+      return ResponseHandler.handler(
+        response,
+        async () => {
+          const status = error?.status || 500;
+          return {
+            statusCode: status,
+            message:
+              error?.message ||
+              'Failed to export card activity wide XLSX by recurring',
+            data: null,
+          };
+        },
+        this.logger,
+      );
+    }
+  }
+
+  @Get('/:id/card-activity-wide-export')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Export "Card Activity Wide" XLSX file for a single job',
+    description:
+      'Returns an XLSX file for a single job, named "{OTA}-{property}-{startDate}-{endDate}.xlsx". Same columns and OTA-specific rules as GET /jobs/:id/export-master, PLUS (for Expedia jobs) the Card Activity / Calculated Amount to Charge / Amount Match / Transaction Count / dynamic "Transaction K" column groups described on POST /jobs/card-activity-wide-export, rendered with a real 2-row MERGED header.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'XLSX file generated successfully',
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - invalid job id' })
+  @ApiResponse({ status: 404, description: 'Job or job items not found' })
+  async exportSingleJobCardActivityWide(
+    @Param('id') jobId: string,
+    @Res() response: Response,
+  ) {
+    try {
+      const { buffer, fileName } =
+        await this.jobService.exportSingleJobCardActivityWideCsv(jobId);
+
+      response.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      response.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${fileName}"`,
+      );
+      response.send(buffer);
+    } catch (error) {
+      this.logger.error(
+        `Error exporting single job card activity wide XLSX: ${error.message}`,
+        error.stack,
+      );
+      return ResponseHandler.handler(
+        response,
+        async () => {
+          const status = error?.status || 500;
+          return {
+            statusCode: status,
+            message:
+              error?.message ||
+              'Failed to export single job card activity wide XLSX',
             data: null,
           };
         },

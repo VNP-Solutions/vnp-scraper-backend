@@ -21,6 +21,11 @@ import {
   JobItemUploadResult,
   JobItemUploadRow,
 } from './scraper-job-item.interface';
+import { buildJobItemDetailsXlsxBuffer } from './job-item-details-export.util';
+import {
+  ensureUniqueFilename,
+  zipFiles,
+} from '../../common/utils/zip-and-filename.util';
 
 /**
  * Type of a JobItem row after the repo `include: { job: true }` step.
@@ -379,6 +384,156 @@ export class ScraperJobItemService implements IScraperJobItemService {
       );
       throw error;
     }
+  }
+
+  /**
+   * "Export with details" — separate from the Master CSV/XLSX export
+   * (job.service.ts / master-export.util.ts), which is left untouched.
+   * Pulls every item for `jobId` (same source data as
+   * GET /jobs/:jobId/all-items) and renders one XLSX row per item,
+   * including the VCC Remaining Balance Engine fields plus dynamic
+   * per-authorization / per-settlement columns sized to whatever the
+   * biggest card activity in this job actually has.
+   */
+  async exportJobItemsWithDetails(
+    jobId: string,
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    try {
+      const jobItems = await this.jobItemRepository.findAllByJobId(jobId);
+      if (!jobItems || jobItems.length === 0) {
+        throw new NotFoundException(
+          `No job items found for job ${jobId} to export`,
+        );
+      }
+
+      const decorated = await this.decorateWithDerivedFields(
+        jobItems as JobItemWithJob[],
+      );
+
+      const buffer = buildJobItemDetailsXlsxBuffer(decorated);
+      const fileName = this.buildJobItemDetailsFileName(decorated);
+
+      return { buffer, fileName };
+    } catch (error) {
+      this.logger.error(
+        `Error exporting job item details for job ${jobId}: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Multi-job "export with details" — mirrors how `exportMasterCsv`
+   * (job.service.ts) relates to the single-job Master CSV endpoint:
+   * builds one "items with details" XLSX per job ID (same builder as
+   * {@link exportJobItemsWithDetails}) and always bundles the result
+   * into a ZIP, even when `jobIds` has exactly one entry. Callers that
+   * want a single job as a plain, unzipped XLSX should keep using
+   * {@link exportJobItemsWithDetails} directly.
+   *
+   * Jobs with no items are skipped (not an error) — same "best effort"
+   * behavior as `exportMasterCsv` — unless EVERY job ends up empty, in
+   * which case this throws `NotFoundException` like the single-job path.
+   */
+  async exportJobItemsWithDetailsForJobs(
+    jobIds: string[],
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    try {
+      const uniqueJobIds = Array.from(new Set(jobIds ?? [])).filter(Boolean);
+      if (uniqueJobIds.length === 0) {
+        throw new BadRequestException('job_ids array cannot be empty');
+      }
+
+      const usedNames = new Set<string>();
+      const entries: Array<{ name: string; data: Buffer }> = [];
+      const skippedJobIds: string[] = [];
+
+      for (const jobId of uniqueJobIds) {
+        const jobItems = await this.jobItemRepository.findAllByJobId(jobId);
+        if (!jobItems || jobItems.length === 0) {
+          skippedJobIds.push(jobId);
+          continue;
+        }
+
+        const decorated = await this.decorateWithDerivedFields(
+          jobItems as JobItemWithJob[],
+        );
+        const buffer = buildJobItemDetailsXlsxBuffer(decorated);
+        const fileName = ensureUniqueFilename(
+          this.buildJobItemDetailsFileName(decorated),
+          usedNames,
+        );
+        entries.push({ name: fileName, data: buffer });
+      }
+
+      if (skippedJobIds.length > 0) {
+        this.logger.warn(
+          `[ExportDetails ZIP] ${skippedJobIds.length} job ID(s) had no items and were skipped: ${skippedJobIds.join(', ')}`,
+        );
+      }
+
+      if (entries.length === 0) {
+        throw new NotFoundException(
+          'No job items found for the given jobs to export',
+        );
+      }
+
+      const zipBuffer = await zipFiles(entries);
+      const fileName = `job-items-detail-exports-${this.buildHumanReadableTimestamp()}.zip`;
+
+      return { buffer: zipBuffer, fileName };
+    } catch (error) {
+      this.logger.error(
+        `Error exporting job item details for jobs ${(jobIds ?? []).join(', ')}: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Builds "{OTA}-{property}-items-detail-{D Month YYYY-HH.MM AM/PM}.xlsx"
+   * from the first item's joined `job`/`property`. Falls back to generic
+   * labels if either is missing (defensive — `findAllByJobId` always
+   * includes both, but this is a filename, not user-facing data).
+   */
+  private buildJobItemDetailsFileName(items: any[]): string {
+    const job = items?.[0]?.job;
+    const ota = this.sanitizeForFilename(
+      (job?.ota_provider ?? '').toString() || 'OTA',
+    );
+    const property = this.sanitizeForFilename(
+      job?.property_name ?? items?.[0]?.property?.name ?? 'property',
+    );
+    return `${ota}-${property}-items-detail-${this.buildHumanReadableTimestamp()}.xlsx`;
+  }
+
+  /** Strips characters that are unsafe in a filename on any OS. */
+  private sanitizeForFilename(value: string): string {
+    return String(value ?? '')
+      .replace(/[\\/:*?"<>|]+/g, ' ')
+      .trim()
+      .replace(/\s+/g, ' ') || 'unknown';
+  }
+
+  /**
+   * Produces e.g. "23 April 2026-04.44 PM". A dot is used as the time
+   * separator instead of ":" so the filename is valid on every OS
+   * (matches job.service.ts's buildHumanReadableTimestamp).
+   */
+  private buildHumanReadableTimestamp(d: Date = new Date()): string {
+    const day = d.getDate();
+    const month = d.toLocaleString('en-US', { month: 'long' });
+    const year = d.getFullYear();
+    const time = d
+      .toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      })
+      .replace(':', '.');
+    return `${day} ${month} ${year}-${time}`;
   }
 
   async updateJobCurrentUrl(jobId: string, currentUrl: string): Promise<void> {
