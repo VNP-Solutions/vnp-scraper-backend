@@ -933,7 +933,7 @@ export class BulkUploadJobItemsSyncResultDto {
 export class ExportJobItemsWithDetailsDto {
   @ApiProperty({
     description:
-      'Array of job IDs whose job items should be exported to the "items with details" (VCC fields) XLSX. Mirrors POST /jobs/export-master: a single ID still comes back zipped (one XLSX entry) — use GET /scraper/api/jobs/:jobId/items/export-details for a single job as a plain, unzipped XLSX.',
+      'Array of job IDs whose job items should be exported to the "items with details" (VCC fields) XLSX. Mirrors POST /jobs/export-master: a single ID still comes back zipped (one XLSX entry) — use GET /scraper/api/jobs/:jobId/items/export-with-verdicts for a single job as a plain, unzipped XLSX.',
     type: [String],
     example: ['65f0a3c4e2b7a1d2c3e4f5a6'],
   })

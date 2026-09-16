@@ -7,8 +7,8 @@ const objectIdSchema = z.string().regex(/^[0-9a-fA-F]{24}$/, {
 });
 
 /**
- * Body schema for `POST /scraper/api/jobs/items/export-details` — the
- * multi-job counterpart to `GET /scraper/api/jobs/:jobId/items/export-details`.
+ * Body schema for `POST /scraper/api/jobs/items/export-with-verdicts` — the
+ * multi-job counterpart to `GET /scraper/api/jobs/:jobId/items/export-with-verdicts`.
  * Mirrors `exportMasterJobsSchema` in job.validation.ts (same shape,
  * same "at least one ID" rule) since this endpoint follows the exact
  * same single-vs-bulk pattern as `/jobs/export-master`.

@@ -2504,7 +2504,7 @@ export class ScraperController {
     }
   }
 
-  @Get('/api/jobs/:jobId/items/export-details')
+  @Get('/api/jobs/:jobId/items/export-with-verdicts')
   @ApiOperation({
     summary: 'Export job items with VCC Remaining Balance Engine details (XLSX)',
     description:
@@ -2569,13 +2569,13 @@ export class ScraperController {
     }
   }
 
-  @Post('/api/jobs/items/export-details')
+  @Post('/api/jobs/items/export-with-verdicts')
   @ValidateBody(exportJobItemsWithDetailsSchema)
   @ApiOperation({
     summary:
       'Export job items with VCC Remaining Balance Engine details for one or more jobs (zipped)',
     description:
-      'Multi-job counterpart to GET /scraper/api/jobs/:jobId/items/export-details — ' +
+      'Multi-job counterpart to GET /scraper/api/jobs/:jobId/items/export-with-verdicts — ' +
       'same mirror relationship as POST /jobs/export-master has to ' +
       'GET /jobs/:id/export-master. Accepts an array of one or more job ' +
       'IDs and ALWAYS returns a ZIP file (even for a single ID) containing ' +
@@ -2586,7 +2586,7 @@ export class ScraperController {
       'The zip itself is named ' +
       '"job-items-detail-exports-{D Month YYYY-HH.MM AM/PM}.zip". To export ' +
       'a single job directly as a plain, unzipped XLSX, use ' +
-      'GET /scraper/api/jobs/:jobId/items/export-details instead.',
+      'GET /scraper/api/jobs/:jobId/items/export-with-verdicts instead.',
   })
   @ApiBody({ type: ExportJobItemsWithDetailsDto })
   @ApiResponse({
