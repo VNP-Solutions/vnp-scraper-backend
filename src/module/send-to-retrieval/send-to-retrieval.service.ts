@@ -5,7 +5,9 @@
  * reply (captured by `POST /api/agoda/retrive-case-email`) and, when it
  * leaves nothing to reopen, hands its collectable booking IDs to the
  * retrieval side. One `ParentRetrieval` is written per call, with one
- * `Retrieval` underneath it per property.
+ * `Retrieval` underneath it per property. Each job that gets a retrieval
+ * has its `reply_status` set to `SendToRetrieval`, taking it out of the
+ * reply-wait cycle the support-email cron polls.
  *
  * This never talks to Gmail — without a stored reply the job is skipped,
  * not treated as "nothing to collect".
@@ -17,6 +19,7 @@ import {
   Job,
   JobStatus,
   OTAProvider,
+  ReplyStatus,
 } from '@prisma/client';
 import { IAgodaCaseItemService } from '../agoda-case-item/agoda-case-item.interface';
 import { DatabaseService } from '../database/database.service';
@@ -282,6 +285,23 @@ export class SendToRetrievalService implements ISendToRetrievalService {
           `🧾 Created retrieval for Agoda ID ${candidate.agodaId} with ${candidate.reservations.length} reservation(s) ` +
             `(jobId=${jobId}, retrievalId=${retrieval.id}, parentRetrievalId=${parent.id})`,
         );
+
+        // Balance is now handed off to retrieval — move the job out of the
+        // reply-wait cycle so the support-email cron stops polling Gmail
+        // for it and it no longer reads as NoReplied/overdue. Best-effort:
+        // the retrieval itself already succeeded, so a failure here is
+        // logged rather than reported as a failed retrieval.
+        try {
+          await this.jobRepository.updateReplyStatus(
+            jobId,
+            ReplyStatus.SendToRetrieval,
+          );
+        } catch (error: any) {
+          this.logger.error(
+            `Retrieval ${retrieval.id} created but failed to set reply_status=SendToRetrieval on job ${jobId}:`,
+            error,
+          );
+        }
       } catch (error: any) {
         this.logger.error(
           `Failed to create retrieval for job ${jobId}:`,

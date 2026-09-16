@@ -267,6 +267,12 @@ export class AgodaCaseItemResponseDto {
 
   @ApiProperty({ description: 'Updated timestamp' })
   updatedAt: Date;
+
+  @ApiProperty({
+    required: false,
+    description: 'How many notes are attached to this case item',
+  })
+  total_notes?: number;
 }
 
 export class AgodaCaseItemListResponseDto {
@@ -286,9 +292,7 @@ export class AgodaCaseItemListResponseDto {
   limit: number;
 }
 
-export class ExportSelectedAgodaCaseItemsDto
-  implements ExportSelectedAgodaCaseItemsType
-{
+export class ExportSelectedAgodaCaseItemsDto implements ExportSelectedAgodaCaseItemsType {
   @ApiProperty({
     type: [String],
     description: 'AgodaCaseItem ids to include in the WIP export',
@@ -297,9 +301,7 @@ export class ExportSelectedAgodaCaseItemsDto
   ids: string[];
 }
 
-export class BulkDeclineAgodaCaseItemsDto
-  implements BulkDeclineAgodaCaseItemsType
-{
+export class BulkDeclineAgodaCaseItemsDto implements BulkDeclineAgodaCaseItemsType {
   @ApiProperty({
     type: [String],
     description: 'AgodaCaseItem ids to mark as declined',
@@ -343,7 +345,10 @@ export class ImportWipDeclinedResponseDto {
 
   @ApiProperty({
     description: 'Array of error messages for failed rows',
-    example: ['Row 3: Property not found for Hotel ID: 12345', 'Row 5: Missing required field: Reservation ID'],
+    example: [
+      'Row 3: Property not found for Hotel ID: 12345',
+      'Row 5: Missing required field: Reservation ID',
+    ],
     type: [String],
   })
   errors: string[];

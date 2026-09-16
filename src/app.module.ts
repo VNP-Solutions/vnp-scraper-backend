@@ -7,6 +7,7 @@ import { ActivityLoggerMiddleware } from './common/middleware/activity-logger.mi
 import { ActivityLogExportModule } from './module/activity-log-export/activity-log-export.module';
 import { ActivityLogModule } from './module/activity-log/activity-log.module';
 import { AgodaCaseItemModule } from './module/agoda-case-item/agoda-case-item.module';
+import { AgodaCaseItemNoteModule } from './module/agoda-case-item-note/agoda-case-item-note.module';
 import { AgodaModule } from './module/agoda/agoda.module';
 import { AuthModule } from './module/auth/auth.module';
 import { BookingScraperUrlModule } from './module/booking-scraper-url/booking-scraper-url.module';
@@ -67,6 +68,7 @@ import { UserModule } from './module/user/user.module';
     ScraperModule,
     AgodaModule,
     AgodaCaseItemModule,
+    AgodaCaseItemNoteModule,
     OtpStatusModule,
     PhoneNumberSlotModule,
     RetrievalModule,

@@ -87,4 +87,27 @@ export interface IScraperJobItemService {
     updated: number;
     errors: Array<{ row: number; message: string }>;
   }>;
+
+  /**
+   * "Export with details" — a separate export from the Master CSV/XLSX
+   * export. Returns an XLSX buffer with one row per job item, including
+   * the VCC Remaining Balance Engine fields and every raw
+   * `authorizations` / `settlements` entry on that item's card activity
+   * as dynamic numbered columns (see job-item-details-export.util.ts).
+   */
+  exportJobItemsWithDetails(
+    jobId: string,
+  ): Promise<{ buffer: Buffer; fileName: string }>;
+
+  /**
+   * Multi-job counterpart to {@link exportJobItemsWithDetails} — mirrors
+   * how `POST /jobs/export-master` relates to `GET /jobs/:id/export-master`.
+   * Builds one "items with details" XLSX per job ID (same builder as the
+   * single-job method) and bundles them into a single ZIP, regardless of
+   * whether `jobIds` has one entry or many. Jobs with no items are
+   * skipped (not an error) unless EVERY job ends up empty.
+   */
+  exportJobItemsWithDetailsForJobs(
+    jobIds: string[],
+  ): Promise<{ buffer: Buffer; fileName: string }>;
 }

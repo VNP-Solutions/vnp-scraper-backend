@@ -82,7 +82,6 @@ export class AgodaCaseItemRepository implements IAgodaCaseItemRepository {
     if (filters?.is_missing !== undefined) {
       where.is_missing = filters.is_missing;
     }
-    if (filters?.posting_type) where.posting_type = filters.posting_type;
     if (filters?.createdBy) where.createdBy = filters.createdBy;
     if (filters?.is_archived !== undefined) {
       where.is_archived = filters.is_archived;
@@ -153,13 +152,17 @@ export class AgodaCaseItemRepository implements IAgodaCaseItemRepository {
             property: { select: { id: true, name: true, agoda_id: true } },
             batch: { select: { id: true, name: true } },
             portfolio: { select: { id: true, name: true } },
+            _count: { select: { notes: true } },
           },
         }),
         this.db.agodaCaseItem.count({ where }),
       ]);
 
       return {
-        items,
+        items: items.map(({ _count, ...item }) => ({
+          ...item,
+          total_notes: _count.notes,
+        })),
         totalDocuments,
         currentPage: page,
         totalPage: Math.ceil(totalDocuments / limit),

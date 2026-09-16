@@ -23,17 +23,13 @@ import { firstValueFrom } from 'rxjs';
 import { PassThrough, Writable } from 'stream';
 import * as XLSX from 'xlsx';
 import {
-  portfolioNotSyncedMessage,
-  propertyNotSyncedMessage,
-  subPortfolioNotSyncedMessage,
-} from '../../common/constants/dbms-sync.constants';
-import {
   streamZipEntries,
   zipFiles,
 } from '../../common/utils/zip-and-filename.util';
 import { IRecurringJobService } from '../recurring-job/recurring-job.interface';
 import { IScheduledJobService } from '../scraper/scheduled-job.interface';
 import { IServerService } from '../server/server.interface';
+import { EncryptionUtil } from 'src/common/utils/encryption.util';
 import {
   BulkCreateJobFromDbmsItemDto,
   BulkCreateJobFromDbmsResultDto,
@@ -46,7 +42,6 @@ import {
 import { IJobRepository, IJobService } from './job.interface';
 import type { JobListItem } from './job-list.types';
 import {
-  MASTER_EXPORT_HEADER,
   buildMasterExportContextFromPrescan,
   buildMasterRows,
   buildMasterXlsxBuffer,
@@ -55,6 +50,15 @@ import {
   writeMasterXlsxToStream,
   writePerJobXlsxToWritable,
 } from './master-export-stream.util';
+import {
+  buildCardActivityWideExportContextFromPrescan,
+  buildCardActivityWideRows,
+  buildCardActivityWideXlsxBuffer,
+} from './card-activity-wide-export.util';
+import {
+  writeCardActivityWideXlsxToStream,
+  writePerJobCardActivityWideXlsxToWritable,
+} from './card-activity-wide-export-stream.util';
 import {
   buildDashboardRows,
   buildDashboardXlsxBuffer,
@@ -81,6 +85,7 @@ export class JobService implements IJobService {
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     private readonly logger: Logger,
+    private readonly encryptionUtil: EncryptionUtil,
   ) {}
 
   private convertToPostingType(value: string): PostingType {
@@ -113,6 +118,13 @@ export class JobService implements IJobService {
       default:
         return OTAProvider.Expedia;
     }
+  }
+
+  private parseOtaIdFromRow(value: any): number | null {
+    const raw = value?.toString().trim();
+    if (!raw) return null;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
   }
 
   async createJob(data: CreateJobDto): Promise<Job> {
@@ -710,10 +722,16 @@ export class JobService implements IJobService {
             const existingPortfolio =
               await this.repository.findPortfolioByName(portfolioName);
 
-            if (!existingPortfolio) {
-              throw new Error(portfolioNotSyncedMessage(portfolioName));
+            if (existingPortfolio) {
+              portfolioId = existingPortfolio.id;
+            } else {
+              const newPortfolio =
+                await this.repository.createPortfolio(portfolioName);
+              portfolioId = newPortfolio.id;
+              this.logger.log(
+                `Created portfolio: ${portfolioName} (${portfolioId})`,
+              );
             }
-            portfolioId = existingPortfolio.id;
           }
 
           if (
@@ -734,12 +752,19 @@ export class JobService implements IJobService {
                 portfolioId,
               );
 
-            if (!existingSubPortfolio) {
-              throw new Error(
-                subPortfolioNotSyncedMessage(subPortfolioName, portfolioName),
+            if (existingSubPortfolio) {
+              subPortfolioId = existingSubPortfolio.id;
+            } else {
+              const newSubPortfolio =
+                await this.repository.createSubPortfolio(
+                  subPortfolioName,
+                  portfolioId,
+                );
+              subPortfolioId = newSubPortfolio.id;
+              this.logger.log(
+                `Created sub-portfolio: ${subPortfolioName} under portfolio ${portfolioName} (${subPortfolioId})`,
               );
             }
-            subPortfolioId = existingSubPortfolio.id;
           }
 
           let propertyId = null;
@@ -749,17 +774,119 @@ export class JobService implements IJobService {
             rowData['Property Name'].trim() !== ''
           ) {
             propertyName = rowData['Property Name'].toString().trim();
-            const existingProperty =
+            const parsedExpediaId = this.parseOtaIdFromRow(
+              rowData['Expedia ID'],
+            );
+            const parsedBookingId = this.parseOtaIdFromRow(
+              rowData['Booking ID'],
+            );
+            const parsedAgodaId = this.parseOtaIdFromRow(
+              rowData['Agoda ID'],
+            );
+
+            let existingProperty =
               await this.repository.findPropertyByNameAndRelations(
                 propertyName,
                 portfolioId,
                 subPortfolioId,
               );
 
-            if (!existingProperty) {
-              throw new Error(propertyNotSyncedMessage(propertyName));
+            if (
+              !existingProperty &&
+              (parsedExpediaId || parsedBookingId || parsedAgodaId)
+            ) {
+              // Name/portfolio didn't match, but the OTA ID might already
+              // belong to another property. Match on that instead of
+              // creating a duplicate, which would violate the unique OTA-id
+              // index and crash the whole import.
+              const otaMatch = await this.propertyRepository.findByOtaIds({
+                expedia_id: parsedExpediaId,
+                booking_id: parsedBookingId,
+                agoda_id: parsedAgodaId,
+              });
+              if (otaMatch) {
+                existingProperty = otaMatch;
+                this.logger.log(
+                  `Property '${propertyName}' matched existing property '${otaMatch.name}' (${otaMatch.id}) by OTA ID`,
+                );
+              }
             }
-            propertyId = existingProperty.id;
+
+            if (existingProperty) {
+              propertyId = existingProperty.id;
+            } else {
+              const newProperty = await this.repository.createProperty({
+                name: propertyName,
+                portfolio_id: portfolioId,
+                sub_portfolio_id: subPortfolioId,
+                expedia_id: parsedExpediaId,
+                booking_id: parsedBookingId,
+                agoda_id: parsedAgodaId,
+              });
+              propertyId = newProperty.id;
+              this.logger.log(
+                `Created property: ${propertyName} (${propertyId})`,
+              );
+            }
+
+            // Merge any OTA credentials present on this row into the
+            // property, whether it was just created or already existed
+            // (matched by name or by OTA ID). Previously this data was
+            // parsed from the sheet but silently dropped on the floor.
+            if (propertyId) {
+              const credentialsData: any = {};
+              if (rowData['Expedia Username']) {
+                credentialsData.expediaUsername = rowData['Expedia Username']
+                  .toString()
+                  .trim();
+              }
+              if (rowData['Expedia Password']) {
+                credentialsData.expediaPassword =
+                  this.encryptionUtil.encryptPassword(
+                    rowData['Expedia Password'].toString().trim(),
+                  );
+              }
+              if (rowData['Agoda Username']) {
+                credentialsData.agodaUsername = rowData['Agoda Username']
+                  .toString()
+                  .trim();
+              }
+              if (rowData['Agoda Password']) {
+                credentialsData.agodaPassword =
+                  this.encryptionUtil.encryptPassword(
+                    rowData['Agoda Password'].toString().trim(),
+                  );
+              }
+              if (rowData['Booking Username']) {
+                credentialsData.bookingUsername = rowData['Booking Username']
+                  .toString()
+                  .trim();
+              }
+              if (rowData['Booking Password']) {
+                credentialsData.bookingPassword =
+                  this.encryptionUtil.encryptPassword(
+                    rowData['Booking Password'].toString().trim(),
+                  );
+              }
+
+              if (Object.keys(credentialsData).length > 0) {
+                try {
+                  await this.propertyRepository.mergePropertyCredentials(
+                    propertyId,
+                    credentialsData,
+                  );
+                  this.logger.log(
+                    `Merged OTA credentials for property: ${propertyName} (${propertyId})`,
+                  );
+                } catch (credentialError: any) {
+                  this.logger.error(
+                    `Error merging credentials for property ${propertyName}: ${credentialError.message}`,
+                  );
+                  // Don't fail the whole row/job just because credential
+                  // merge failed.
+                }
+              }
+            }
           }
 
           let batchId = null;
@@ -1317,38 +1444,111 @@ export class JobService implements IJobService {
         );
       }
 
-      // Build one CSV buffer per job, keyed by a per-job filename of the
-      // form `{portfolio}-{property}.csv`. Jobs that produce no rows (no
-      // jobItem records) are skipped. Filename collisions are disambiguated
-      // with a numeric suffix so no entry overwrites another in the zip.
+      // Build one XLSX buffer per job, keyed by a per-job filename of the
+      // form `{OTA}-{property}-{startDate}-{endDate}.xlsx`. Jobs that
+      // produce no rows (no jobItem records) are skipped. Filename
+      // collisions are disambiguated with a numeric suffix so no entry
+      // overwrites another in the zip.
       const usedNames = new Set<string>();
-      const csvEntries: Array<{ name: string; data: Buffer }> = [];
+      const xlsxEntries: Array<{ name: string; data: Buffer }> = [];
 
       for (const job of jobs) {
-        const { headers, rows } = buildMasterRows([job]);
+        const { rows } = buildMasterRows([job]);
         if (rows.length === 0) continue;
 
-        const csvBuffer = this.buildMasterCsvBuffer(rows, headers);
-        const csvName = this.ensureUniqueFilename(
-          `${this.buildJobCsvBaseName(job)}.csv`,
+        const xlsxBuffer = buildMasterXlsxBuffer([job]);
+        const xlsxName = this.ensureUniqueFilename(
+          `${this.buildJobCsvBaseName(job)}.xlsx`,
           usedNames,
         );
-        csvEntries.push({ name: csvName, data: csvBuffer });
+        xlsxEntries.push({ name: xlsxName, data: xlsxBuffer });
       }
 
-      if (csvEntries.length === 0) {
+      if (xlsxEntries.length === 0) {
         throw new NotFoundException(
           'No job items found for the given jobs to export',
         );
       }
 
-      const zipBuffer = await zipFiles(csvEntries);
+      const zipBuffer = await zipFiles(xlsxEntries);
       const fileName = `${this.buildMasterZipBaseName(jobs)}.zip`;
 
       return { buffer: zipBuffer, fileName };
     } catch (error) {
       this.logger.error(
-        `Error exporting master CSV zip: ${error.message}`,
+        `Error exporting master XLSX zip: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * "Card Activity Wide" sibling of {@link exportMasterCsv} — identical
+   * zip-of-per-job-XLSX shape and filename rules, but each XLSX additionally
+   * includes the full Card Activity / Calculated Amount to Charge / Amount
+   * Match / Transaction Count / dynamic `Transaction N` (authorizations +
+   * settlements, PACKED per reservation) columns for Expedia jobs. See
+   * `card-activity-wide-export.util.ts` for the row-building details.
+   */
+  async exportCardActivityWideCsv(
+    jobIds: string[],
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    try {
+      if (!Array.isArray(jobIds) || jobIds.length === 0) {
+        throw new BadRequestException('job_ids array cannot be empty');
+      }
+
+      const uniqueJobIds = Array.from(new Set(jobIds));
+
+      const jobs = await this.repository.findManyForMasterExport(uniqueJobIds);
+      if (!jobs || jobs.length === 0) {
+        throw new NotFoundException(
+          `No jobs found for the given IDs: ${uniqueJobIds.join(', ')}`,
+        );
+      }
+
+      const foundIds = new Set(jobs.map((j: any) => j.id));
+      const missingIds = uniqueJobIds.filter((id) => !foundIds.has(id));
+      if (missingIds.length > 0) {
+        this.logger.warn(
+          `Card activity wide export: ${missingIds.length} job ID(s) not found and will be skipped: ${missingIds.join(', ')}`,
+        );
+      }
+
+      // Build one XLSX buffer per job, keyed by a per-job filename of the
+      // form `{OTA}-{property}-{startDate}-{endDate}.xlsx`. Jobs that
+      // produce no rows (no jobItem records) are skipped. Filename
+      // collisions are disambiguated with a numeric suffix so no entry
+      // overwrites another in the zip.
+      const usedNames = new Set<string>();
+      const xlsxEntries: Array<{ name: string; data: Buffer }> = [];
+
+      for (const job of jobs) {
+        const { rows } = buildCardActivityWideRows([job]);
+        if (rows.length === 0) continue;
+
+        const xlsxBuffer = buildCardActivityWideXlsxBuffer([job]);
+        const xlsxName = this.ensureUniqueFilename(
+          `${this.buildJobCsvBaseName(job)}.xlsx`,
+          usedNames,
+        );
+        xlsxEntries.push({ name: xlsxName, data: xlsxBuffer });
+      }
+
+      if (xlsxEntries.length === 0) {
+        throw new NotFoundException(
+          'No job items found for the given jobs to export',
+        );
+      }
+
+      const zipBuffer = await zipFiles(xlsxEntries);
+      const fileName = `${this.buildMasterZipBaseName(jobs)}.zip`;
+
+      return { buffer: zipBuffer, fileName };
+    } catch (error) {
+      this.logger.error(
+        `Error exporting card activity wide XLSX zip: ${error.message}`,
         error.stack,
       );
       throw error;
@@ -1366,8 +1566,9 @@ export class JobService implements IJobService {
    *
    * Notes on mixed-OTA inputs:
    * - If ANY job in the input is Expedia, the Expedia-specific columns
-   *   (`Card Activity`, `Calculated Amount to Charge`, `Amount Match`, and
-   *   `Card Activity Approved Amount N`) are appended to the header.
+   *   (`Card Activity`, `Calculated Amount to Charge`, `Amount Match`,
+   *   and dynamic `Card Activity Approved Amount N` columns) are
+   *   appended to the header.
    *   Non-Expedia rows simply leave those cells blank — exactly how the
    *   underlying `buildMasterRow` function already behaves.
    * - `Over 160` / `Number of days since chargeback date` use "N/A" for
@@ -1445,6 +1646,82 @@ export class JobService implements IJobService {
     } catch (error) {
       this.logger.error(
         `Error building consolidated master XLSX: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * "Card Activity Wide" sibling of {@link buildConsolidatedMasterXlsx} —
+   * same consolidated single-sheet shape, but rendered with
+   * `buildCardActivityWideRows` / `buildCardActivityWideXlsxBuffer` so the
+   * workbook also includes Card Activity / Calculated Amount to Charge /
+   * Amount Match / Transaction Count / dynamic `Transaction N` columns for
+   * Expedia jobs.
+   */
+  async buildConsolidatedCardActivityWideXlsx(
+    jobIds: string[],
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    const startedAt = Date.now();
+    try {
+      const uniqueJobIds = Array.from(new Set(jobIds ?? [])).filter(Boolean);
+      if (uniqueJobIds.length === 0) {
+        throw new BadRequestException('At least one job ID is required');
+      }
+
+      this.logger.log(
+        `[CardActivityWide Consolidated XLSX] Sync build started for ${uniqueJobIds.length} job ID(s)`,
+      );
+
+      const dbLoadStartedAt = Date.now();
+      const jobs = await this.repository.findManyForMasterExport(uniqueJobIds);
+      this.logger.log(
+        `[CardActivityWide Consolidated XLSX] DB load finished in ${Date.now() - dbLoadStartedAt}ms`,
+      );
+
+      if (!jobs || jobs.length === 0) {
+        throw new NotFoundException(
+          `No jobs found for the given IDs: ${uniqueJobIds.join(', ')}`,
+        );
+      }
+
+      const foundIds = new Set(jobs.map((j: any) => j.id));
+      const missingIds = uniqueJobIds.filter((id) => !foundIds.has(id));
+      if (missingIds.length > 0) {
+        this.logger.warn(
+          `[CardActivityWide Consolidated XLSX] ${missingIds.length} job ID(s) not found and will be skipped: ${missingIds.join(', ')}`,
+        );
+      }
+
+      const rowsStartedAt = Date.now();
+      const { rows } = buildCardActivityWideRows(jobs);
+      this.logger.log(
+        `[CardActivityWide Consolidated XLSX] Row build finished in ${Date.now() - rowsStartedAt}ms — ` +
+          `${rows.length} export row(s) from ${jobs.length} job(s)`,
+      );
+
+      if (rows.length === 0) {
+        throw new NotFoundException(
+          'No job items found for the provided job IDs to export',
+        );
+      }
+
+      const xlsxStartedAt = Date.now();
+      const buffer = buildCardActivityWideXlsxBuffer(jobs);
+      this.logger.log(
+        `[CardActivityWide Consolidated XLSX] XLSX buffer built in ${Date.now() - xlsxStartedAt}ms — ` +
+          `${buffer.length} bytes`,
+      );
+
+      const fileName = `consolidated-card-activity-wide-report-${this.buildHumanReadableTimestamp()}.xlsx`;
+      this.logger.log(
+        `[CardActivityWide Consolidated XLSX] Sync build complete in ${Date.now() - startedAt}ms — ${fileName}`,
+      );
+      return { buffer, fileName };
+    } catch (error) {
+      this.logger.error(
+        `Error building consolidated card activity wide XLSX: ${error.message}`,
         error.stack,
       );
       throw error;
@@ -1663,6 +1940,93 @@ export class JobService implements IJobService {
     } catch (error) {
       this.logger.error(
         `Error streaming consolidated XLSX: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * "Card Activity Wide" sibling of {@link streamConsolidatedMasterXlsx} —
+   * same cursor-driven streaming pipeline, but uses
+   * `precomputeCardActivityWideExportContext` / `writeCardActivityWideXlsxToStream`
+   * so the workbook also includes Card Activity / Calculated Amount to
+   * Charge / Amount Match / Transaction Count / dynamic `Transaction N`
+   * columns for Expedia jobs.
+   */
+  async streamConsolidatedCardActivityWideXlsx(
+    jobIds: string[],
+    writable: Writable,
+  ): Promise<{ fileName: string }> {
+    const startedAt = Date.now();
+    try {
+      const uniqueJobIds = Array.from(new Set(jobIds ?? [])).filter(Boolean);
+      if (uniqueJobIds.length === 0) {
+        throw new BadRequestException('At least one job ID is required');
+      }
+      this.logger.log(
+        `[CardActivityWide Consolidated XLSX] Starting build for ${uniqueJobIds.length} job IDs`,
+      );
+
+      // Step 1: lightweight pre-scan. Tells us whether to emit Expedia-only
+      // columns, how many Transaction K column groups the workbook needs,
+      // and which IDs actually exist in Mongo. NO row data loaded yet.
+      const prescan =
+        await this.repository.precomputeCardActivityWideExportContext(
+          uniqueJobIds,
+        );
+
+      if (prescan.foundIds.size === 0) {
+        throw new NotFoundException(
+          `No jobs found for the given IDs: ${uniqueJobIds.join(', ')}`,
+        );
+      }
+      const missingIds = uniqueJobIds.filter(
+        (id) => !prescan.foundIds.has(id),
+      );
+      if (missingIds.length > 0) {
+        this.logger.warn(
+          `[CardActivityWide Consolidated XLSX] ${missingIds.length} job ID(s) not found and will be skipped: ${missingIds.join(', ')}`,
+        );
+      }
+
+      // Step 2: cheap empty-check via a Mongo `count`. We do this BEFORE
+      // opening the S3 multipart upload so a "nothing to export" call
+      // returns 404 without leaving an orphaned upload behind.
+      const totalItemRows =
+        await this.repository.countJobItemsByJobIds(uniqueJobIds);
+      if (totalItemRows === 0) {
+        throw new NotFoundException(
+          'No job items found for the provided job IDs to export',
+        );
+      }
+      this.logger.log(
+        `[CardActivityWide Consolidated XLSX] Building XLSX with ${totalItemRows} rows across ` +
+          `${prescan.foundIds.size} jobs (hasExpedia=${prescan.hasExpedia}, ` +
+          `maxTransaction=${prescan.maxTransactionCount})`,
+      );
+
+      // Step 3: hand the writer a precomputed context (headers + Expedia
+      // flag + max-transaction) and a cursor — the writer never sees an
+      // array of jobs, so it can't accidentally pin them all in memory.
+      const ctx = buildCardActivityWideExportContextFromPrescan(prescan);
+      const jobCursor = this.repository.streamJobsForMasterExport(
+        uniqueJobIds,
+        20,
+      );
+
+      const buildStartedAt = Date.now();
+      await writeCardActivityWideXlsxToStream(jobCursor, ctx, writable);
+      this.logger.log(
+        `[CardActivityWide Consolidated XLSX] XLSX write+stream complete in ${Date.now() - buildStartedAt}ms ` +
+          `(total ${Date.now() - startedAt}ms incl. pre-scan)`,
+      );
+
+      const fileName = `consolidated-card-activity-wide-report-${this.buildHumanReadableTimestamp()}.xlsx`;
+      return { fileName };
+    } catch (error) {
+      this.logger.error(
+        `Error streaming consolidated card activity wide XLSX: ${error.message}`,
         error.stack,
       );
       throw error;
@@ -1905,6 +2269,137 @@ export class JobService implements IJobService {
     }
   }
 
+  /**
+   * "Card Activity Wide" sibling of {@link streamMasterXlsxZip} — same
+   * cursor-driven per-job ZIP pipeline, but each per-job XLSX is built
+   * with `buildCardActivityWideRows` / `writePerJobCardActivityWideXlsxToWritable`
+   * so it also includes Card Activity / Calculated Amount to Charge /
+   * Amount Match / Transaction Count / dynamic `Transaction N` columns
+   * for Expedia jobs.
+   */
+  async streamCardActivityWideXlsxZip(
+    jobIds: string[],
+    writable: Writable,
+  ): Promise<{ fileName: string }> {
+    const startedAt = Date.now();
+    try {
+      const uniqueJobIds = Array.from(new Set(jobIds ?? [])).filter(Boolean);
+      if (uniqueJobIds.length === 0) {
+        throw new BadRequestException('At least one job ID is required');
+      }
+      this.logger.log(
+        `[CardActivityWide ZIP] Starting build for ${uniqueJobIds.length} job IDs`,
+      );
+
+      // Pre-flight: validate IDs exist + count items. Per-job ZIP files
+      // compute their own column headers from a single job, so we must
+      // NOT call precomputeCardActivityWideExportContext here — that
+      // method scans all Expedia authorizations/settlements across the
+      // full batch (15–30+ min on 900+ jobs) even though this export
+      // never uses the result.
+      const foundIds =
+        await this.repository.findExistingJobIdsForExport(uniqueJobIds);
+      if (foundIds.size === 0) {
+        throw new NotFoundException(
+          `No jobs found for the given IDs: ${uniqueJobIds.join(', ')}`,
+        );
+      }
+      const missingIds = uniqueJobIds.filter((id) => !foundIds.has(id));
+      if (missingIds.length > 0) {
+        this.logger.warn(
+          `[CardActivityWide ZIP] ${missingIds.length} job ID(s) not found and will be skipped: ${missingIds.join(', ')}`,
+        );
+      }
+
+      const totalItemRows =
+        await this.repository.countJobItemsByJobIds(uniqueJobIds);
+      if (totalItemRows === 0) {
+        throw new NotFoundException(
+          'No job items found for the provided job IDs to export',
+        );
+      }
+      this.logger.log(
+        `[CardActivityWide ZIP] Building ZIP for ${foundIds.size} jobs ` +
+          `(${totalItemRows} item rows total)`,
+      );
+
+      const buildStartedAt = Date.now();
+      const totalJobs = foundIds.size;
+      const logEveryNJobs = Math.max(1, Math.ceil(totalJobs / 20));
+      const usedNames = new Set<string>();
+      let entryCount = 0;
+      let jobsProcessed = 0;
+      await streamZipEntries(writable, async ({ appendStream }) => {
+        for await (const job of this.repository.streamJobsForMasterExport(
+          uniqueJobIds,
+          20,
+        )) {
+          jobsProcessed += 1;
+
+          // Fast CPU check — no I/O. Skip jobs with no items so we never
+          // produce a header-only XLSX entry inside the ZIP.
+          const { rows: checkRows } = buildCardActivityWideRows([job]);
+          if (checkRows.length === 0) {
+            if (jobsProcessed % logEveryNJobs === 0) {
+              this.logger.log(
+                `[CardActivityWide ZIP] ${jobsProcessed}/${totalJobs} jobs processed ` +
+                  `(${Math.round((jobsProcessed / totalJobs) * 100)}%, ` +
+                  `${entryCount} entries written)`,
+              );
+            }
+            continue;
+          }
+
+          const xlsxName = this.ensureUniqueFilename(
+            `${this.buildJobCsvBaseName(job)}.xlsx`,
+            usedNames,
+          );
+
+          const pt = new PassThrough();
+          await Promise.all([
+            appendStream(xlsxName, pt),
+            writePerJobCardActivityWideXlsxToWritable(job, pt).catch(
+              (err: Error) => {
+                pt.destroy(err);
+                throw err;
+              },
+            ),
+          ]);
+          entryCount++;
+
+          if (jobsProcessed % logEveryNJobs === 0) {
+            this.logger.log(
+              `[CardActivityWide ZIP] ${jobsProcessed}/${totalJobs} jobs processed ` +
+                `(${Math.round((jobsProcessed / totalJobs) * 100)}%, ` +
+                `${entryCount} entries written)`,
+            );
+          }
+        }
+      });
+
+      if (entryCount === 0) {
+        throw new NotFoundException(
+          'No job items found for the provided job IDs to export',
+        );
+      }
+
+      this.logger.log(
+        `[CardActivityWide ZIP] Build complete — ${entryCount} XLSX entries ` +
+          `in ${Date.now() - buildStartedAt}ms ` +
+          `(total ${Date.now() - startedAt}ms incl. pre-scan)`,
+      );
+
+      const fileName = `card-activity-wide-exports-${this.buildHumanReadableTimestamp()}.zip`;
+      return { fileName };
+    } catch (error) {
+      this.logger.error(
+        `Error streaming card activity wide ZIP: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
   async exportSingleJobMasterCsv(
     jobId: string,
   ): Promise<{ buffer: Buffer; fileName: string }> {
@@ -1919,22 +2414,64 @@ export class JobService implements IJobService {
       }
 
       const job = jobs[0];
-      const { headers, rows } = buildMasterRows([job]);
+      const { rows } = buildMasterRows([job]);
       if (rows.length === 0) {
         throw new NotFoundException(
           `No job items found for job ${jobId} to export`,
         );
       }
 
-      const buffer = this.buildMasterCsvBuffer(rows, headers);
-      // Filename format: "{OTA}-{property}-{startDate}-{endDate}.csv"
-      // (same as the inner CSVs produced by POST /jobs/export-master).
-      const fileName = `${this.buildJobCsvBaseName(job)}.csv`;
+      const buffer = buildMasterXlsxBuffer([job]);
+      // Filename format: "{OTA}-{property}-{startDate}-{endDate}.xlsx"
+      // (same as the inner XLSX files produced by POST /jobs/export-master).
+      const fileName = `${this.buildJobCsvBaseName(job)}.xlsx`;
 
       return { buffer, fileName };
     } catch (error) {
       this.logger.error(
-        `Error exporting single job master CSV: ${error.message}`,
+        `Error exporting single job master XLSX: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * "Card Activity Wide" sibling of {@link exportSingleJobMasterCsv} —
+   * same single-job XLSX, but also includes the Card Activity / Calculated
+   * Amount to Charge / Amount Match / Transaction Count / dynamic
+   * `Transaction N` columns for Expedia jobs.
+   */
+  async exportSingleJobCardActivityWideCsv(
+    jobId: string,
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    try {
+      if (!jobId) {
+        throw new BadRequestException('jobId is required');
+      }
+
+      const jobs = await this.repository.findManyForMasterExport([jobId]);
+      if (!jobs || jobs.length === 0) {
+        throw new NotFoundException(`Job not found for id: ${jobId}`);
+      }
+
+      const job = jobs[0];
+      const { rows } = buildCardActivityWideRows([job]);
+      if (rows.length === 0) {
+        throw new NotFoundException(
+          `No job items found for job ${jobId} to export`,
+        );
+      }
+
+      const buffer = buildCardActivityWideXlsxBuffer([job]);
+      // Filename format: "{OTA}-{property}-{startDate}-{endDate}.xlsx"
+      // (same as the inner XLSX files produced by POST /jobs/card-activity-wide-export).
+      const fileName = `${this.buildJobCsvBaseName(job)}.xlsx`;
+
+      return { buffer, fileName };
+    } catch (error) {
+      this.logger.error(
+        `Error exporting single job card activity wide XLSX: ${error.message}`,
         error.stack,
       );
       throw error;
@@ -1944,7 +2481,7 @@ export class JobService implements IJobService {
   /**
    * Resolves all jobs in a recurring report bucket (by recurring_id +
    * recurring_report_bucket_id) and exports every matching job item into
-   * a SINGLE combined CSV (not a zip-of-CSVs like POST /jobs/export-master).
+   * a SINGLE combined XLSX (not a zip-of-XLSX like POST /jobs/export-master).
    *
    * The headers are computed across all jobs together, so if the bucket
    * contains any Expedia jobs the Expedia-specific columns (Card Activity,
@@ -1980,37 +2517,80 @@ export class JobService implements IJobService {
         );
       }
 
-      const { headers, rows } = buildMasterRows(jobs);
+      const { rows } = buildMasterRows(jobs);
       if (rows.length === 0) {
         throw new NotFoundException(
           'No job items found for the matching jobs to export',
         );
       }
 
-      const buffer = this.buildMasterCsvBuffer(rows, headers);
-      const fileName = `${this.buildMasterZipBaseName(jobs)}.csv`;
+      const buffer = buildMasterXlsxBuffer(jobs);
+      const fileName = `${this.buildMasterZipBaseName(jobs)}.xlsx`;
 
       return { buffer, fileName };
     } catch (error) {
       this.logger.error(
-        `Error exporting master CSV by recurring: ${error.message}`,
+        `Error exporting master XLSX by recurring: ${error.message}`,
         error.stack,
       );
       throw error;
     }
   }
 
-  private buildMasterCsvBuffer(
-    rows: Record<string, any>[],
-    headers: string[] = MASTER_EXPORT_HEADER,
-  ): Buffer {
-    const worksheet = XLSX.utils.json_to_sheet(rows, {
-      header: headers,
-    });
-    // Prefix UTF-8 BOM so Excel opens the file correctly (accents, the
-    // ="..." text-formula trick for card numbers, etc.).
-    const csv = XLSX.utils.sheet_to_csv(worksheet);
-    return Buffer.from('\uFEFF' + csv, 'utf8');
+  /**
+   * "Card Activity Wide" sibling of {@link exportMasterCsvByRecurring} —
+   * same combined-bucket XLSX, but the headers additionally include the
+   * Card Activity / Calculated Amount to Charge / Amount Match /
+   * Transaction Count / dynamic `Transaction N` columns if the bucket
+   * contains any Expedia jobs.
+   */
+  async exportCardActivityWideCsvByRecurring(
+    recurringId: string,
+    bucketId: string,
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    try {
+      if (!recurringId || !bucketId) {
+        throw new BadRequestException(
+          'Both recurring_id and recurring_report_bucket_id are required',
+        );
+      }
+
+      const jobIds = await this.repository.findJobIdsByRecurring(
+        recurringId,
+        bucketId,
+      );
+
+      if (jobIds.length === 0) {
+        throw new NotFoundException(
+          `No jobs found for recurring_id=${recurringId}, recurring_report_bucket_id=${bucketId}`,
+        );
+      }
+
+      const jobs = await this.repository.findManyForMasterExport(jobIds);
+      if (!jobs || jobs.length === 0) {
+        throw new NotFoundException(
+          `No jobs found for recurring_id=${recurringId}, recurring_report_bucket_id=${bucketId}`,
+        );
+      }
+
+      const { rows } = buildCardActivityWideRows(jobs);
+      if (rows.length === 0) {
+        throw new NotFoundException(
+          'No job items found for the matching jobs to export',
+        );
+      }
+
+      const buffer = buildCardActivityWideXlsxBuffer(jobs);
+      const fileName = `${this.buildMasterZipBaseName(jobs)}.xlsx`;
+
+      return { buffer, fileName };
+    } catch (error) {
+      this.logger.error(
+        `Error exporting card activity wide XLSX by recurring: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
   }
 
   private buildJobCsvBaseName(job: any): string {

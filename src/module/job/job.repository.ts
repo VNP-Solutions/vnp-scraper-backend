@@ -33,7 +33,7 @@ import { IJobRepository } from './job.interface';
  * — only the fields the exporters actually read are projected. The
  * biggest cuts vs a full `include`: dropping `JobItem.raw_response`,
  * scraper booleans, derived caches; dropping `CardActivity.totalSettlement
- * Amount` and join keys (we only need `authorizations`).
+ * Amount` and join keys (we only need `authorizations` and `settlements`).
  *
  * If you add a column to a builder, add the field here too — otherwise
  * it'll silently come back as `undefined`. NEVER add `Job.batch_name` —
@@ -84,6 +84,13 @@ const MASTER_EXPORT_JOB_ITEM_SELECT = {
     select: {
       id: true,
       authorizations: true,
+      // Needed by the "Transaction N" columns in
+      // card-activity-wide-export.util.ts (settlements continue the SAME
+      // counter right after the authorization slots — NOT matched back
+      // to `authorizations` by `authCode`). The plain master export no
+      // longer uses `settlements`, but it's cheap to keep projecting it
+      // here since both exports share this same select.
+      settlements: true,
     },
   },
 } satisfies Prisma.JobItemSelect;
@@ -527,8 +534,9 @@ export class JobRepository implements IJobRepository {
       }
 
       // Filter by reply_status (Agoda Partner Support reply outcome:
-      // NoReplied / RepliedRed / RepliedGreen). Only Agoda jobs ever have
-      // this set — filtering by it implicitly narrows to Agoda jobs.
+      // NoReplied / RepliedRed / RepliedGreen / Reopen / SendToRetrieval).
+      // Only Agoda jobs ever have this set — filtering by it implicitly
+      // narrows to Agoda jobs.
       if (reply_status) {
         allFilters.reply_status = reply_status.toString();
       }
@@ -833,6 +841,59 @@ export class JobRepository implements IJobRepository {
         where: whereClause,
       });
       return property;
+    } catch (error) {
+      this.logger.error(error);
+      throw error;
+    }
+  }
+
+  async createPortfolio(name: string): Promise<any> {
+    try {
+      return await this.db.portfolio.create({
+        data: { name: name.trim() },
+      });
+    } catch (error) {
+      this.logger.error(error);
+      throw error;
+    }
+  }
+
+  async createSubPortfolio(name: string, portfolioId: string): Promise<any> {
+    try {
+      return await this.db.subPortfolio.create({
+        data: {
+          name: name.trim(),
+          portfolio_id: portfolioId,
+        },
+      });
+    } catch (error) {
+      this.logger.error(error);
+      throw error;
+    }
+  }
+
+  async createProperty(data: {
+    name: string;
+    portfolio_id?: string | null;
+    sub_portfolio_id?: string | null;
+    expedia_id?: number | null;
+    booking_id?: number | null;
+    agoda_id?: number | null;
+  }): Promise<any> {
+    try {
+      return await this.db.property.create({
+        data: {
+          name: data.name.trim(),
+          portfolio_id: data.portfolio_id ?? undefined,
+          sub_portfolio_id: data.sub_portfolio_id ?? undefined,
+          expedia_id: data.expedia_id ?? undefined,
+          booking_id: data.booking_id ?? undefined,
+          agoda_id: data.agoda_id ?? undefined,
+          expedia_status: 'Access Required',
+          booking_status: 'Access Required',
+          agoda_status: 'Access Required',
+        },
+      });
     } catch (error) {
       this.logger.error(error);
       throw error;
@@ -2115,6 +2176,151 @@ export class JobRepository implements IJobRepository {
   }
 
   /**
+   * "Card Activity Wide" sibling of {@link precomputeMasterExportContext}
+   * — same pre-scan pattern, but computes the widest PACKED
+   * (authorizations + settlements) count on any single reservation
+   * instead of the max approved-authorization count, since the wide
+   * export renders BOTH authorizations and settlements into a shared
+   * `Transaction N` sequence.
+   *
+   * Returns:
+   *   - `hasExpedia`          — true iff at least one job in `jobIds` is
+   *                             ota_provider === Expedia. Drives whether
+   *                             we emit the Card Activity / Transaction
+   *                             Count / Transaction K columns.
+   *   - `maxTransactionCount` — max, across every single reservation in
+   *                             the batch, of (that reservation's OWN
+   *                             authorization count + its OWN settlement
+   *                             count). Determines N for the
+   *                             `Transaction {1..N} ...` column groups.
+   *                             Each reservation PACKS its own
+   *                             authorizations then its own settlements
+   *                             starting from slot 1 (no gap) — this is
+   *                             the widest such packed total seen on any
+   *                             single reservation, NOT the sum of two
+   *                             separate per-type maxes. Always 0 when
+   *                             `hasExpedia` is false.
+   *   - `foundIds`            — set of job IDs that actually exist. The
+   *                             caller diffs against `jobIds` to emit
+   *                             the "missing IDs" warning.
+   *
+   * Cost: two queries — one tiny `{ id, ota_provider }` projection over
+   * the full id list, then (only when Expedia is present) chunked scans
+   * of `JobItem.cardActivity.authorizations`/`.settlements` (just the
+   * array fields) for the Expedia subset. Peak memory: one chunk's
+   * authorizations/settlements, ~10-20 MB.
+   */
+  async precomputeCardActivityWideExportContext(jobIds: string[]): Promise<{
+    hasExpedia: boolean;
+    maxTransactionCount: number;
+    foundIds: Set<string>;
+  }> {
+    try {
+      const uniqueIds = Array.from(new Set(jobIds ?? [])).filter(Boolean);
+      if (uniqueIds.length === 0) {
+        return {
+          hasExpedia: false,
+          maxTransactionCount: 0,
+          foundIds: new Set<string>(),
+        };
+      }
+
+      const startedAt = Date.now();
+      this.logger.log(
+        `[CardActivityWideExport.prescan] Starting for ${uniqueIds.length} job IDs…`,
+      );
+
+      // Step 1: cheap projection — { id, ota_provider } only.
+      const otaRows = await this.db.job.findMany({
+        where: { id: { in: uniqueIds } },
+        select: { id: true, ota_provider: true },
+      });
+      const foundIds = new Set(otaRows.map((r) => r.id));
+      const expediaIds = otaRows
+        .filter((r) => r.ota_provider === OTAProvider.Expedia)
+        .map((r) => r.id);
+      const hasExpedia = expediaIds.length > 0;
+
+      // Step 2: max-packed-transaction scan — only matters for Expedia
+      // exports (the non-Expedia path doesn't emit Transaction K columns
+      // at all, so this value is irrelevant there). "Packed transaction
+      // count" for a reservation = its own authorization count + its own
+      // settlement count (the two arrays are NOT cross-matched by
+      // authCode — this is purely a per-reservation total used to size
+      // the shared "Transaction K" slots so every reservation's own
+      // authorizations-then-settlements pack with no gap).
+      let maxTransactionCount = 0;
+      if (hasExpedia) {
+        // Chunk size kept conservative: each chunk pulls jobItem.card
+        // Activity.authorizations/.settlements for `CHUNK` jobs, which on
+        // Expedia payloads is ~50 items/job × ~3 auths/item × ~200 B =
+        // ~30 KB/job (settlements add a similar order of magnitude).
+        // 50 jobs/chunk stays safely under Mongo's 16 MB doc limit.
+        const CHUNK = 50;
+        const totalChunks = Math.ceil(expediaIds.length / CHUNK);
+        const logEvery = Math.max(1, Math.floor(totalChunks / 5));
+        for (let i = 0; i < expediaIds.length; i += CHUNK) {
+          const chunkIdx = Math.floor(i / CHUNK) + 1;
+          const chunk = expediaIds.slice(i, i + CHUNK);
+          const items = await this.db.jobItem.findMany({
+            where: { job_id: { in: chunk } },
+            select: {
+              cardActivity: {
+                select: { authorizations: true, settlements: true },
+              },
+            },
+          });
+          for (const item of items) {
+            const auths =
+              ((item as any).cardActivity?.authorizations as
+                | any[]
+                | undefined) ?? [];
+            const settlements =
+              ((item as any).cardActivity?.settlements as
+                | any[]
+                | undefined) ?? [];
+            // Packed total for THIS reservation only — its own
+            // authorizations plus its own settlements. The header only
+            // needs to reserve the widest single reservation's packed
+            // total, not the sum of two separate export-wide maxes.
+            const packedCount = auths.length + settlements.length;
+            if (packedCount > maxTransactionCount) {
+              maxTransactionCount = packedCount;
+            }
+          }
+          if (chunkIdx % logEvery === 0 || chunkIdx === totalChunks) {
+            this.logger.log(
+              `[CardActivityWideExport.prescan] Expedia auth/settlement scan ` +
+                `${chunkIdx}/${totalChunks} chunks ` +
+                `(maxTransaction=${maxTransactionCount}, ` +
+                `${Date.now() - startedAt}ms)`,
+            );
+          }
+          // `items` falls out of scope at the next iteration → GC-eligible.
+        }
+      }
+
+      this.logger.log(
+        `[CardActivityWideExport.prescan] ${uniqueIds.length} jobs (${expediaIds.length} Expedia), ` +
+          `maxTransaction=${maxTransactionCount}, ` +
+          `missing=${uniqueIds.length - foundIds.size}, ${Date.now() - startedAt}ms`,
+      );
+
+      return {
+        hasExpedia,
+        maxTransactionCount,
+        foundIds,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error in card-activity-wide-export pre-scan: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  /**
    * Counts the total number of `JobItem` rows owned by the given jobs.
    * Used by the streaming export endpoints as a cheap pre-flight check
    * so we can throw a 404 BEFORE opening the S3 multipart upload (no
@@ -2296,6 +2502,33 @@ export class JobRepository implements IJobRepository {
     } catch (error) {
       this.logger.error(
         `Error finding jobs for automatic email check: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async markOverdueNoRepliedJobsAsReopen(): Promise<number> {
+    try {
+      const result = await this.db.job.updateMany({
+        where: {
+          // ota_provider/job_status guard so a job that completed once (and
+          // got a NoReplied + reply_deadline_at) but has since moved to a
+          // non-Completed status (e.g. re-queued and Failed) without
+          // completing again isn't wrongly flipped to Reopen — mirrors the
+          // scoping findJobsForAutomaticEmailCheck already uses.
+          ota_provider: 'Agoda',
+          job_status: 'Completed',
+          reply_status: 'NoReplied',
+          reply_deadline_at: { lt: new Date() },
+        },
+        data: { reply_status: 'Reopen' },
+      });
+
+      return result.count;
+    } catch (error) {
+      this.logger.error(
+        `Error marking overdue NoReplied jobs as Reopen: ${error.message}`,
         error.stack,
       );
       throw error;
