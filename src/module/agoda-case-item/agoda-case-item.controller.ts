@@ -38,6 +38,8 @@ import {
   AgodaCaseItemResponseDto,
   BulkDeclineAgodaCaseItemsDto,
   BulkDeclineAgodaCaseItemsResponseDto,
+  BulkDeleteAgodaCaseItemsDto,
+  BulkDeleteAgodaCaseItemsResponseDto,
   CreateAgodaCaseItemDto,
   ExportSelectedAgodaCaseItemsDto,
   ImportWipDeclinedResponseDto,
@@ -51,6 +53,7 @@ import {
 } from './agoda-case-item.interface';
 import {
   bulkDeclineAgodaCaseItemsSchema,
+  bulkDeleteAgodaCaseItemsSchema,
   createAgodaCaseItemSchema,
   exportSelectedAgodaCaseItemsSchema,
   sendToRetrievalSchema,
@@ -406,6 +409,33 @@ export class AgodaCaseItemController {
     return {
       declinedCount,
       message: `Successfully marked ${declinedCount} item(s) as declined`,
+    };
+  }
+
+  @Post('bulk-delete')
+  @ApiOperation({
+    summary: 'Delete multiple agoda case items',
+    description:
+      'Takes an array of AgodaCaseItem IDs and permanently deletes them (and any notes attached to them).',
+  })
+  @ApiBody({ type: BulkDeleteAgodaCaseItemsDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Items successfully deleted',
+    type: BulkDeleteAgodaCaseItemsResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad Request - Invalid input',
+  })
+  @UsePipes(new ZodValidationPipe(bulkDeleteAgodaCaseItemsSchema))
+  async bulkDelete(
+    @Body() body: BulkDeleteAgodaCaseItemsDto,
+  ): Promise<BulkDeleteAgodaCaseItemsResponseDto> {
+    const deletedCount = await this.agodaCaseItemService.bulkDelete(body.ids);
+    return {
+      deletedCount,
+      message: `Successfully deleted ${deletedCount} item(s)`,
     };
   }
 

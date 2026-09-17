@@ -93,6 +93,9 @@ export interface IAgodaCaseItemRepository {
   /** Sets charge_status: 'declined' and is_declined: true on every given id. Returns how many rows matched. */
   declineByIds(ids: string[]): Promise<number>;
 
+  /** Deletes every AgodaCaseItem whose id is in the given list. Returns how many rows were deleted. */
+  deleteByIds(ids: string[]): Promise<number>;
+
   /** Bulk create multiple AgodaCaseItems. Returns array of created items. */
   bulkCreate(data: CreateAgodaCaseItemDto[]): Promise<AgodaCaseItem[]>;
 
@@ -160,6 +163,9 @@ export interface IAgodaCaseItemService {
    * and is_declined to true.
    */
   bulkDecline(ids: string[]): Promise<number>;
+
+  /** Deletes every AgodaCaseItem whose id is in the given list. Returns how many rows were deleted. */
+  bulkDelete(ids: string[]): Promise<number>;
 
   /**
    * Import AgodaCaseItems from Excel file for declined items.

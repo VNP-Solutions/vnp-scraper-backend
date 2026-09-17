@@ -285,6 +285,17 @@ export class AgodaCaseItemService implements IAgodaCaseItemService {
     }
   }
 
+  async bulkDelete(ids: string[]): Promise<number> {
+    try {
+      const deletedCount = await this.repository.deleteByIds(ids);
+      this.logger.log(`Deleted ${deletedCount} agoda case item(s)`);
+      return deletedCount;
+    } catch (error) {
+      this.logger.error('Error bulk deleting agoda case items:', error);
+      throw error;
+    }
+  }
+
   async importWipDeclined(
     file: Express.Multer.File,
     archive: boolean,
