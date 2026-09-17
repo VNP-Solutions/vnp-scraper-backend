@@ -228,6 +228,26 @@ export class AgodaCaseItemRepository implements IAgodaCaseItemRepository {
     }
   }
 
+  async deleteByIds(ids: string[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    try {
+      // MongoDB relations are emulated by Prisma, not enforced by the
+      // database — deleteMany() on the parent alone would leave orphaned
+      // notes behind, so the children are deleted explicitly first.
+      await this.db.agodaCaseItemNote.deleteMany({
+        where: { agoda_case_item_id: { in: ids } },
+      });
+
+      const result = await this.db.agodaCaseItem.deleteMany({
+        where: { id: { in: ids } },
+      });
+      return result.count;
+    } catch (error) {
+      this.logger.error('Error bulk deleting agoda case items:', error);
+      throw error;
+    }
+  }
+
   async findById(id: string): Promise<AgodaCaseItem | null> {
     try {
       return await this.db.agodaCaseItem.findUnique({

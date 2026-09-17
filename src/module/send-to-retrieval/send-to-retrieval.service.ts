@@ -17,6 +17,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   CollectBookingAmount,
   Job,
+  JobItem,
   JobStatus,
   OTAProvider,
   ReplyStatus,
@@ -26,7 +27,10 @@ import { DatabaseService } from '../database/database.service';
 import { resolveAgodaIdForJob } from '../job/agoda-id.util';
 import { IJobRepository } from '../job/job.interface';
 import { IPropertyRepository } from '../property/property.interface';
-import { CreateRetrievalDto } from '../retrieval/retrieval.dto';
+import {
+  CreateRetrievalDto,
+  CreateRetrievalItemDto,
+} from '../retrieval/retrieval.dto';
 import { IRetrievalService } from '../retrieval/retrieval.interface';
 import { ISupportEmailRepository } from '../support-email/support-email.interface';
 import {
@@ -120,7 +124,139 @@ export class SendToRetrievalService implements ISendToRetrievalService {
       bookingAmounts,
     );
 
+    // Create the RetrievalItems the retrieval run actually works off of —
+    // without these the retrieval has nothing to charge, same as an Excel
+    // import that never wrote its item rows.
+    await this.createRetrievalItemsForRetrieval(
+      job,
+      parentRetrievalId,
+      retrieval.id,
+      reservations,
+      bookingAmounts,
+    );
+
     return retrieval;
+  }
+
+  /**
+   * Creates one RetrievalItem per reservation in the retrieval, mirroring
+   * what `RetrievalService.importRetrievalGroups` writes for an Excel
+   * import. Guest/stay details come from the JobItem the original property
+   * run already scraped for this booking; only the charge amount/currency
+   * are refreshed from the Agoda report captured by
+   * `POST /api/agoda/retrive-case-email`, since that is the authoritative
+   * balance to collect.
+   */
+  private async createRetrievalItemsForRetrieval(
+    job: Job,
+    parentRetrievalId: string,
+    retrievalId: string,
+    reservationIds: string[],
+    bookingAmounts: CollectBookingAmount[],
+  ): Promise<void> {
+    if (!job.property_id) {
+      this.logger.warn(
+        `⚠️ Job ${job.id} has no property_id — skipping RetrievalItem creation for retrieval ${retrievalId}`,
+      );
+      return;
+    }
+
+    try {
+      const jobItems = await this.db.jobItem.findMany({
+        where: {
+          job_id: job.id,
+          reservation_id: { in: reservationIds },
+        },
+      });
+
+      const amountByBookingId = new Map<
+        string,
+        { amount: string | null; currency: string | null }
+      >();
+      for (const entry of bookingAmounts) {
+        if (!entry.booking_id) continue;
+        amountByBookingId.set(entry.booking_id, {
+          amount: entry.amount,
+          currency: entry.currency,
+        });
+      }
+
+      const jobItemByReservation = new Map<string, JobItem>();
+      for (const jobItem of jobItems) {
+        if (jobItem.reservation_id) {
+          jobItemByReservation.set(jobItem.reservation_id, jobItem);
+        }
+      }
+
+      for (const reservationId of reservationIds) {
+        const jobItem = jobItemByReservation.get(reservationId);
+
+        if (!jobItem) {
+          this.logger.warn(
+            `⚠️ No JobItem found for reservation ${reservationId} on job ${job.id} — skipping RetrievalItem creation`,
+          );
+          continue;
+        }
+
+        const amountInfo = amountByBookingId.get(reservationId);
+        const amountToCharge = amountInfo?.amount
+          ? parseFloat(amountInfo.amount)
+          : (jobItem.payment_info as any)?.amount_to_charge_or_refund ??
+            jobItem.booking_amount ??
+            undefined;
+        const currency =
+          amountInfo?.currency ||
+          (jobItem.payment_info as any)?.amount_to_charge_or_refund_currency ||
+          'USD';
+
+        const payload: CreateRetrievalItemDto = {
+          retrieval_id: retrievalId,
+          parent_retrieval_id: parentRetrievalId,
+          property_id: job.property_id,
+          guest_name: jobItem.guest_name || 'Unknown',
+          reservation_id: reservationId,
+          confirmation_number: jobItem.confirmation_number ?? undefined,
+          check_in_date: jobItem.check_in_date,
+          check_out_date: jobItem.check_out_date,
+          room_type: jobItem.room_type || 'Standard',
+          booking_amount: jobItem.booking_amount ?? undefined,
+          booked_date: jobItem.booked_date ?? new Date(),
+          has_card_info: jobItem.has_card_info,
+          card_info: jobItem.has_card_info
+            ? (jobItem.card_info as any)
+            : undefined,
+          has_payment_info: amountToCharge !== undefined,
+          payment_info:
+            amountToCharge !== undefined
+              ? {
+                  amount_to_charge_or_refund: amountToCharge,
+                  amount_to_charge_or_refund_currency: currency,
+                }
+              : undefined,
+          reservation_status: 'Pending',
+          additional_text: jobItem.additional_text ?? undefined,
+        };
+
+        try {
+          await this.retrievalService.createRetrievalItem(payload);
+          this.logger.log(
+            `✅ Created RetrievalItem for reservation ${reservationId} (retrievalId=${retrievalId})`,
+          );
+        } catch (error: any) {
+          this.logger.error(
+            `Failed to create RetrievalItem for reservation ${reservationId} (retrievalId=${retrievalId}):`,
+            error,
+          );
+          // Continue with other items even if one fails
+        }
+      }
+    } catch (error: any) {
+      this.logger.error(
+        `Error creating RetrievalItems for retrieval ${retrievalId}:`,
+        error,
+      );
+      // Don't throw - let the retrieval be created even if item creation fails
+    }
   }
 
   /**
