@@ -2,6 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { OTAProvider, PostingType } from '@prisma/client';
 import {
   BulkDeclineAgodaCaseItemsType,
+  BulkDeleteAgodaCaseItemsType,
   CreateAgodaCaseItemType,
   ExportSelectedAgodaCaseItemsType,
   SendToRetrievalType,
@@ -356,6 +357,29 @@ export class ImportWipDeclinedResponseDto {
   @ApiProperty({
     description: 'Success message',
     example: 'Successfully imported 25 item(s), 2 failed',
+  })
+  message: string;
+}
+
+export class BulkDeleteAgodaCaseItemsDto implements BulkDeleteAgodaCaseItemsType {
+  @ApiProperty({
+    type: [String],
+    description: 'AgodaCaseItem ids to delete',
+    example: ['65f0a3c4e2b7a1d2c3e4f5a6', '65f0a3c4e2b7a1d2c3e4f5a7'],
+  })
+  ids: string[];
+}
+
+export class BulkDeleteAgodaCaseItemsResponseDto {
+  @ApiProperty({
+    description: 'Number of items successfully deleted',
+    example: 5,
+  })
+  deletedCount: number;
+
+  @ApiProperty({
+    description: 'Success message',
+    example: 'Successfully deleted 5 item(s)',
   })
   message: string;
 }
