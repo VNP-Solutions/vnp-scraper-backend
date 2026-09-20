@@ -61,7 +61,7 @@ import {
   UpdateJobDto,
 } from './job.dto';
 import { IPropertyService } from '../property/property.interface';
-import { IJobService } from './job.interface';
+import { IJobRepository, IJobService } from './job.interface';
 import {
   revealOtaCredentialsSchema,
   type RevealOtaCredentialsBody,
@@ -82,6 +82,7 @@ import {
   enqueueReportExport,
   getReportsExportQueueUrl,
 } from '../reports/reports-sqs.util';
+import { tryEnqueueAsyncJobExport } from '../reports/async-export-gate.util';
 
 /** IDs at or below this count are processed synchronously (fast, in-request).
  *  Above it the work is enqueued on the existing reports-export SQS queue
@@ -97,6 +98,8 @@ export class JobController {
     private readonly jobService: IJobService,
     @Inject('IPropertyService')
     private readonly propertyService: IPropertyService,
+    @Inject('IJobRepository')
+    private readonly jobRepository: IJobRepository,
     private readonly logger: Logger,
   ) {}
 
@@ -1295,7 +1298,8 @@ export class JobController {
           const status = error?.status || 500;
           return {
             statusCode: status,
-            message: error?.message || 'Failed to export single job master XLSX',
+            message:
+              error?.message || 'Failed to export single job master XLSX',
             data: null,
           };
         },
@@ -1311,7 +1315,8 @@ export class JobController {
     summary:
       'Export "Card Activity Wide" XLSX files (zipped) for one or more jobs',
     description:
-      'Same as POST /jobs/export-master (one XLSX per job, zipped, "{OTA}-{property}-{startDate}-{endDate}.xlsx" naming, Booking rows have "N/A" for Check In / Check Out), but if the job is Expedia the Expedia-only columns are appended after the static set: `Card Activity`, `Calculated Amount to Charge`, `Amount Match`, `Transaction Count` (this reservation\'s own total authorizations + settlements), and dynamic `Transaction K` column groups, PACKED per reservation — each reservation\'s own authorizations (approved AND declined) fill slots 1..authCount, then its own settlements continue immediately after with no gap (e.g. 2 authorizations + 1 settlement renders `Transaction 1`, `Transaction 2` as authorizations then `Transaction 3` as the settlement; a different reservation with 5 authorizations + 3 settlements renders `Transaction 1`-`5` as authorizations then `Transaction 6`-`8` as settlements). K is the export-wide max of any single reservation\'s own (authCount + settlementCount). Since the same slot index can be an authorization on one row and a settlement on another, every `Transaction K` group shares one fixed 5-column shape: `Transaction K Auth Date` (Auth Date or Transaction Date), `Transaction K Posted Date` (always "N/A" for an authorization slot — this is the implicit signal it\'s an authorization; the settlement\'s real Post Date for a settlement slot), `Transaction K Auth Code`, `Transaction K Amount`, `Transaction K Status / Decline Reason` (status/decline text for an authorization slot; the settlement\'s Reference Number for a settlement slot). Authorizations and settlements are never cross-matched by `authCode` — only the slot numbering is shared. Card Number, Expiry Date, CVV, and the `Transaction K` date/Auth Code/Status cells are forced to Excel "Text" format, and the header is a real 2-row MERGED header (each `Transaction K` label spans its 5 sub-columns). The zip itself is named "job-exports-{D Month YYYY-HH.MM AM/PM}.zip". To export a single job directly as a plain XLSX (no zip), use GET /jobs/:id/card-activity-wide-export.',
+      'Same as POST /jobs/export-master (one XLSX per job, zipped, "{OTA}-{property}-{startDate}-{endDate}.xlsx" naming, Booking rows have "N/A" for Check In / Check Out), but if the job is Expedia the Expedia-only columns are appended after the static set: `Card Activity`, `Calculated Amount to Charge`, `Amount Match`, `Transaction Count` (this reservation\'s own total authorizations + settlements), and dynamic `Transaction K` column groups, PACKED per reservation — each reservation\'s own authorizations (approved AND declined) fill slots 1..authCount, then its own settlements continue immediately after with no gap (e.g. 2 authorizations + 1 settlement renders `Transaction 1`, `Transaction 2` as authorizations then `Transaction 3` as the settlement; a different reservation with 5 authorizations + 3 settlements renders `Transaction 1`-`5` as authorizations then `Transaction 6`-`8` as settlements). K is the export-wide max of any single reservation\'s own (authCount + settlementCount). Since the same slot index can be an authorization on one row and a settlement on another, every `Transaction K` group shares one fixed 5-column shape: `Transaction K Auth Date` (Auth Date or Transaction Date), `Transaction K Posted Date` (always "N/A" for an authorization slot — this is the implicit signal it\'s an authorization; the settlement\'s real Post Date for a settlement slot), `Transaction K Auth Code`, `Transaction K Amount`, `Transaction K Status / Decline Reason` (status/decline text for an authorization slot; the settlement\'s Reference Number for a settlement slot). Authorizations and settlements are never cross-matched by `authCode` — only the slot numbering is shared. Card Number, Expiry Date, CVV, and the `Transaction K` date/Auth Code/Status cells are forced to Excel "Text" format, and the header is a real 2-row MERGED header (each `Transaction K` label spans its 5 sub-columns). The zip itself is named "job-exports-{D Month YYYY-HH.MM AM/PM}.zip". To export a single job directly as a plain XLSX (no zip), use GET /jobs/:id/card-activity-wide-export.\n\n' +
+      "**Large exports go async**: if `job_ids` has more than 10 entries, or the jobs together have more than 500 job-item rows, the request is queued on the same background pipeline as `/reports/export-*` instead of building the ZIP inline — the response becomes `202` and a download link is emailed to the caller when it's ready.",
   })
   @ApiBody({ type: ExportMasterJobsDto })
   @ApiResponse({
@@ -1319,15 +1324,32 @@ export class JobController {
     description: 'ZIP file containing per-job XLSX files',
   })
   @ApiResponse({
+    status: 202,
+    description:
+      'Export queued for background processing (>10 jobs or >500 job items) — a download link will be emailed to the caller.',
+  })
+  @ApiResponse({
     status: 400,
     description: 'Bad request - job_ids array cannot be empty',
   })
   @ApiResponse({ status: 404, description: 'No jobs / job items found' })
   async exportCardActivityWideJobs(
+    @Req() request: any,
     @Body() body: ExportMasterJobsType,
     @Res() response: Response,
   ) {
     try {
+      const went = await tryEnqueueAsyncJobExport({
+        request,
+        response,
+        jobIds: body.job_ids ?? [],
+        exportType: 'card_activity_wide',
+        countJobItemsByJobIds: (ids) =>
+          this.jobRepository.countJobItemsByJobIds(ids),
+        logger: this.logger,
+      });
+      if (went) return;
+
       const { buffer, fileName } =
         await this.jobService.exportCardActivityWideCsv(body.job_ids);
 

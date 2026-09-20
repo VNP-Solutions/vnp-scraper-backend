@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { JobItem, OTAProvider } from '@prisma/client';
+import { Writable } from 'stream';
 import * as XLSX from 'xlsx';
 import {
   computeDerivedJobItemFields,
@@ -24,6 +25,7 @@ import {
 import { buildJobItemDetailsXlsxBuffer } from './job-item-details-export.util';
 import {
   ensureUniqueFilename,
+  streamZipEntries,
   zipFiles,
 } from '../../common/utils/zip-and-filename.util';
 
@@ -493,6 +495,82 @@ export class ScraperJobItemService implements IScraperJobItemService {
   }
 
   /**
+   * Streaming counterpart to {@link exportJobItemsWithDetailsForJobs}.
+   * Same per-job loop and XLSX builder, but each per-job buffer is
+   * appended into the ZIP as soon as it's built (via `streamZipEntries`)
+   * instead of collected into an array and zipped at the end — bytes
+   * flow into `writable` (a PassThrough feeding S3's multipart `Upload`
+   * on the consumer side) as they're produced, so peak heap is bounded
+   * by one job's XLSX buffer rather than the whole batch held in RAM
+   * twice (once as XLSX buffers, once again as the final ZIP buffer).
+   */
+  async streamJobItemsWithDetailsForJobs(
+    jobIds: string[],
+    writable: Writable,
+  ): Promise<{ fileName: string }> {
+    try {
+      const uniqueJobIds = Array.from(new Set(jobIds ?? [])).filter(Boolean);
+      if (uniqueJobIds.length === 0) {
+        throw new BadRequestException('job_ids array cannot be empty');
+      }
+
+      this.logger.log(
+        `[ExportDetails ZIP stream] Starting build for ${uniqueJobIds.length} job IDs`,
+      );
+
+      const usedNames = new Set<string>();
+      const skippedJobIds: string[] = [];
+      let entryCount = 0;
+
+      await streamZipEntries(writable, async ({ appendBuffer }) => {
+        for (const jobId of uniqueJobIds) {
+          const jobItems = await this.jobItemRepository.findAllByJobId(jobId);
+          if (!jobItems || jobItems.length === 0) {
+            skippedJobIds.push(jobId);
+            continue;
+          }
+
+          const decorated = await this.decorateWithDerivedFields(
+            jobItems as JobItemWithJob[],
+          );
+          const buffer = buildJobItemDetailsXlsxBuffer(decorated);
+          const fileName = ensureUniqueFilename(
+            this.buildJobItemDetailsFileName(decorated),
+            usedNames,
+          );
+          appendBuffer(fileName, buffer);
+          entryCount++;
+        }
+      });
+
+      if (skippedJobIds.length > 0) {
+        this.logger.warn(
+          `[ExportDetails ZIP stream] ${skippedJobIds.length} job ID(s) had no items and were skipped: ${skippedJobIds.join(', ')}`,
+        );
+      }
+
+      if (entryCount === 0) {
+        throw new NotFoundException(
+          'No job items found for the given jobs to export',
+        );
+      }
+
+      this.logger.log(
+        `[ExportDetails ZIP stream] Build complete — ${entryCount} XLSX entries written`,
+      );
+
+      const fileName = `job-items-detail-exports-${this.buildHumanReadableTimestamp()}.zip`;
+      return { fileName };
+    } catch (error) {
+      this.logger.error(
+        `Error streaming job item details for jobs ${(jobIds ?? []).join(', ')}: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  /**
    * Builds "{OTA}-{property}-items-detail-{D Month YYYY-HH.MM AM/PM}.xlsx"
    * from the first item's joined `job`/`property`. Falls back to generic
    * labels if either is missing (defensive — `findAllByJobId` always
@@ -511,10 +589,12 @@ export class ScraperJobItemService implements IScraperJobItemService {
 
   /** Strips characters that are unsafe in a filename on any OS. */
   private sanitizeForFilename(value: string): string {
-    return String(value ?? '')
-      .replace(/[\\/:*?"<>|]+/g, ' ')
-      .trim()
-      .replace(/\s+/g, ' ') || 'unknown';
+    return (
+      String(value ?? '')
+        .replace(/[\\/:*?"<>|]+/g, ' ')
+        .trim()
+        .replace(/\s+/g, ' ') || 'unknown'
+    );
   }
 
   /**
