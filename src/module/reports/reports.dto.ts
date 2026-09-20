@@ -1,5 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { JobStatus, JobTagField, OTAProvider } from '@prisma/client';
+import {
+  JobStatus,
+  JobTagField,
+  OTAProvider,
+  ReplyStatus,
+} from '@prisma/client';
 
 export class ReportsRunWithinDto {
   @ApiPropertyOptional({
@@ -106,6 +111,18 @@ export class SearchReportsRequestDto {
     example: ['Completed', 'Running'],
   })
   job_statuses?: JobStatus[];
+
+  @ApiPropertyOptional({
+    enum: ReplyStatus,
+    isArray: true,
+    description:
+      'Filter by Agoda Partner Support reply status (NoReplied, RepliedRed, ' +
+      'RepliedGreen, Reopen, SendToRetrieval). Only meaningful for Agoda jobs ' +
+      '— providing this forces the OTA scope to Agoda regardless of what ' +
+      '(if anything) is sent for ota_providers.',
+    example: ['NoReplied', 'Reopen'],
+  })
+  reply_statuses?: ReplyStatus[];
 
   @ApiPropertyOptional({
     enum: ['Manual', 'manual', 'Immediate', 'immediate'],
@@ -265,6 +282,15 @@ export class ReportsResultItemDto {
 
   @ApiProperty({ enum: OTAProvider })
   ota_provider: OTAProvider;
+
+  @ApiPropertyOptional({
+    enum: ReplyStatus,
+    nullable: true,
+    description:
+      'Agoda Partner Support reply outcome. null for Expedia/Booking jobs ' +
+      'and for Agoda jobs that have never completed a run.',
+  })
+  reply_status?: ReplyStatus | null;
 
   @ApiPropertyOptional()
   billing_type?: string | null;

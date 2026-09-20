@@ -240,6 +240,10 @@ export class ReportsController {
       '  queries the Retrieval collection.)\n' +
       '- `run_within` → `updatedAt` range\n' +
       '- `job_statuses`, `frequency_types`, `card_periods`, `batch_ids`, `priority`\n' +
+      '- `reply_statuses` — Agoda Partner Support reply outcome ' +
+      '  (`NoReplied` / `RepliedRed` / `RepliedGreen` / `Reopen` / ' +
+      '  `SendToRetrieval`). Only ever set on Agoda jobs — sending this ' +
+      '  forces the OTA scope to Agoda regardless of `ota_providers`.\n' +
       '- `job_dates` → Job `start_date` / `end_date` overlap\n' +
       '- `include_archived`\n\n' +
       '`search_mode` (`property` / `portfolio`) is accepted for backwards ' +
@@ -525,6 +529,29 @@ export class ReportsController {
             'Pending',
             'Failed',
           ],
+          page: 1,
+          limit: 10,
+        },
+      },
+
+      // ─────────────────────── Reply status (Agoda-only) ────────────────────
+      f06_reply_status_overdue: {
+        summary:
+          '21a) Reply status — overdue no-reply jobs (NoReplied + Reopen)',
+        description:
+          'reply_statuses only ever matches Agoda jobs — the backend forces ' +
+          "ota_providers to ['Agoda'] whenever this is set, so it does " +
+          'not need to be sent alongside it.',
+        value: {
+          reply_statuses: ['NoReplied', 'Reopen'],
+          page: 1,
+          limit: 10,
+        },
+      },
+      f07_reply_status_replied_green: {
+        summary: '21b) Reply status — collectable (RepliedGreen)',
+        value: {
+          reply_statuses: ['RepliedGreen'],
           page: 1,
           limit: 10,
         },

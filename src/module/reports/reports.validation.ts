@@ -1,4 +1,4 @@
-import { JobStatus, OTAProvider } from '@prisma/client';
+import { JobStatus, OTAProvider, ReplyStatus } from '@prisma/client';
 import { z } from 'zod';
 
 const objectIdSchema = z.string().regex(/^[0-9a-fA-F]{24}$/, {
@@ -93,6 +93,12 @@ export const searchReportsSchema = z
 
     // "All Status" -> matches Job.job_status.
     job_statuses: z.array(z.nativeEnum(JobStatus)).optional().default([]),
+
+    // Agoda Partner Support reply status -> matches Job.reply_status.
+    // Only ever set on Agoda jobs, so providing this forces ota_providers
+    // to ['Agoda'] regardless of what (if anything) was sent for it — see
+    // reports.service.ts buildSearchPlan.
+    reply_statuses: z.array(z.nativeEnum(ReplyStatus)).optional().default([]),
 
     // "Frequency Type" -> matches execution_type.
     frequency_types: z.array(FrequencyTypeEnum).optional().default([]),
