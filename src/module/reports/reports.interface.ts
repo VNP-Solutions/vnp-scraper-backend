@@ -1,4 +1,9 @@
-import { JobStatus, JobTagField, OTAProvider } from '@prisma/client';
+import {
+  JobStatus,
+  JobTagField,
+  OTAProvider,
+  ReplyStatus,
+} from '@prisma/client';
 import type {
   ExportReportsMasterType,
   SearchReportsType,
@@ -46,6 +51,13 @@ export interface ReportsRepositoryFilter {
 
   otaProviders: OTAProvider[];
   jobStatuses: JobStatus[];
+  /**
+   * Filters Job.reply_status. Only ever set on Agoda jobs — the service
+   * forces `otaProviders` to `['Agoda']` whenever this is non-empty, so a
+   * caller can't accidentally combine it with a different OTA and always
+   * get zero rows back.
+   */
+  replyStatuses: ReplyStatus[];
   executionTypes: string[];
   batchIds: string[];
 
@@ -82,6 +94,8 @@ export interface ReportsResultItem {
   name: string | null;
   job_status: JobStatus;
   ota_provider: OTAProvider;
+  /** Agoda Partner Support reply outcome. null for Expedia/Booking jobs and for Agoda jobs that have never completed a run. */
+  reply_status: ReplyStatus | null;
   billing_type: string | null;
   execution_type: string | null;
   portfolio_id: string | null;

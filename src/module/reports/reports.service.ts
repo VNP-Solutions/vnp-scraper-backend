@@ -5,6 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { OTAProvider } from '@prisma/client';
 import {
   buildHumanReadableTimestamp,
   zipFiles,
@@ -460,6 +461,17 @@ export class ReportsService implements IReportsService {
     }
 
     // ---------- 4. Build the repository filter --------------------------
+    const replyStatuses = body.reply_statuses ?? [];
+    // reply_status only ever gets set on Agoda jobs, so whenever the
+    // caller filters by it we force the OTA scope to Agoda regardless of
+    // what (if anything) was sent in ota_providers — otherwise a caller
+    // could accidentally combine it with e.g. Booking and silently get
+    // zero rows back for no obvious reason.
+    const otaProviders =
+      replyStatuses.length > 0
+        ? [OTAProvider.Agoda]
+        : (body.ota_providers ?? []);
+
     const filter: ReportsRepositoryFilter = {
       propertyIdScope: finalPropertyScope,
       portfolioScope: this.buildPortfolioScope(
@@ -468,8 +480,9 @@ export class ReportsService implements IReportsService {
         accessPortfolioIds,
         accessSubPortfolioIds,
       ),
-      otaProviders: body.ota_providers ?? [],
+      otaProviders,
       jobStatuses: body.job_statuses ?? [],
+      replyStatuses,
       executionTypes: this.resolveExecutionTypes(body.frequency_types ?? []),
       batchIds: body.batch_ids ?? [],
       runWithin: this.normalizeDateRange(
@@ -668,6 +681,7 @@ export class ReportsService implements IReportsService {
       name: j.name ?? null,
       job_status: j.job_status,
       ota_provider: j.ota_provider,
+      reply_status: j.reply_status ?? null,
       billing_type: j.billing_type ?? null,
       execution_type: j.execution_type ?? null,
       portfolio_id: j.portfolio_id ?? null,
