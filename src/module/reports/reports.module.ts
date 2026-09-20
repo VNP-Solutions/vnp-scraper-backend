@@ -5,6 +5,7 @@ import { MailService } from '../../common/utils/mail.service';
 import { S3UploadService } from '../../common/utils/s3-upload.util';
 import { DatabaseService } from '../database/database.service';
 import { JobModule } from '../job/job.module';
+import { ScraperModule } from '../scraper/scraper.module';
 import { ReportsExportConsumer } from './reports-export.consumer';
 import { ReportsController } from './reports.controller';
 import { ReportsRepository } from './reports.repository';
@@ -12,7 +13,10 @@ import { ReportsSchedulerService } from './reports-scheduler.service';
 import { ReportsService } from './reports.service';
 
 @Module({
-  imports: [JobModule, ConfigModule],
+  // ScraperModule is imported so `ReportsExportConsumer` can inject
+  // `IScraperJobItemService` to process 'job_items_verdicts' async
+  // exports — see reports-export.consumer.ts.
+  imports: [JobModule, ScraperModule, ConfigModule],
   controllers: [ReportsController],
   providers: [
     {

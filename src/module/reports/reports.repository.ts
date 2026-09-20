@@ -218,6 +218,10 @@ export class ReportsRepository implements IReportsRepository {
       where.job_status = { in: filter.jobStatuses };
     }
 
+    if (filter.replyStatuses.length > 0) {
+      where.reply_status = { in: filter.replyStatuses };
+    }
+
     if (filter.batchIds.length > 0) {
       where.batch_id = { in: filter.batchIds };
     }

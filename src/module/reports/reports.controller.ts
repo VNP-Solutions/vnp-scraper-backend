@@ -28,33 +28,14 @@ import {
   SearchReportsResponseDto,
 } from './reports.dto';
 import { IReportsService } from './reports.interface';
-import {
-  ReportExportType,
-  enqueueReportExport,
-  getReportsExportQueueUrl,
-} from './reports-sqs.util';
+import { ReportExportType } from './reports-sqs.util';
+import { tryEnqueueAsyncJobExport } from './async-export-gate.util';
 import {
   exportReportsMasterSchema,
   type ExportReportsMasterType,
   searchReportsSchema,
   type SearchReportsType,
 } from './reports.validation';
-
-/**
- * Job-count threshold above which a `/reports/export-*` request is
- * pushed to SQS and the response becomes "we'll email you the link"
- * instead of streaming the file synchronously. Set to 10 per the
- * product spec — anything ≤ 10 jobs stays on the synchronous path so
- * small exports still feel instant.
- */
-const ASYNC_EXPORT_THRESHOLD = 10;
-
-/**
- * Total job-item rows above which sync export usually exceeds browser /
- * proxy timeouts (nginx ALB default ~60s). Route to SQS + email link
- * even when job count ≤ ASYNC_EXPORT_THRESHOLD.
- */
-const ASYNC_EXPORT_ITEM_THRESHOLD = 500;
 
 @ApiTags('Reports')
 @ApiBearerAuth('JWT-auth')
@@ -69,152 +50,28 @@ export class ReportsController {
   ) {}
 
   /**
-   * Shared "should this export go async?" gate. Returns `true` when the
-   * caller's response has been fully written (caller must return
-   * without doing anything else); `false` when the caller should fall
-   * through to its existing synchronous path.
-   *
-   * The async path is taken when ALL of the following hold:
-   *   1. The request has more than `ASYNC_EXPORT_THRESHOLD` job_ids, OR
-   *      more than `ASYNC_EXPORT_ITEM_THRESHOLD` total job items.
-   *   2. `REPORTS_EXPORT_QUEUE_URL` is configured.
-   *   3. The JWT carries an email we can deliver the link to.
-   *
-   * If (1) but not (2)/(3), we log a warning and fall back to sync so
-   * dev environments (no queue) still work — the user might just hit
-   * nginx's `proxy_read_timeout` on huge exports, but the request
-   * never silently disappears.
+   * Thin wrapper around the shared async-export gate (see
+   * `async-export-gate.util.ts`) — kept as a method here so the three
+   * `/reports/export-*` call sites don't need to change. Returns `true`
+   * when the caller's response has been fully written (caller must
+   * return without doing anything else); `false` when the caller should
+   * fall through to its existing synchronous path.
    */
-  private async shouldUseAsyncExport(jobIds: string[]): Promise<{
-    useAsync: boolean;
-    reason: 'job_count' | 'item_count' | null;
-    jobIdsCount: number;
-    itemCount: number;
-  }> {
-    const uniqueJobIds = Array.from(new Set(jobIds ?? [])).filter(Boolean);
-    const jobIdsCount = uniqueJobIds.length;
-    if (jobIdsCount === 0) {
-      return { useAsync: false, reason: null, jobIdsCount: 0, itemCount: 0 };
-    }
-
-    const itemCount =
-      await this.jobRepository.countJobItemsByJobIds(uniqueJobIds);
-
-    if (jobIdsCount > ASYNC_EXPORT_THRESHOLD) {
-      return { useAsync: true, reason: 'job_count', jobIdsCount, itemCount };
-    }
-    if (itemCount > ASYNC_EXPORT_ITEM_THRESHOLD) {
-      return { useAsync: true, reason: 'item_count', jobIdsCount, itemCount };
-    }
-
-    return { useAsync: false, reason: null, jobIdsCount, itemCount };
-  }
-
   private async tryEnqueueAsyncExport(
     request: any,
     body: ExportReportsMasterType,
     exportType: ReportExportType,
     response: Response,
   ): Promise<boolean> {
-    const asyncDecision = await this.shouldUseAsyncExport(body.job_ids ?? []);
-    if (!asyncDecision.useAsync) return false;
-
-    const { jobIdsCount, itemCount, reason } = asyncDecision;
-
-    const queueUrl = getReportsExportQueueUrl();
-    if (!queueUrl) {
-      this.logger.warn(
-        `Async export requested (${jobIdsCount} jobs, ${itemCount} items, ` +
-          `reason=${reason}, type=${exportType}) but REPORTS_EXPORT_QUEUE_URL ` +
-          `is not configured — falling back to the synchronous path.`,
-      );
-      return false;
-    }
-
-    const user = request.user;
-    if (!user?.email) {
-      this.logger.warn(
-        `Async export requested but JWT carries no email — falling back to ` +
-          `the synchronous path (user=${user?.userId ?? 'unknown'}).`,
-      );
-      return false;
-    }
-
-    // Build the payload once so we can both measure it (Fix B) and send
-    // it (line below). De-dupe + drop falsy IDs to mirror what the
-    // consumer would have processed anyway, and shrink the body a bit.
-    const payload = {
+    return tryEnqueueAsyncJobExport({
+      request,
+      response,
+      jobIds: body.job_ids ?? [],
       exportType,
-      jobIds: Array.from(new Set(body.job_ids ?? [])).filter(Boolean),
-      user: {
-        userId: user.userId,
-        email: user.email,
-        name: user.name ?? null,
-      },
-      requestedAt: new Date().toISOString(),
-    };
-
-    // Defense-in-depth against the SQS 256 KB per-message hard limit.
-    // Zod's `.max(8000)` on job_ids (see reports.validation.ts) already
-    // keeps us well under this in normal operation. This check is here
-    // so that if someone ever raises the Zod cap, adds new fields to
-    // the payload, or bypasses validation, we still fail fast with a
-    // clean 400 instead of letting SQS reject the SendMessage with an
-    // opaque AWS SDK error.
-    const SQS_MAX_BODY_BYTES = 240 * 1024; // 240 KB — 16 KB headroom under 256 KB
-    const payloadBytes = Buffer.byteLength(JSON.stringify(payload), 'utf8');
-    if (payloadBytes > SQS_MAX_BODY_BYTES) {
-      this.logger.warn(
-        `Refusing to enqueue ${exportType} export — payload ` +
-          `${payloadBytes} B exceeds ${SQS_MAX_BODY_BYTES} B SQS body cap ` +
-          `(user=${user.email}, jobs=${payload.jobIds.length}).`,
-      );
-      response.status(400).json({
-        statusCode: 400,
-        message:
-          `Export request is too large to queue. Please narrow your ` +
-          `filters (current payload: ${Math.round(payloadBytes / 1024)} KB, ` +
-          `max: ${Math.round(SQS_MAX_BODY_BYTES / 1024)} KB).`,
-        data: null,
-      });
-      return true;
-    }
-
-    try {
-      await enqueueReportExport(payload, this.logger);
-      this.logger.log(
-        `[export-${exportType}] Queued async export — ${jobIdsCount} job(s), ` +
-          `${itemCount} item(s), reason=${reason}, email=${user.email}`,
-      );
-    } catch (err) {
-      this.logger.error(
-        `Failed to enqueue ${exportType} export: ${err?.message ?? err}`,
-        err?.stack,
-      );
-      response.status(500).json({
-        statusCode: 500,
-        message:
-          'Failed to queue the export for background processing. Please try again.',
-        data: null,
-      });
-      return true;
-    }
-
-    response.status(202).json({
-      statusCode: 202,
-      message:
-        `Your export is being prepared. We will email a download link to ` +
-        `${user.email} when it's ready.`,
-      data: {
-        queued: true,
-        exportType,
-        email: user.email,
-        jobIdsCount,
-        itemCount,
-        asyncReason: reason,
-      },
+      countJobItemsByJobIds: (ids) =>
+        this.jobRepository.countJobItemsByJobIds(ids),
+      logger: this.logger,
     });
-    return true;
   }
 
   @Post('/global')
@@ -240,6 +97,10 @@ export class ReportsController {
       '  queries the Retrieval collection.)\n' +
       '- `run_within` → `updatedAt` range\n' +
       '- `job_statuses`, `frequency_types`, `card_periods`, `batch_ids`, `priority`\n' +
+      '- `reply_statuses` — Agoda Partner Support reply outcome ' +
+      '  (`NoReplied` / `RepliedRed` / `RepliedGreen` / `Reopen` / ' +
+      '  `SendToRetrieval`). Only ever set on Agoda jobs — sending this ' +
+      '  forces the OTA scope to Agoda regardless of `ota_providers`.\n' +
       '- `job_dates` → Job `start_date` / `end_date` overlap\n' +
       '- `include_archived`\n\n' +
       '`search_mode` (`property` / `portfolio`) is accepted for backwards ' +
@@ -525,6 +386,29 @@ export class ReportsController {
             'Pending',
             'Failed',
           ],
+          page: 1,
+          limit: 10,
+        },
+      },
+
+      // ─────────────────────── Reply status (Agoda-only) ────────────────────
+      f06_reply_status_overdue: {
+        summary:
+          '21a) Reply status — overdue no-reply jobs (NoReplied + Reopen)',
+        description:
+          'reply_statuses only ever matches Agoda jobs — the backend forces ' +
+          "ota_providers to ['Agoda'] whenever this is set, so it does " +
+          'not need to be sent alongside it.',
+        value: {
+          reply_statuses: ['NoReplied', 'Reopen'],
+          page: 1,
+          limit: 10,
+        },
+      },
+      f07_reply_status_replied_green: {
+        summary: '21b) Reply status — collectable (RepliedGreen)',
+        value: {
+          reply_statuses: ['RepliedGreen'],
           page: 1,
           limit: 10,
         },

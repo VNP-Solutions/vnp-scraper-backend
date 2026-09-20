@@ -8,6 +8,7 @@ import {
 import { MailService } from '../../common/utils/mail.service';
 import { S3UploadService } from '../../common/utils/s3-upload.util';
 import { IJobService } from '../job/job.interface';
+import { IScraperJobItemService } from '../scraper/scraper-job-item.interface';
 import {
   ReportExportMessage,
   ReportExportType,
@@ -46,6 +47,8 @@ export class ReportsExportConsumer
 
   constructor(
     @Inject('IJobService') private readonly jobService: IJobService,
+    @Inject('IScraperJobItemService')
+    private readonly jobItemService: IScraperJobItemService,
     private readonly s3Upload: S3UploadService,
     private readonly mail: MailService,
   ) {}
@@ -151,11 +154,7 @@ export class ReportsExportConsumer
       return;
     }
 
-    if (
-      !payload ||
-      !payload.exportType ||
-      !Array.isArray(payload.jobIds)
-    ) {
+    if (!payload || !payload.exportType || !Array.isArray(payload.jobIds)) {
       this.logger.error(
         `Message ${messageId} payload is missing required fields — deleting.`,
       );
@@ -230,9 +229,7 @@ export class ReportsExportConsumer
         downloadFileName: fileName,
         expiresAt,
       });
-      this.logger.log(
-        `[Consumer] Email sent to ${payload.user.email}`,
-      );
+      this.logger.log(`[Consumer] Email sent to ${payload.user.email}`);
 
       // 4. Ack the SQS message only after the email is on its way —
       //    if email send throws, the message stays in the queue and
@@ -363,6 +360,16 @@ export class ReportsExportConsumer
         );
       case 'dashboard':
         return this.jobService.streamDashboardXlsx(payload.jobIds, writable);
+      case 'card_activity_wide':
+        return this.jobService.streamCardActivityWideXlsxZip(
+          payload.jobIds,
+          writable,
+        );
+      case 'job_items_verdicts':
+        return this.jobItemService.streamJobItemsWithDetailsForJobs(
+          payload.jobIds,
+          writable,
+        );
       default:
         throw new Error(`Unknown exportType: ${payload.exportType}`);
     }
@@ -384,6 +391,10 @@ export class ReportsExportConsumer
         return `consolidated-report-${ts}.xlsx`;
       case 'dashboard':
         return `dashboard-report-${ts}.xlsx`;
+      case 'card_activity_wide':
+        return `card-activity-wide-exports-${ts}.zip`;
+      case 'job_items_verdicts':
+        return `job-items-detail-exports-${ts}.zip`;
       case 'bulk_archive':
         return `bulk-archive-${ts}.noop`;
     }
@@ -397,6 +408,10 @@ export class ReportsExportConsumer
         return 'Consolidated Report';
       case 'dashboard':
         return 'Dashboard Report';
+      case 'card_activity_wide':
+        return 'Card Activity Wide Export';
+      case 'job_items_verdicts':
+        return 'Job Items Detail Export';
       case 'bulk_archive':
         return 'Bulk Archive';
     }
