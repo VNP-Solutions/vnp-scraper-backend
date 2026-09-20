@@ -29,13 +29,22 @@ import { Logger } from '@nestjs/common';
 
 /**
  * Discriminator for queued job types.
- *   - 'master' | 'consolidated' | 'dashboard' — file export to S3 + email
+ *   - 'master' | 'consolidated' | 'dashboard' | 'card_activity_wide' |
+ *     'job_items_verdicts' — file export to S3 + email
  *   - 'bulk_archive' — background DB archive/unarchive, no S3, no email
+ *
+ * 'card_activity_wide' is produced by `POST /jobs/card-activity-wide-export`
+ * (job.controller.ts) and 'job_items_verdicts' by
+ * `POST /scraper/api/jobs/items/export-with-verdicts` (scraper.controller.ts)
+ * — both reuse this same queue/consumer even though their producers live
+ * in different controllers/modules than the other export types.
  */
 export type ReportExportType =
   | 'master'
   | 'consolidated'
   | 'dashboard'
+  | 'card_activity_wide'
+  | 'job_items_verdicts'
   | 'bulk_archive';
 
 /**

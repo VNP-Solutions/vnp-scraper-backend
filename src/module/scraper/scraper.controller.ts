@@ -38,7 +38,7 @@ import { ParseQuery } from '../../common/decorators/parse-query.decorator';
 import { ValidateBody } from '../../common/decorators/validate.decorator';
 import { ResponseHandler } from '../../common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { IJobService } from '../job/job.interface';
+import { IJobRepository, IJobService } from '../job/job.interface';
 import { IPropertyCredentialsService } from '../property-credentials/property-credentials.interface';
 import { IRetrievalService } from '../retrieval/retrieval.interface';
 import { BookingBulkDispatchService } from './booking-bulk-dispatch.service';
@@ -110,6 +110,7 @@ import {
 } from './bulk-job-items-import-sqs.util';
 import { S3UploadService } from '../../common/utils/s3-upload.util';
 import { MailService } from '../../common/utils/mail.service';
+import { tryEnqueueAsyncJobExport } from '../reports/async-export-gate.util';
 
 @ApiTags('Unified Scraper')
 @ApiBearerAuth('JWT-auth')
@@ -130,6 +131,8 @@ export class ScraperController {
     private readonly propertyCredentialsService: IPropertyCredentialsService,
     @Inject('IScheduledJobService')
     private readonly scheduledJobService: IScheduledJobService,
+    @Inject('IJobRepository')
+    private readonly jobRepository: IJobRepository,
     private readonly bookingBulkDispatchService: BookingBulkDispatchService,
     private readonly s3UploadService: S3UploadService,
     private readonly mailService: MailService,
@@ -1536,13 +1539,12 @@ export class ScraperController {
         ),
       );
 
-      this.logger.log(`${tag} upstream responded with status ${response.status}`);
+      this.logger.log(
+        `${tag} upstream responded with status ${response.status}`,
+      );
       return res.status(response.status).json(response.data);
     } catch (error: any) {
-      this.logger.error(
-        `${tag} failed: ${error?.message}`,
-        error?.stack,
-      );
+      this.logger.error(`${tag} failed: ${error?.message}`, error?.stack);
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
       const data = error.response?.data || {
         message: 'Agoda job server is down',
@@ -1617,7 +1619,9 @@ export class ScraperController {
         ),
       );
 
-      this.logger.log(`${tag} upstream responded with status ${response.status}`);
+      this.logger.log(
+        `${tag} upstream responded with status ${response.status}`,
+      );
       return res.status(response.status).json(response.data);
     } catch (error: any) {
       this.logger.error(`${tag} failed: ${error?.message}`, error?.stack);
@@ -2506,7 +2510,8 @@ export class ScraperController {
 
   @Get('/api/jobs/:jobId/items/export-with-verdicts')
   @ApiOperation({
-    summary: 'Export job items with VCC Remaining Balance Engine details (XLSX)',
+    summary:
+      'Export job items with VCC Remaining Balance Engine details (XLSX)',
     description:
       'Separate from the Master CSV export (`POST /jobs/export-master` and ' +
       '`GET /jobs/:id/export-master`, which are unchanged) — this returns ' +
@@ -2570,6 +2575,7 @@ export class ScraperController {
   }
 
   @Post('/api/jobs/items/export-with-verdicts')
+  @UseGuards(JwtAuthGuard)
   @ValidateBody(exportJobItemsWithDetailsSchema)
   @ApiOperation({
     summary:
@@ -2586,12 +2592,25 @@ export class ScraperController {
       'The zip itself is named ' +
       '"job-items-detail-exports-{D Month YYYY-HH.MM AM/PM}.zip". To export ' +
       'a single job directly as a plain, unzipped XLSX, use ' +
-      'GET /scraper/api/jobs/:jobId/items/export-with-verdicts instead.',
+      'GET /scraper/api/jobs/:jobId/items/export-with-verdicts instead.\n\n' +
+      '**Requires auth** (JWT bearer token) — this is needed to deliver the ' +
+      'download-link email for large exports (see below); previously this ' +
+      'endpoint did not require authentication.\n\n' +
+      '**Large exports go async**: if `job_ids` has more than 10 entries, ' +
+      'or the jobs together have more than 500 job-item rows, the request ' +
+      'is queued on the same background pipeline as `/reports/export-*` ' +
+      'instead of building the ZIP inline — the response becomes `202` and ' +
+      "a download link is emailed to the caller when it's ready.",
   })
   @ApiBody({ type: ExportJobItemsWithDetailsDto })
   @ApiResponse({
     status: 200,
     description: 'ZIP file containing one "items with details" XLSX per job',
+  })
+  @ApiResponse({
+    status: 202,
+    description:
+      'Export queued for background processing (>10 jobs or >500 job items) — a download link will be emailed to the caller.',
   })
   @ApiResponse({
     status: 400,
@@ -2600,10 +2619,22 @@ export class ScraperController {
   @ApiResponse({ status: 404, description: 'No jobs / job items found' })
   @ApiResponse({ status: 500, description: 'Server error' })
   async exportJobItemsWithDetailsForJobs(
+    @Req() request: any,
     @Body() body: ExportJobItemsWithDetailsType,
     @Res() res: Response,
   ) {
     try {
+      const went = await tryEnqueueAsyncJobExport({
+        request,
+        response: res,
+        jobIds: body.job_ids ?? [],
+        exportType: 'job_items_verdicts',
+        countJobItemsByJobIds: (ids) =>
+          this.jobRepository.countJobItemsByJobIds(ids),
+        logger: this.logger,
+      });
+      if (went) return;
+
       const { buffer, fileName } =
         await this.jobItemService.exportJobItemsWithDetailsForJobs(
           body.job_ids,

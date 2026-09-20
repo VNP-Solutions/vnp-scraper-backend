@@ -76,6 +76,9 @@ import { S3UploadService } from '../../common/utils/s3-upload.util';
     S3UploadService,
     BulkJobItemsImportConsumer,
   ],
-  exports: ['IScheduledJobService'],
+  // 'IScraperJobItemService' is exported so `ReportsExportConsumer`
+  // (ReportsModule) can process 'job_items_verdicts' async-export
+  // messages without duplicating the per-job XLSX/ZIP builder logic.
+  exports: ['IScheduledJobService', 'IScraperJobItemService'],
 })
 export class ScraperModule {}

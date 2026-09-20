@@ -1,4 +1,5 @@
 import { JobItem } from '@prisma/client';
+import { Writable } from 'stream';
 
 /**
  * Shape of a single derived-fields update used by
@@ -110,4 +111,18 @@ export interface IScraperJobItemService {
   exportJobItemsWithDetailsForJobs(
     jobIds: string[],
   ): Promise<{ buffer: Buffer; fileName: string }>;
+
+  /**
+   * Streaming counterpart to {@link exportJobItemsWithDetailsForJobs},
+   * used by the async export pipeline (`ReportsExportConsumer`) for
+   * large `job_ids` batches. Same per-job XLSX builder, but each entry
+   * is appended into the ZIP as it's built rather than held in an array
+   * — writes bytes into `writable` (a PassThrough feeding S3's
+   * multipart `Upload`) so peak memory is bounded by one job's XLSX at
+   * a time instead of the whole batch.
+   */
+  streamJobItemsWithDetailsForJobs(
+    jobIds: string[],
+    writable: Writable,
+  ): Promise<{ fileName: string }>;
 }
