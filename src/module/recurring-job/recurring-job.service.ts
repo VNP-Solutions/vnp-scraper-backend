@@ -10,6 +10,7 @@ import * as bcrypt from 'bcrypt';
 import * as XLSX from 'xlsx';
 import { DatabaseService } from '../database/database.service';
 import { IJobRepository } from '../job/job.interface';
+import { otaProviderFromImportRow } from '../job/ota-provider-from-row.util';
 import { IScheduledJobService } from '../scraper/scheduled-job.interface';
 import { IServerService } from '../server/server.interface';
 import {
@@ -1794,19 +1795,7 @@ export class RecurringJobService implements IRecurringJobService {
    * Helper: Determine OTA provider from Excel row
    */
   private determineOTAProvider(row: any): OTAProvider {
-    if (row['Expedia ID'] && row['Expedia ID'].toString().trim() !== '') {
-      return OTAProvider.Expedia;
-    }
-    if (row['Agoda ID'] && row['Agoda ID'].toString().trim() !== '') {
-      return OTAProvider.Agoda;
-    }
-    if (row['Booking ID'] && row['Booking ID'].toString().trim() !== '') {
-      return OTAProvider.Booking;
-    }
-    if (row['Trip ID'] && row['Trip ID'].toString().trim() !== '') {
-      return OTAProvider.Trip;
-    }
-    return OTAProvider.Expedia; // Default
+    return otaProviderFromImportRow(row);
   }
 
   /**

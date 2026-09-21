@@ -40,6 +40,7 @@ import {
   UpdateJobDto,
 } from './job.dto';
 import { IJobRepository, IJobService } from './job.interface';
+import { otaProviderFromImportRow } from './ota-provider-from-row.util';
 import type { JobListItem } from './job-list.types';
 import {
   buildMasterExportContextFromPrescan,
@@ -1002,15 +1003,7 @@ export class JobService implements IJobService {
                   ? new Date(rowData['Next Due Date'])
                   : undefined,
                 schedule_date: recurringDate,
-                ota_provider: rowData['Expedia ID']
-                  ? OTAProvider.Expedia
-                  : rowData['Booking ID']
-                    ? OTAProvider.Booking
-                    : rowData['Agoda ID']
-                      ? OTAProvider.Agoda
-                      : rowData['Trip ID']
-                        ? OTAProvider.Trip
-                        : OTAProvider.Expedia,
+                ota_provider: otaProviderFromImportRow(rowData),
                 remaining_direct_billed: parseFloat(
                   rowData['Remaining Direct Billed'] || '0',
                 ),
@@ -1084,15 +1077,7 @@ export class JobService implements IJobService {
               next_due_date: rowData['Next Due Date']
                 ? new Date(rowData['Next Due Date'])
                 : undefined,
-              ota_provider: rowData['Expedia ID']
-                ? OTAProvider.Expedia
-                : rowData['Booking ID']
-                  ? OTAProvider.Booking
-                  : rowData['Agoda ID']
-                    ? OTAProvider.Agoda
-                    : rowData['Trip ID']
-                      ? OTAProvider.Trip
-                      : OTAProvider.Expedia,
+              ota_provider: otaProviderFromImportRow(rowData),
               remaining_direct_billed: parseFloat(
                 rowData['Remaining Direct Billed'] || '0',
               ),
