@@ -826,6 +826,13 @@ export class JobService implements IJobService {
 
             if (existingProperty) {
               propertyId = existingProperty.id;
+              if (otaProviderFromImportRow(rowData) === OTAProvider.Trip) {
+                await this.propertyRepository.applyImportedPropertyName(
+                  existingProperty.id,
+                  existingProperty.name,
+                  propertyName,
+                );
+              }
             } else {
               const newProperty = await this.repository.createProperty({
                 name: propertyName,

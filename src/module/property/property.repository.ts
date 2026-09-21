@@ -7,6 +7,7 @@ import {
 } from '@prisma/client';
 import { EncryptionUtil } from 'src/common/utils/encryption.util';
 import * as XLSX from 'xlsx';
+import { otaProviderFromImportRow } from '../job/ota-provider-from-row.util';
 import { getPhoneLastThreeDigitsKey } from '../phone-number-slot/phone-number-slot.utils';
 import { DatabaseService } from '../database/database.service';
 import { CreatePropertyDto, UpdatePropertyDto } from './property.dto';
@@ -334,6 +335,36 @@ export class PropertyRepository implements IPropertyRepository {
       this.logger.error(error);
       return null;
     }
+  }
+
+  /**
+   * Trip.com has no required property id, so import matches on property name.
+   * When that property already exists, the sheet name replaces the stored name
+   * and the copies kept on jobs and recurring jobs.
+   */
+  async applyImportedPropertyName(
+    propertyId: string,
+    currentName: string,
+    sheetName: string,
+  ): Promise<void> {
+    const nextName = sheetName.trim();
+    if (!nextName || nextName === currentName) return;
+
+    await this.db.property.update({
+      where: { id: propertyId },
+      data: { name: nextName },
+    });
+    await this.db.job.updateMany({
+      where: { property_id: propertyId },
+      data: { property_name: nextName },
+    });
+    await this.db.recurringJob.updateMany({
+      where: { property_id: propertyId },
+      data: { property_name: nextName },
+    });
+    this.logger.log(
+      `Updated property name from '${currentName}' to '${nextName}' (${propertyId})`,
+    );
   }
 
   async delete(id: string): Promise<Property> {
@@ -1759,6 +1790,14 @@ export class PropertyRepository implements IPropertyRepository {
             this.logger.log(
               `Property '${rowData['Property Name']}' already exists, checking for new credentials to merge`,
             );
+
+            if (otaProviderFromImportRow(rowData) === OTAProvider.Trip) {
+              await this.applyImportedPropertyName(
+                existingProperty.id,
+                existingProperty.name,
+                rowData['Property Name'].toString(),
+              );
+            }
 
             // Process credentials for existing property
             const credentialsData: any = {};

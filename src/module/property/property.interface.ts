@@ -76,6 +76,11 @@ export interface IPropertyRepository {
     propertyId: string,
     credentialsData: any,
   ): Promise<any>;
+  applyImportedPropertyName(
+    propertyId: string,
+    currentName: string,
+    sheetName: string,
+  ): Promise<void>;
   findPropertyCredentialsByPropertyId(propertyId: string): Promise<any>;
   // Excel import operations
   importPropertiesFromExcel(file: Express.Multer.File): Promise<{
