@@ -59,6 +59,7 @@ const MASTER_EXPORT_JOB_SHELL_SELECT = {
       expedia_id: true,
       booking_id: true,
       agoda_id: true,
+      trip_id: true,
     },
   },
   recurringJob: {
@@ -412,6 +413,8 @@ export class JobRepository implements IJobRepository {
                 { property: { agoda_id: parseInt(searchTerm) } },
               ]
             : []),
+          // Trip.com property id is text and optional, so match the raw term.
+          { property: { trip_id: searchTerm } },
         ];
       }
 
@@ -523,9 +526,14 @@ export class JobRepository implements IJobRepository {
         allFilters.property_id = property_id.toString();
       }
 
-      // Filter by ota_provider
+      // Filter by ota_provider. Trip.com jobs are stored as Trip.
       if (ota_provider) {
-        allFilters.ota_provider = ota_provider.toString();
+        const rawProvider = ota_provider.toString().trim();
+        const normalizedProvider = rawProvider.toLowerCase();
+        allFilters.ota_provider =
+          normalizedProvider === 'trip' || normalizedProvider === 'trip.com'
+            ? OTAProvider.Trip
+            : rawProvider;
       }
 
       // Filter by priority (0 = Normal, 1 = High)
@@ -561,6 +569,7 @@ export class JobRepository implements IJobRepository {
             expedia_id: true,
             booking_id: true,
             agoda_id: true,
+            trip_id: true,
             credentials: true,
           },
         },
@@ -879,6 +888,7 @@ export class JobRepository implements IJobRepository {
     expedia_id?: number | null;
     booking_id?: number | null;
     agoda_id?: number | null;
+    trip_id?: string | null;
   }): Promise<any> {
     try {
       return await this.db.property.create({
@@ -889,6 +899,7 @@ export class JobRepository implements IJobRepository {
           expedia_id: data.expedia_id ?? undefined,
           booking_id: data.booking_id ?? undefined,
           agoda_id: data.agoda_id ?? undefined,
+          trip_id: data.trip_id ?? undefined,
           expedia_status: 'Access Required',
           booking_status: 'Access Required',
           agoda_status: 'Access Required',
@@ -1777,6 +1788,7 @@ export class JobRepository implements IJobRepository {
               expedia_id: true,
               booking_id: true,
               agoda_id: true,
+              trip_id: true,
             },
           })
         : Promise.resolve([]),

@@ -61,6 +61,11 @@ export class CreatePropertyDto {
   agoda_status?: string;
 
   @ApiPropertyOptional({
+    description: "Trip.com's identifier for the property",
+  })
+  trip_id?: string;
+
+  @ApiPropertyOptional({
     description: 'Assigned phone number (often matches linked PhoneNumberSlot)',
   })
   phone_number?: string;
@@ -128,6 +133,12 @@ export class UpdatePropertyDto {
     description: 'Agoda Status',
   })
   agoda_status?: string;
+
+  @ApiPropertyOptional({
+    description: "Trip.com's identifier for the property",
+    nullable: true,
+  })
+  trip_id?: string | null;
 
   @ApiPropertyOptional({
     description: 'Assigned phone number (often matches linked PhoneNumberSlot)',
@@ -375,6 +386,7 @@ export class SyncUpsertPropertyDto {
   @ApiPropertyOptional({ example: 123456 }) expedia_id?: number | 'NULL';
   @ApiPropertyOptional({ example: 654321 }) booking_id?: number | 'NULL';
   @ApiPropertyOptional({ example: 111222 }) agoda_id?: number | 'NULL';
+  @ApiPropertyOptional({ example: '998877' }) trip_id?: string | 'NULL';
 
   @ApiPropertyOptional() expedia_username?: string;
   @ApiPropertyOptional() expedia_password?: string;
@@ -382,6 +394,9 @@ export class SyncUpsertPropertyDto {
   @ApiPropertyOptional() agoda_password?: string;
   @ApiPropertyOptional() booking_username?: string;
   @ApiPropertyOptional() booking_password?: string;
+  @ApiPropertyOptional() trip_username?: string;
+  @ApiPropertyOptional() trip_password?: string;
+  @ApiPropertyOptional() trip_vcc_password?: string;
 }
 
 /** Same 'NULL' clearing rules as {@link SyncUpsertPropertyDto}. */
@@ -414,6 +429,7 @@ export class SyncBulkUpsertPropertyItemDto {
   @ApiPropertyOptional({ example: 123456 }) expedia_id?: number | 'NULL';
   @ApiPropertyOptional({ example: 654321 }) booking_id?: number | 'NULL';
   @ApiPropertyOptional({ example: 111222 }) agoda_id?: number | 'NULL';
+  @ApiPropertyOptional({ example: '998877' }) trip_id?: string | 'NULL';
 
   @ApiPropertyOptional() expedia_username?: string;
   @ApiPropertyOptional() expedia_password?: string;
@@ -421,6 +437,9 @@ export class SyncBulkUpsertPropertyItemDto {
   @ApiPropertyOptional() agoda_password?: string;
   @ApiPropertyOptional() booking_username?: string;
   @ApiPropertyOptional() booking_password?: string;
+  @ApiPropertyOptional() trip_username?: string;
+  @ApiPropertyOptional() trip_password?: string;
+  @ApiPropertyOptional() trip_vcc_password?: string;
 }
 
 export class SyncBulkUpsertPropertyResultDto {
@@ -464,6 +483,7 @@ export class SyncDeleteDto {
   expedia_id?: number | null;
   booking_id?: number | null;
   agoda_id?: number | null;
+  trip_id?: string | null;
 }
 
 export class SyncBulkCreateDto {

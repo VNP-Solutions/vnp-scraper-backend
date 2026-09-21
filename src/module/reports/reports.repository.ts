@@ -148,6 +148,7 @@ export class ReportsRepository implements IReportsRepository {
 
     const orClauses: Prisma.PropertyWhereInput[] = [
       { name: { contains: term, mode: 'insensitive' } },
+      { trip_id: term },
     ];
     if (isNumeric) {
       orClauses.push(
@@ -299,6 +300,7 @@ export class ReportsRepository implements IReportsRepository {
                 expedia_id: true,
                 booking_id: true,
                 agoda_id: true,
+                trip_id: true,
               },
             },
             portfolio: { select: { id: true, name: true } },

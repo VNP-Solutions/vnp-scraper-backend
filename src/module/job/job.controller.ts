@@ -205,7 +205,7 @@ export class JobController {
     name: 'search',
     required: false,
     description:
-      'Search jobs by job ID, job name, portfolio name, sub-portfolio name, property name, batch name, Expedia ID, Booking ID, or Agoda ID',
+      'Search jobs by job ID, job name, portfolio name, sub-portfolio name, property name, batch name, Expedia ID, Booking ID, Agoda ID, or Trip ID',
   })
   @ApiQuery({
     name: 'page',
@@ -300,8 +300,9 @@ export class JobController {
   @ApiQuery({
     name: 'ota_provider',
     required: false,
-    enum: ['Expedia', 'Booking', 'Agoda'],
-    description: 'Filter jobs by OTA provider',
+    enum: ['Expedia', 'Booking', 'Agoda', 'Trip'],
+    description:
+      'Filter jobs by OTA provider. Trip.com jobs use Trip. Trip.com is accepted and treated as Trip.',
   })
   @ApiQuery({
     name: 'priority',

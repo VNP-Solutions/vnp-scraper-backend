@@ -13,6 +13,9 @@ export type JobsListPropertyCredentials = Partial<
     | 'bookingPassword'
     | 'agodaUsername'
     | 'agodaPassword'
+    | 'tripUsername'
+    | 'tripPassword'
+    | 'tripVccPassword'
     | 'portfolioContactEmail'
     | 'propertyContactEmail'
     | 'multiplePortfolioEmails'
@@ -22,7 +25,7 @@ export type JobsListPropertyCredentials = Partial<
 /** `property` embed on each job in GET /jobs list responses. */
 export type JobsListPropertyEmbed = Pick<
   Property,
-  'id' | 'name' | 'expedia_id' | 'booking_id' | 'agoda_id'
+  'id' | 'name' | 'expedia_id' | 'booking_id' | 'agoda_id' | 'trip_id'
 > & {
   credentials: JobsListPropertyCredentials;
 };

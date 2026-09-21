@@ -132,6 +132,7 @@ const OTA_REQUIRED_FIELDS: Record<OTAProvider, string[]> = {
     COL.CARD_NUMBER,
     COL.EXPIRY_DATE,
   ],
+  [OTAProvider.Trip]: [],
 };
 
 /** All column headers that must be present in the uploaded file. */
@@ -1040,12 +1041,17 @@ export class ScraperJobItemService implements IScraperJobItemService {
 
   private getOtaIdField(
     ota: OTAProvider,
-  ): 'expedia_id' | 'booking_id' | 'agoda_id' {
-    return ota === OTAProvider.Expedia
-      ? 'expedia_id'
-      : ota === OTAProvider.Booking
-        ? 'booking_id'
-        : 'agoda_id';
+  ): 'expedia_id' | 'booking_id' | 'agoda_id' | 'trip_id' {
+    switch (ota) {
+      case OTAProvider.Expedia:
+        return 'expedia_id';
+      case OTAProvider.Booking:
+        return 'booking_id';
+      case OTAProvider.Agoda:
+        return 'agoda_id';
+      case OTAProvider.Trip:
+        return 'trip_id';
+    }
   }
 
   /**
@@ -1057,7 +1063,10 @@ export class ScraperJobItemService implements IScraperJobItemService {
   ) {
     const otaIdField = this.getOtaIdField(ota);
     return this.db.property.findFirst({
-      where: { [otaIdField]: numericOtaId },
+      where: {
+        [otaIdField]:
+          otaIdField === 'trip_id' ? String(numericOtaId) : numericOtaId,
+      },
     });
   }
 
@@ -1131,7 +1140,7 @@ export class ScraperJobItemService implements IScraperJobItemService {
   private async findJobCandidatesForBulkImport(
     ota: OTAProvider,
     property: { id: string; name: string },
-    otaIdField: 'expedia_id' | 'booking_id' | 'agoda_id',
+    otaIdField: 'expedia_id' | 'booking_id' | 'agoda_id' | 'trip_id',
     numericOtaId: number,
     propertyNameFromRow: string,
   ): Promise<{
@@ -1151,7 +1160,9 @@ export class ScraperJobItemService implements IScraperJobItemService {
         ? { property: { expedia_id: numericOtaId } }
         : otaIdField === 'booking_id'
           ? { property: { booking_id: numericOtaId } }
-          : { property: { agoda_id: numericOtaId } };
+          : otaIdField === 'agoda_id'
+            ? { property: { agoda_id: numericOtaId } }
+            : { property: { trip_id: String(numericOtaId) } };
 
     const rows = await this.db.job.findMany({
       where: {
@@ -1165,7 +1176,12 @@ export class ScraperJobItemService implements IScraperJobItemService {
       select: {
         ...this.jobCandidateSelect,
         property: {
-          select: { expedia_id: true, booking_id: true, agoda_id: true },
+          select: {
+            expedia_id: true,
+            booking_id: true,
+            agoda_id: true,
+            trip_id: true,
+          },
         },
         recurringJob: { select: { hotel_id: true } },
       },
@@ -1185,10 +1201,11 @@ export class ScraperJobItemService implements IScraperJobItemService {
         expedia_id?: number | null;
         booking_id?: number | null;
         agoda_id?: number | null;
+        trip_id?: string | null;
       } | null;
       recurringJob?: { hotel_id?: number | null } | null;
     },
-    otaIdField: 'expedia_id' | 'booking_id' | 'agoda_id',
+    otaIdField: 'expedia_id' | 'booking_id' | 'agoda_id' | 'trip_id',
     numericOtaId: number,
     propertyName: string,
   ): boolean {
@@ -1197,11 +1214,13 @@ export class ScraperJobItemService implements IScraperJobItemService {
         ? OTAProvider.Expedia
         : otaIdField === 'booking_id'
           ? OTAProvider.Booking
-          : OTAProvider.Agoda,
+          : otaIdField === 'agoda_id'
+            ? OTAProvider.Agoda
+            : OTAProvider.Trip,
       job.property,
     );
     if (fromProperty != null) {
-      return fromProperty === numericOtaId;
+      return String(fromProperty) === String(numericOtaId);
     }
 
     const fromRecurring = job.recurringJob?.hotel_id;
@@ -1398,10 +1417,11 @@ export class ScraperJobItemService implements IScraperJobItemService {
   ): Array<{ row: number; message: string }> {
     const errors: Array<{ row: number; message: string }> = [];
 
-    const propertyOtaIdMap: Record<OTAProvider, number | null> = {
+    const propertyOtaIdMap: Record<OTAProvider, string | number | null> = {
       [OTAProvider.Expedia]: property.expedia_id ?? null,
       [OTAProvider.Agoda]: property.agoda_id ?? null,
       [OTAProvider.Booking]: property.booking_id ?? null,
+      [OTAProvider.Trip]: property.trip_id ?? null,
     };
     const expectedOtaId = propertyOtaIdMap[jobOta];
 

@@ -52,13 +52,19 @@ export class OtpStatusController {
     name: 'platform',
     required: true,
     enum: OtpPlatform,
-    description: 'Platform to get OTP status for',
+    description:
+      'Platform to get OTP status for. Use trip.com for Trip.com (also accepted as trip_com).',
   })
   async getOtpStatusByPlatform(
-    @Query('platform') platform: OtpPlatform,
+    @Query('platform') platform: string,
     @Res() response: Response,
   ) {
-    if (!platform || !Object.values(OtpPlatform).includes(platform)) {
+    const storedPlatform =
+      platform === 'trip.com' ? OtpPlatform.trip_com : platform;
+    if (
+      !storedPlatform ||
+      !(Object.values(OtpPlatform) as string[]).includes(storedPlatform)
+    ) {
       return ResponseHandler.handler(
         response,
         async () => {
@@ -75,7 +81,10 @@ export class OtpStatusController {
     return ResponseHandler.handler(
       response,
       async () => {
-        const otpStatus = await this.otpStatusService.getOtpStatusByPlatform(platform);
+        const otpStatus =
+          await this.otpStatusService.getOtpStatusByPlatform(
+            storedPlatform as OtpPlatform,
+          );
         if (!otpStatus) {
           return {
             statusCode: 404,

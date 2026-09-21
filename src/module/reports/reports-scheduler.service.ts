@@ -48,6 +48,8 @@ interface CredentialsRow {
   bookingPassword: string | null;
   agodaUsername: string | null;
   agodaPassword: string | null;
+  tripUsername: string | null;
+  tripPassword: string | null;
 }
 
 @Injectable()
@@ -150,6 +152,8 @@ export class ReportsSchedulerService implements OnModuleInit {
             bookingPassword: true,
             agodaUsername: true,
             agodaPassword: true,
+            tripUsername: true,
+            tripPassword: true,
           },
         });
 
@@ -205,6 +209,7 @@ export class ReportsSchedulerService implements OnModuleInit {
         case OTAProvider.Expedia: return j.property?.expedia_id ?? '';
         case OTAProvider.Booking: return j.property?.booking_id ?? '';
         case OTAProvider.Agoda:   return j.property?.agoda_id   ?? '';
+        case OTAProvider.Trip:    return j.property?.trip_id    ?? '';
         default:                  return '';
       }
     };
@@ -230,6 +235,8 @@ export class ReportsSchedulerService implements OnModuleInit {
           return { username: creds.bookingUsername ?? '', password: safeDecrypt(creds.bookingPassword) };
         case OTAProvider.Agoda:
           return { username: creds.agodaUsername ?? '', password: safeDecrypt(creds.agodaPassword) };
+        case OTAProvider.Trip:
+          return { username: creds.tripUsername ?? '', password: safeDecrypt(creds.tripPassword) };
         default:
           return { username: '', password: '' };
       }

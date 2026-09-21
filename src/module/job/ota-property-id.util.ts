@@ -5,6 +5,7 @@ type OtaPropertyRecord =
       expedia_id?: number | null;
       booking_id?: number | null;
       agoda_id?: number | null;
+      trip_id?: string | null;
     }
   | null
   | undefined;
@@ -13,7 +14,7 @@ type OtaPropertyRecord =
 export function readOtaIdFromPropertyRecord(
   ota: OTAProvider | null | undefined,
   property: OtaPropertyRecord,
-): number | null {
+): string | number | null {
   if (!ota || !property) return null;
   switch (ota) {
     case OTAProvider.Expedia:
@@ -22,6 +23,8 @@ export function readOtaIdFromPropertyRecord(
       return property.booking_id ?? null;
     case OTAProvider.Agoda:
       return property.agoda_id ?? null;
+    case OTAProvider.Trip:
+      return property.trip_id ?? null;
     default:
       return null;
   }

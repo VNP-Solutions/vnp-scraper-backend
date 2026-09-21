@@ -79,6 +79,7 @@ enum OTAProvider {
   Expedia
   Booking
   Agoda
+  Trip
 }
 
 enum InvitationStatus {
@@ -112,6 +113,7 @@ enum OtpPlatform {
   expedia_retrieval
   agoda_retrieval
   expedia_db
+  trip_com @map("trip.com")
 }
 
 type CardInfo {
@@ -390,6 +392,8 @@ model Property {
   booking_status   String?
   agoda_id         Int?
   agoda_status     String?
+  trip_id          String?
+
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -427,6 +431,9 @@ model PropertyCredentials {
   agodaPassword           String?
   bookingUsername         String?
   bookingPassword         String?
+  tripUsername            String?
+  tripPassword            String?
+  tripVccPassword         String?
   expediaEmailAssociated  String?
   propertyContactEmail    String?
   portfolioContactEmail   String?

@@ -32,6 +32,22 @@ export class CreatePropertyCredentialsDto {
   bookingPassword?: string;
 
   @ApiPropertyOptional({
+    description: 'Trip.com eBooking login username',
+  })
+  tripUsername?: string;
+
+  @ApiPropertyOptional({
+    description: 'Trip.com eBooking login password',
+  })
+  tripPassword?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Separate password required to reveal VCC details on the Trip.com VCC details page',
+  })
+  tripVccPassword?: string;
+
+  @ApiPropertyOptional({
     description: 'Expedia email associated with the account',
   })
   expediaEmailAssociated?: string;

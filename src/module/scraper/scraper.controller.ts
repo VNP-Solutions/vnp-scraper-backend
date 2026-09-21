@@ -84,6 +84,7 @@ import {
   JobsWithScheduledJobResponseDto,
   PauseResumeStopResponseDto,
   PropertyRunJobRequestDto,
+  TripPropertyRunJobRequestDto,
   PropertyRunJobResponseDto,
   ReopenAllReservationsRequestDto,
   ReopenAllReservationsResponseDto,
@@ -202,6 +203,9 @@ export class ScraperController {
         break;
       case 'Booking':
         envKey = 'BOOKING_SERVER_URL';
+        break;
+      case 'Trip':
+        envKey = 'TRIP_SERVER_URL';
         break;
       default:
         console.log(`Unknown OTA provider: ${otaProvider}`);
@@ -474,6 +478,8 @@ export class ScraperController {
         return '/api/agoda';
       case 'Booking':
         return '/api/booking';
+      case 'Trip':
+        return '/api/trip';
       default:
         return '/api/expedia'; // Default to Expedia
     }
@@ -499,6 +505,9 @@ export class ScraperController {
       case 'Agoda':
         // Agoda only has property-run-job endpoint
         return 'agoda';
+
+      case 'Trip':
+        return 'trip';
 
       default:
         // Fallback to expedia mode for unknown providers
@@ -527,6 +536,7 @@ export class ScraperController {
       ),
       AGODA_SERVER_URL: this.configService.get<string>('AGODA_SERVER_URL'),
       BOOKING_SERVER_URL: this.configService.get<string>('BOOKING_SERVER_URL'),
+      TRIP_SERVER_URL: this.configService.get<string>('TRIP_SERVER_URL'),
       NODE_ENV: this.configService.get<string>('NODE_ENV'),
       EXPEDIA_MODE: this.configService.get<string>('EXPEDIA_MODE'),
     };
@@ -546,6 +556,9 @@ export class ScraperController {
         : null,
       booking: urls.BOOKING_SERVER_URL
         ? this.normalizeUrl(urls.BOOKING_SERVER_URL)
+        : null,
+      trip: urls.TRIP_SERVER_URL
+        ? this.normalizeUrl(urls.TRIP_SERVER_URL)
         : null,
       primary: this.getPrimaryScraperUrl(),
     };
@@ -1212,6 +1225,80 @@ export class ScraperController {
     }
   }
 
+  private async postTripPropertyRunJob(jobIds: string[]) {
+    const tripUrl = this.getUrlByOtaProvider('Trip');
+    if (!tripUrl) {
+      return {
+        status: HttpStatus.SERVICE_UNAVAILABLE,
+        data: {
+          success: false,
+          message:
+            'No scraper URL configured for OTA provider: Trip (TRIP_SERVER_URL)',
+          error: 'Scraper URL not configured',
+        },
+      };
+    }
+
+    const response = await firstValueFrom(
+      this.httpService.post(
+        `${tripUrl}/api/trip/property-run-job`,
+        { jobIds },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          timeout: 300000,
+        },
+      ),
+    );
+
+    return { status: response.status, data: response.data };
+  }
+
+  @Post('/api/trip/property-run-job')
+  @ApiOperation({
+    summary: 'Start Trip.com property scraping jobs',
+    description:
+      'Proxy to the Trip.com scraper. Forwards only { jobIds } to TRIP_SERVER_URL/api/trip/property-run-job.',
+  })
+  @ApiBody({ type: TripPropertyRunJobRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Trip.com property scraping jobs forwarded',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'jobIds is missing or empty',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 503,
+    description: 'TRIP_SERVER_URL is not configured',
+    type: ErrorResponseDto,
+  })
+  async tripPropertyRunJob(@Req() req: Request, @Res() res: Response) {
+    const { jobIds } = req.body || {};
+    if (!Array.isArray(jobIds) || jobIds.length === 0) {
+      return res.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        message: 'jobIds is required and must be a non-empty array',
+        error: 'Missing jobIds',
+      });
+    }
+
+    try {
+      const result = await this.postTripPropertyRunJob(jobIds);
+      return res.status(result.status).json(result.data);
+    } catch (error: any) {
+      const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
+      const data = error.response?.data || {
+        message: 'Trip.com job server is down',
+      };
+      return res.status(status).json(data);
+    }
+  }
+
   @Post('/api/property-run-job')
   @ApiOperation({
     summary: 'Start unified property scraping job',
@@ -1391,6 +1478,15 @@ export class ScraperController {
           message: `No scraper URL configured for OTA provider: ${otaProvider}`,
           error: 'Scraper URL not configured',
         });
+      }
+
+      if (otaProvider === 'Trip') {
+        console.log(
+          `${tag} step 5b: POST ${selectedUrl}/api/trip/property-run-job jobIds=[${body.jobId}]`,
+        );
+        const tripResult = await this.postTripPropertyRunJob([body.jobId]);
+        console.log(`${tag} <<< ${tripResult.status} (Trip path)`);
+        return res.status(tripResult.status).json(tripResult.data);
       }
 
       const enhancedBody = {
@@ -1722,6 +1818,7 @@ export class ScraperController {
         otaProvider: string;
         propertyId?: string | null;
       }> = [];
+      const tripJobs = [];
 
       // Collect Expedia jobs for SQS push
       const expediaJobsForSqs = [];
@@ -1751,6 +1848,8 @@ export class ScraperController {
               otaProvider,
               propertyId: job.property_id,
             });
+          } else if (otaProvider === 'Trip') {
+            tripJobs.push({ ...jobRequest, otaProvider });
           } else {
             processedResults.push({
               jobId: jobRequest.jobId,
@@ -1945,6 +2044,51 @@ export class ScraperController {
               success: false,
               message: error.message,
             });
+        }
+      }
+
+      if (tripJobs.length > 0) {
+        try {
+          const tripResult = await this.postTripPropertyRunJob(
+            tripJobs.map((job) => job.jobId),
+          );
+          if (tripResult.status === HttpStatus.SERVICE_UNAVAILABLE) {
+            for (const job of tripJobs) {
+              processedResults.push({
+                jobId: job.jobId,
+                otaProvider: 'Trip',
+                status: tripResult.status,
+                success: false,
+                message: tripResult.data?.message || 'Trip URL invalid',
+              });
+            }
+          } else if (
+            tripResult.data?.results &&
+            Array.isArray(tripResult.data.results)
+          ) {
+            processedResults.push(...tripResult.data.results);
+          } else {
+            for (const job of tripJobs) {
+              processedResults.push({
+                jobId: job.jobId,
+                otaProvider: 'Trip',
+                status: tripResult.status,
+                success: tripResult.status >= 200 && tripResult.status < 300,
+                message: 'Trip.com property run forwarded',
+              });
+            }
+          }
+        } catch (error: any) {
+          const status = error.response?.status || 500;
+          for (const job of tripJobs) {
+            processedResults.push({
+              jobId: job.jobId,
+              otaProvider: 'Trip',
+              status,
+              success: false,
+              message: error.message,
+            });
+          }
         }
       }
 
@@ -2755,6 +2899,11 @@ export class ScraperController {
           message: `No scraper URL configured for OTA provider: ${otaProvider}`,
           error: 'Scraper URL not configured',
         });
+      }
+
+      if (otaProvider === 'Trip') {
+        const tripResult = await this.postTripPropertyRunJob([body.jobId]);
+        return res.status(tripResult.status).json(tripResult.data);
       }
 
       // Add the selected URL to the request body

@@ -40,6 +40,16 @@ export class PropertyCredentialsService implements IPropertyCredentialsService {
           data.bookingPassword,
         );
       }
+      if (data.tripPassword) {
+        encryptedData.tripPassword = this.encryptionUtil.encryptPassword(
+          data.tripPassword,
+        );
+      }
+      if (data.tripVccPassword) {
+        encryptedData.tripVccPassword = this.encryptionUtil.encryptPassword(
+          data.tripVccPassword,
+        );
+      }
       const credentials = await this.repository.create(encryptedData);
       return credentials;
     } catch (error) {
@@ -137,6 +147,20 @@ export class PropertyCredentialsService implements IPropertyCredentialsService {
       } else {
         delete encryptedData.bookingPassword;
       }
+      if (data.tripPassword) {
+        encryptedData.tripPassword = this.encryptionUtil.encryptPassword(
+          data.tripPassword,
+        );
+      } else {
+        delete encryptedData.tripPassword;
+      }
+      if (data.tripVccPassword) {
+        encryptedData.tripVccPassword = this.encryptionUtil.encryptPassword(
+          data.tripVccPassword,
+        );
+      } else {
+        delete encryptedData.tripVccPassword;
+      }
 
       const credentials = await this.repository.update(id, encryptedData);
       return credentials;
@@ -199,6 +223,27 @@ export class PropertyCredentialsService implements IPropertyCredentialsService {
           this.encryptionUtil.encryptPassword(data.credentials.bookingPassword);
       } else {
         delete encryptedCredentials.bookingPassword;
+      }
+
+      if (
+        data.credentials.tripPassword &&
+        data.credentials.tripPassword.trim() !== ''
+      ) {
+        encryptedCredentials.tripPassword = this.encryptionUtil.encryptPassword(
+          data.credentials.tripPassword,
+        );
+      } else {
+        delete encryptedCredentials.tripPassword;
+      }
+
+      if (
+        data.credentials.tripVccPassword &&
+        data.credentials.tripVccPassword.trim() !== ''
+      ) {
+        encryptedCredentials.tripVccPassword =
+          this.encryptionUtil.encryptPassword(data.credentials.tripVccPassword);
+      } else {
+        delete encryptedCredentials.tripVccPassword;
       }
 
       // Filter out empty string values

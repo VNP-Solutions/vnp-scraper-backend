@@ -36,6 +36,7 @@ export interface IJobRepository {
     expedia_id?: number | null;
     booking_id?: number | null;
     agoda_id?: number | null;
+    trip_id?: string | null;
   }): Promise<any>;
   findLatestCheckoutDateByJobId(
     jobId: string,

@@ -7,6 +7,9 @@ export const createPropertyCredentialsSchema = z.object({
   agodaPassword: z.string().optional().nullable(),
   bookingUsername: z.string().optional().nullable(),
   bookingPassword: z.string().optional().nullable(),
+  tripUsername: z.string().optional().nullable(),
+  tripPassword: z.string().optional().nullable(),
+  tripVccPassword: z.string().optional().nullable(),
   expediaEmailAssociated: z.string().email().optional().nullable(),
   propertyContactEmail: z.string().email().optional().nullable(),
   portfolioContactEmail: z.string().email().optional().nullable(),
@@ -24,6 +27,9 @@ export const bulkUpdateCredentialsSchema = z.object({
   agodaPassword: z.string().optional().nullable(),
   bookingUsername: z.string().optional().nullable(),
   bookingPassword: z.string().optional().nullable(),
+  tripUsername: z.string().optional().nullable(),
+  tripPassword: z.string().optional().nullable(),
+  tripVccPassword: z.string().optional().nullable(),
   expediaEmailAssociated: z.string().optional().nullable(), // Remove email validation for bulk updates
   propertyContactEmail: z.string().optional().nullable(), // Remove email validation for bulk updates
   portfolioContactEmail: z.string().optional().nullable(), // Remove email validation for bulk updates

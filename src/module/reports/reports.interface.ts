@@ -115,6 +115,7 @@ export interface ReportsResultItem {
     expedia_id: number | null;
     booking_id: number | null;
     agoda_id: number | null;
+    trip_id: string | null;
   } | null;
   failed_reason: string;
   screenshot_urls: unknown[];

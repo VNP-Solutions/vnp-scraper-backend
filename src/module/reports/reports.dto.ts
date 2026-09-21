@@ -52,10 +52,10 @@ export class SearchReportsRequestDto {
 
   @ApiPropertyOptional({
     description:
-      'Free-text search. Matches Property.name (contains, case-insensitive). ' +
-      'If the term is numeric it also matches Property.expedia_id / ' +
-      'booking_id / agoda_id exactly. Independent of every other field — ' +
-      'combine freely with `portfolio_id` / `property_ids`.',
+      'Free-text search. Matches Property.name (contains, case-insensitive) ' +
+      'and Property.trip_id exactly. If the term is numeric it also matches ' +
+      'Property.expedia_id / booking_id / agoda_id exactly. Independent of ' +
+      'every other field — combine freely with `portfolio_id` / `property_ids`.',
     example: '12345',
   })
   search_term?: string | null;
@@ -241,6 +241,9 @@ export class ReportsResultPropertyDto {
 
   @ApiPropertyOptional()
   agoda_id?: number | null;
+
+  @ApiPropertyOptional()
+  trip_id?: string | null;
 }
 
 export class ReportsJobTagEntryDto {

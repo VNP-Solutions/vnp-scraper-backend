@@ -522,7 +522,7 @@ export class PropertyController {
   @ApiOperation({
     summary: 'Import properties from Excel file',
     description:
-      'Upload an Excel file to import properties, portfolios, and sub-portfolios. Columns: Portfolio (optional), Sub Portfolio (optional), Property Name (required), optional Phone Number and optional Slot — with both, links to the phone pool by last 3 digits + slot or creates a pool row; with phone only, finds an existing PhoneNumberSlot by last 3 digits (exact full-number match preferred). Sets property phone_number, slot, and phone_number_slot_id. Re-importing an existing property with Phone Number/Slot columns present but empty unassigns phone/slot from that property only; the PhoneNumberSlot pool row is not deleted. Files without those columns leave existing phone/slot unchanged. Credential columns: Expedia/Agoda/Booking usernames and passwords, Expedia Email Associated, Property/Portfolio contact emails, Multiple Portfolio Emails.',
+      'Upload an Excel file to import properties, portfolios, and sub-portfolios. Columns: Portfolio (optional), Sub Portfolio (optional), Property Name (required), optional Phone Number and optional Slot — with both, links to the phone pool by last 3 digits + slot or creates a pool row; with phone only, finds an existing PhoneNumberSlot by last 3 digits (exact full-number match preferred). Sets property phone_number, slot, and phone_number_slot_id. Re-importing an existing property with Phone Number/Slot columns present but empty unassigns phone/slot from that property only; the PhoneNumberSlot pool row is not deleted. Files without those columns leave existing phone/slot unchanged. OTA id columns: Expedia ID, Booking ID, Agoda ID, Trip ID (stored as text). Credential columns: Expedia/Agoda/Booking/Trip usernames and passwords, Trip VCC Password, Expedia Email Associated, Property/Portfolio contact emails, Multiple Portfolio Emails. Blank Trip cells do not clear an existing trip_id or Trip credentials.',
   })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -728,7 +728,7 @@ export class PropertyController {
   @ApiOperation({
     summary: 'Update property credentials by property id and OTA',
     description:
-      '`property_id` (Mongo ObjectId), `ota_provider` (Expedia, Agoda, or Booking), plus `username` and/or `password`. Updates that OTA’s fields on property_credentials for that property only.',
+      '`property_id` (Mongo ObjectId), `ota_provider` (Expedia, Agoda, Booking, or Trip), plus `username` and/or `password`. Updates that OTA’s fields on property_credentials for that property only.',
   })
   @ApiBody({ type: UpdateOtaCredentialsDto })
   @ApiResponse({

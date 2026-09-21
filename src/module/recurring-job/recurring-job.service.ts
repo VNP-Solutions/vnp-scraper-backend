@@ -351,6 +351,7 @@ export class RecurringJobService implements IRecurringJobService {
             expedia_id: true,
             agoda_id: true,
             booking_id: true,
+            trip_id: true,
             portfolio_id: true,
             portfolio: {
               select: {
@@ -372,6 +373,11 @@ export class RecurringJobService implements IRecurringJobService {
             case 'Booking':
               hotel_id = property.booking_id;
               break;
+            case 'Trip': {
+              const parsedTripId = Number(property.trip_id);
+              hotel_id = Number.isFinite(parsedTripId) ? parsedTripId : null;
+              break;
+            }
           }
 
           // If portfolio not provided, get it from property
@@ -595,6 +601,7 @@ export class RecurringJobService implements IRecurringJobService {
             expedia_id: true,
             agoda_id: true,
             booking_id: true,
+            trip_id: true,
             portfolio_id: true,
             portfolio: {
               select: {
@@ -616,6 +623,11 @@ export class RecurringJobService implements IRecurringJobService {
             case 'Booking':
               hotel_id = property.booking_id;
               break;
+            case 'Trip': {
+              const parsedTripId = Number(property.trip_id);
+              hotel_id = Number.isFinite(parsedTripId) ? parsedTripId : null;
+              break;
+            }
           }
 
           // If portfolio not provided in existingJob, get it from property
@@ -1790,6 +1802,9 @@ export class RecurringJobService implements IRecurringJobService {
     }
     if (row['Booking ID'] && row['Booking ID'].toString().trim() !== '') {
       return OTAProvider.Booking;
+    }
+    if (row['Trip ID'] && row['Trip ID'].toString().trim() !== '') {
+      return OTAProvider.Trip;
     }
     return OTAProvider.Expedia; // Default
   }

@@ -96,11 +96,12 @@ export class PropertyService implements IPropertyService {
     data: CreatePropertyDto,
   ): Promise<{ status: string; id?: string }> {
     // duplicate check (unchanged)
-    if (data.expedia_id || data.booking_id || data.agoda_id) {
+    if (data.expedia_id || data.booking_id || data.agoda_id || data.trip_id) {
       const existing = await this.repository.findByOtaIds({
         expedia_id: data.expedia_id ?? null,
         booking_id: data.booking_id ?? null,
         agoda_id: data.agoda_id ?? null,
+        trip_id: data.trip_id ?? null,
       });
       if (existing) {
         this.logger.log(
@@ -160,7 +161,8 @@ export class PropertyService implements IPropertyService {
     if (
       dto.expedia_id == null &&
       dto.booking_id == null &&
-      dto.agoda_id == null
+      dto.agoda_id == null &&
+      (dto.trip_id == null || dto.trip_id === '')
     ) {
       return { status: 'no_ota_ids' };
     }
@@ -168,6 +170,7 @@ export class PropertyService implements IPropertyService {
       expedia_id: dto.expedia_id ?? null,
       booking_id: dto.booking_id ?? null,
       agoda_id: dto.agoda_id ?? null,
+      trip_id: dto.trip_id ?? null,
     });
     if (!existing) {
       this.logger.log(`[sync] delete: property not found for OTA ids`);
@@ -284,6 +287,8 @@ export class PropertyService implements IPropertyService {
       'expediaPassword',
       'agodaPassword',
       'bookingPassword',
+      'tripPassword',
+      'tripVccPassword',
     ];
     for (const field of passwordFields) {
       const encrypted = credentials[field];
@@ -765,6 +770,7 @@ export class PropertyService implements IPropertyService {
       expedia_id: resolveSyncedValue(item.expedia_id),
       booking_id: resolveSyncedValue(item.booking_id),
       agoda_id: resolveSyncedValue(item.agoda_id),
+      trip_id: resolveSyncedValue(item.trip_id),
     };
 
     // The DBMS clears a property's sub-portfolio by sending the token in either
@@ -806,6 +812,9 @@ export class PropertyService implements IPropertyService {
       agodaPassword: resolveSyncedValue(item.agoda_password),
       bookingUsername: resolveSyncedValue(item.booking_username),
       bookingPassword: resolveSyncedValue(item.booking_password),
+      tripUsername: resolveSyncedValue(item.trip_username),
+      tripPassword: resolveSyncedValue(item.trip_password),
+      tripVccPassword: resolveSyncedValue(item.trip_vcc_password),
     });
 
     return action;

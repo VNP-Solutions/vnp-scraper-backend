@@ -86,11 +86,12 @@ export class ReportsController {
       'You can send `{}` to get every job the caller can see, or mix any ' +
       'subset of these filters freely (none of them depend on any of the ' +
       'others):\n' +
-      '- `search_term` — Property.name (case-insensitive contains) or ' +
-      '  numeric exact match on Property.expedia_id / booking_id / agoda_id\n' +
+      '- `search_term` — Property.name (case-insensitive contains), exact ' +
+      '  match on Property.trip_id, or numeric exact match on ' +
+      '  Property.expedia_id / booking_id / agoda_id\n' +
       '- `portfolio_id` — scope to properties under one portfolio\n' +
       '- `property_ids` — restrict to an explicit list of properties\n' +
-      '- `ota_providers` — Expedia / Booking / Agoda\n' +
+      '- `ota_providers` — Expedia / Booking / Agoda / Trip\n' +
       '- `job_types` — `VCC` / `DB` filter on `Job.billing_type`. ' +
       '  (`Retrieval` is still accepted by the validator for backwards ' +
       '  compatibility but is silently ignored — this endpoint no longer ' +

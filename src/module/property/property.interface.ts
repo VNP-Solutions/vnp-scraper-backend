@@ -111,6 +111,7 @@ export interface IPropertyRepository {
     expedia_id: number | null;
     booking_id: number | null;
     agoda_id: number | null;
+    trip_id?: string | null;
   }): Promise<Property | null>;
   findByName(name: string): Promise<Property | null>;
   findByParentId(parentId: string): Promise<Property | null>;

@@ -115,6 +115,8 @@ export class JobService implements IJobService {
         return OTAProvider.Booking;
       case 'Agoda':
         return OTAProvider.Agoda;
+      case 'Trip':
+        return OTAProvider.Trip;
       default:
         return OTAProvider.Expedia;
     }
@@ -267,6 +269,8 @@ export class JobService implements IJobService {
         return OTAProvider.Booking;
       case 'agoda':
         return OTAProvider.Agoda;
+      case 'trip':
+        return OTAProvider.Trip;
       default:
         throw new Error(`Unsupported ota_type: ${otaType}`);
     }
@@ -783,6 +787,9 @@ export class JobService implements IJobService {
             const parsedAgodaId = this.parseOtaIdFromRow(
               rowData['Agoda ID'],
             );
+            const parsedTripId = rowData['Trip ID']
+              ? String(rowData['Trip ID']).trim()
+              : null;
 
             let existingProperty =
               await this.repository.findPropertyByNameAndRelations(
@@ -793,7 +800,10 @@ export class JobService implements IJobService {
 
             if (
               !existingProperty &&
-              (parsedExpediaId || parsedBookingId || parsedAgodaId)
+              (parsedExpediaId ||
+                parsedBookingId ||
+                parsedAgodaId ||
+                parsedTripId)
             ) {
               // Name/portfolio didn't match, but the OTA ID might already
               // belong to another property. Match on that instead of
@@ -803,6 +813,7 @@ export class JobService implements IJobService {
                 expedia_id: parsedExpediaId,
                 booking_id: parsedBookingId,
                 agoda_id: parsedAgodaId,
+                trip_id: parsedTripId,
               });
               if (otaMatch) {
                 existingProperty = otaMatch;
@@ -822,6 +833,7 @@ export class JobService implements IJobService {
                 expedia_id: parsedExpediaId,
                 booking_id: parsedBookingId,
                 agoda_id: parsedAgodaId,
+                trip_id: parsedTripId,
               });
               propertyId = newProperty.id;
               this.logger.log(
@@ -866,6 +878,23 @@ export class JobService implements IJobService {
                 credentialsData.bookingPassword =
                   this.encryptionUtil.encryptPassword(
                     rowData['Booking Password'].toString().trim(),
+                  );
+              }
+              if (rowData['Trip Username']) {
+                credentialsData.tripUsername = rowData['Trip Username']
+                  .toString()
+                  .trim();
+              }
+              if (rowData['Trip Password']) {
+                credentialsData.tripPassword =
+                  this.encryptionUtil.encryptPassword(
+                    rowData['Trip Password'].toString().trim(),
+                  );
+              }
+              if (rowData['Trip VCC Password']) {
+                credentialsData.tripVccPassword =
+                  this.encryptionUtil.encryptPassword(
+                    rowData['Trip VCC Password'].toString().trim(),
                   );
               }
 
@@ -979,7 +1008,9 @@ export class JobService implements IJobService {
                     ? OTAProvider.Booking
                     : rowData['Agoda ID']
                       ? OTAProvider.Agoda
-                      : OTAProvider.Expedia,
+                      : rowData['Trip ID']
+                        ? OTAProvider.Trip
+                        : OTAProvider.Expedia,
                 remaining_direct_billed: parseFloat(
                   rowData['Remaining Direct Billed'] || '0',
                 ),
@@ -1059,7 +1090,9 @@ export class JobService implements IJobService {
                   ? OTAProvider.Booking
                   : rowData['Agoda ID']
                     ? OTAProvider.Agoda
-                    : OTAProvider.Expedia,
+                    : rowData['Trip ID']
+                      ? OTAProvider.Trip
+                      : OTAProvider.Expedia,
               remaining_direct_billed: parseFloat(
                 rowData['Remaining Direct Billed'] || '0',
               ),

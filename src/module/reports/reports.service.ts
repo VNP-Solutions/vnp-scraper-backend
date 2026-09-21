@@ -702,6 +702,7 @@ export class ReportsService implements IReportsService {
             expedia_id: j.property.expedia_id ?? null,
             booking_id: j.property.booking_id ?? null,
             agoda_id: j.property.agoda_id ?? null,
+            trip_id: j.property.trip_id ?? null,
           }
         : null,
       failed_reason: j.failed_reason ?? '',

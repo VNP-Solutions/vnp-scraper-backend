@@ -83,6 +83,8 @@ export class RetrievalService implements IRetrievalService {
         return OTAProvider.Booking;
       case 'agoda':
         return OTAProvider.Agoda;
+      case 'trip':
+        return OTAProvider.Trip;
       default:
         return OTAProvider.Expedia;
     }
@@ -121,6 +123,8 @@ export class RetrievalService implements IRetrievalService {
         return { agoda_id: hotelIdNum, agoda_status: 'Active' };
       case OTAProvider.Booking:
         return { booking_id: hotelIdNum, booking_status: 'Active' };
+      case OTAProvider.Trip:
+        return { trip_id: String(hotelIdNum) };
       default:
         return { expedia_id: hotelIdNum, expedia_status: 'Active' };
     }
@@ -137,8 +141,11 @@ export class RetrievalService implements IRetrievalService {
       otaProvider === OTAProvider.Expedia && property.expedia_id == null;
     const needsBooking =
       otaProvider === OTAProvider.Booking && property.booking_id == null;
+    const needsTrip =
+      otaProvider === OTAProvider.Trip &&
+      (property.trip_id == null || property.trip_id === '');
 
-    if (!needsAgoda && !needsExpedia && !needsBooking) {
+    if (!needsAgoda && !needsExpedia && !needsBooking && !needsTrip) {
       return property;
     }
 
@@ -173,10 +180,15 @@ export class RetrievalService implements IRetrievalService {
               bookingUsername: username || '',
               bookingPassword: password || '',
             }
-          : {
-              expediaUsername: username || '',
-              expediaPassword: password || '',
-            };
+          : otaProvider === OTAProvider.Trip
+            ? {
+                tripUsername: username || '',
+                tripPassword: password || '',
+              }
+            : {
+                expediaUsername: username || '',
+                expediaPassword: password || '',
+              };
 
     try {
       const existingCredentials =

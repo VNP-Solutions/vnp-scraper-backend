@@ -47,6 +47,15 @@ export class PauseResumeStopResponseDto {
   data?: ScrapingStateDto;
 }
 
+export class TripPropertyRunJobRequestDto {
+  @ApiProperty({
+    type: [String],
+    example: ['507f1f77bcf86cd799439011'],
+    description: 'Job ids to run on the Trip.com scraper. Only this field is forwarded.',
+  })
+  jobIds: string[];
+}
+
 export class PropertyRunJobRequestDto {
   @ApiProperty({
     example: '01/01/2024',

@@ -51,6 +51,9 @@ export class PropertyRepository implements IPropertyRepository {
     if (data.agoda_id) {
       propertyData.agoda_id = data.agoda_id;
     }
+    if (data.trip_id) {
+      propertyData.trip_id = data.trip_id;
+    }
     if (data.phone_number !== undefined && data.phone_number !== null) {
       propertyData.phone_number = data.phone_number;
     }
@@ -299,11 +302,13 @@ export class PropertyRepository implements IPropertyRepository {
     expedia_id: number | null;
     booking_id: number | null;
     agoda_id: number | null;
+    trip_id?: string | null;
   }): Promise<Property | null> {
     const conditions: any[] = [];
     if (ids.expedia_id) conditions.push({ expedia_id: ids.expedia_id });
     if (ids.booking_id) conditions.push({ booking_id: ids.booking_id });
     if (ids.agoda_id) conditions.push({ agoda_id: ids.agoda_id });
+    if (ids.trip_id) conditions.push({ trip_id: ids.trip_id });
     if (!conditions.length) return null;
     return this.db.property.findFirst({ where: { OR: conditions } });
   }
@@ -956,6 +961,12 @@ export class PropertyRepository implements IPropertyRepository {
         credentialsPayload.bookingUsername = credentialsData.bookingUsername;
       if (credentialsData.bookingPassword)
         credentialsPayload.bookingPassword = credentialsData.bookingPassword;
+      if (credentialsData.tripUsername)
+        credentialsPayload.tripUsername = credentialsData.tripUsername;
+      if (credentialsData.tripPassword)
+        credentialsPayload.tripPassword = credentialsData.tripPassword;
+      if (credentialsData.tripVccPassword)
+        credentialsPayload.tripVccPassword = credentialsData.tripVccPassword;
       if (credentialsData.expediaEmailAssociated)
         credentialsPayload.expediaEmailAssociated =
           credentialsData.expediaEmailAssociated;
@@ -1018,6 +1029,16 @@ export class PropertyRepository implements IPropertyRepository {
       if (credentialsData.bookingPassword !== undefined)
         updatePayload.bookingPassword = encryptOrClear(
           credentialsData.bookingPassword,
+        );
+      if (credentialsData.tripUsername !== undefined)
+        updatePayload.tripUsername = credentialsData.tripUsername;
+      if (credentialsData.tripPassword !== undefined)
+        updatePayload.tripPassword = encryptOrClear(
+          credentialsData.tripPassword,
+        );
+      if (credentialsData.tripVccPassword !== undefined)
+        updatePayload.tripVccPassword = encryptOrClear(
+          credentialsData.tripVccPassword,
         );
       if (credentialsData.expediaEmailAssociated !== undefined)
         updatePayload.expediaEmailAssociated =
@@ -1086,6 +1107,12 @@ export class PropertyRepository implements IPropertyRepository {
         updatePayload.bookingUsername = credentialsData.bookingUsername;
       if (credentialsData.bookingPassword)
         updatePayload.bookingPassword = credentialsData.bookingPassword; // Already encrypted from import
+      if (credentialsData.tripUsername)
+        updatePayload.tripUsername = credentialsData.tripUsername;
+      if (credentialsData.tripPassword)
+        updatePayload.tripPassword = credentialsData.tripPassword; // Already encrypted from import
+      if (credentialsData.tripVccPassword)
+        updatePayload.tripVccPassword = credentialsData.tripVccPassword; // Already encrypted from import
       if (credentialsData.expediaEmailAssociated)
         updatePayload.expediaEmailAssociated =
           credentialsData.expediaEmailAssociated;
@@ -1533,10 +1560,13 @@ export class PropertyRepository implements IPropertyRepository {
           const parsedAgodaId = rowData['Agoda ID']
             ? Number(rowData['Agoda ID'])
             : null;
+          const parsedTripId = rowData['Trip ID']
+            ? String(rowData['Trip ID']).trim()
+            : null;
 
           if (
             !existingProperty &&
-            (parsedExpediaId || parsedBookingId || parsedAgodaId)
+            (parsedExpediaId || parsedBookingId || parsedAgodaId || parsedTripId)
           ) {
             // Name/portfolio didn't match, but the OTA ID might already
             // belong to another property. Match on that instead of trying
@@ -1546,6 +1576,7 @@ export class PropertyRepository implements IPropertyRepository {
               expedia_id: parsedExpediaId,
               booking_id: parsedBookingId,
               agoda_id: parsedAgodaId,
+              trip_id: parsedTripId,
             });
             if (otaMatch) {
               existingProperty = otaMatch;
@@ -1575,6 +1606,9 @@ export class PropertyRepository implements IPropertyRepository {
             }
             if (parsedAgodaId) {
               propertyData.agoda_id = parsedAgodaId;
+            }
+            if (parsedTripId) {
+              propertyData.trip_id = parsedTripId;
             }
 
             const parsedPhoneSlot =
@@ -1644,6 +1678,25 @@ export class PropertyRepository implements IPropertyRepository {
               credentialsData.bookingPassword =
                 this.encryptionUtil.encryptPassword(
                   rowData['Booking Password'].toString().trim(),
+                );
+              hasCredentials = true;
+            }
+            if (rowData['Trip Username']) {
+              credentialsData.tripUsername = rowData['Trip Username']
+                .toString()
+                .trim();
+              hasCredentials = true;
+            }
+            if (rowData['Trip Password']) {
+              credentialsData.tripPassword = this.encryptionUtil.encryptPassword(
+                rowData['Trip Password'].toString().trim(),
+              );
+              hasCredentials = true;
+            }
+            if (rowData['Trip VCC Password']) {
+              credentialsData.tripVccPassword =
+                this.encryptionUtil.encryptPassword(
+                  rowData['Trip VCC Password'].toString().trim(),
                 );
               hasCredentials = true;
             }
@@ -1751,6 +1804,25 @@ export class PropertyRepository implements IPropertyRepository {
                 );
               hasCredentials = true;
             }
+            if (rowData['Trip Username']) {
+              credentialsData.tripUsername = rowData['Trip Username']
+                .toString()
+                .trim();
+              hasCredentials = true;
+            }
+            if (rowData['Trip Password']) {
+              credentialsData.tripPassword = this.encryptionUtil.encryptPassword(
+                rowData['Trip Password'].toString().trim(),
+              );
+              hasCredentials = true;
+            }
+            if (rowData['Trip VCC Password']) {
+              credentialsData.tripVccPassword =
+                this.encryptionUtil.encryptPassword(
+                  rowData['Trip VCC Password'].toString().trim(),
+                );
+              hasCredentials = true;
+            }
             if (rowData['Expedia Email Associated']) {
               credentialsData.expediaEmailAssociated = rowData[
                 'Expedia Email Associated'
@@ -1798,6 +1870,9 @@ export class PropertyRepository implements IPropertyRepository {
             }
             if (rowData['Agoda ID']) {
               propertyUpdateData.agoda_id = Number(rowData['Agoda ID']);
+            }
+            if (parsedTripId) {
+              propertyUpdateData.trip_id = parsedTripId;
             }
 
             const parsedPhoneSlotExisting =
@@ -2064,6 +2139,9 @@ export class PropertyRepository implements IPropertyRepository {
     } else if (provider === OTAProvider.Booking) {
       if (username) out.bookingUsername = username;
       if (password) out.bookingPassword = password;
+    } else if (provider === OTAProvider.Trip) {
+      if (username) out.tripUsername = username;
+      if (password) out.tripPassword = password;
     }
     return out;
   }
@@ -2171,9 +2249,12 @@ export class PropertyRepository implements IPropertyRepository {
     } else if (otaProvider === OTAProvider.Agoda) {
       username = cred.agodaUsername?.trim() ?? '';
       encryptedPassword = cred.agodaPassword;
-    } else {
+    } else if (otaProvider === OTAProvider.Booking) {
       username = cred.bookingUsername?.trim() ?? '';
       encryptedPassword = cred.bookingPassword;
+    } else if (otaProvider === OTAProvider.Trip) {
+      username = cred.tripUsername?.trim() ?? '';
+      encryptedPassword = cred.tripPassword;
     }
 
     return {

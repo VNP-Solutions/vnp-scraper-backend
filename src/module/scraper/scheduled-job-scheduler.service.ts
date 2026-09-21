@@ -187,6 +187,7 @@ export class ScheduledJobSchedulerService implements OnModuleInit {
         otaProvider: string;
         propertyId?: string | null;
       }> = [];
+      const tripJobs = [];
 
       const expediaJobsForSqs = [];
 
@@ -212,6 +213,8 @@ export class ScheduledJobSchedulerService implements OnModuleInit {
               otaProvider,
               propertyId: job.property_id,
             });
+          } else if (otaProvider === 'Trip') {
+            tripJobs.push({ ...jobRequest, otaProvider });
           } else {
             processedResults.push({
               jobId: jobRequest.jobId,
@@ -468,6 +471,65 @@ export class ScheduledJobSchedulerService implements OnModuleInit {
         }
       }
 
+      if (tripJobs.length > 0) {
+        try {
+          const tripUrl = this.getUrlByOtaProvider('Trip');
+          if (!tripUrl) {
+            for (const job of tripJobs) {
+              processedResults.push({
+                jobId: job.jobId,
+                otaProvider: 'Trip',
+                status: HttpStatus.SERVICE_UNAVAILABLE,
+                success: false,
+                message: 'Trip URL invalid',
+              });
+            }
+          } else {
+            const response = await firstValueFrom(
+              this.httpService.post(
+                `${tripUrl}/api/trip/property-run-job`,
+                { jobIds: tripJobs.map((job) => job.jobId) },
+                {
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                  },
+                  timeout: 300000,
+                },
+              ),
+            );
+            if (
+              response.data?.results &&
+              Array.isArray(response.data.results)
+            ) {
+              processedResults.push(...response.data.results);
+            } else {
+              for (const job of tripJobs) {
+                processedResults.push({
+                  jobId: job.jobId,
+                  otaProvider: 'Trip',
+                  status: response.status,
+                  success: true,
+                  message: 'Trip.com property run forwarded',
+                });
+              }
+            }
+          }
+        } catch (error: any) {
+          const status =
+            error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
+          for (const job of tripJobs) {
+            processedResults.push({
+              jobId: job.jobId,
+              otaProvider: 'Trip',
+              status,
+              success: false,
+              message: error.message,
+            });
+          }
+        }
+      }
+
       const successfulJobs = processedResults.filter(
         (result) => result.success,
       ).length;
@@ -571,6 +633,9 @@ export class ScheduledJobSchedulerService implements OnModuleInit {
         break;
       case 'Booking':
         envKey = 'BOOKING_SERVER_URL';
+        break;
+      case 'Trip':
+        envKey = 'TRIP_SERVER_URL';
         break;
       default:
         this.logger.warn(`Unknown OTA provider: ${otaProvider}`);
@@ -746,6 +811,8 @@ export class ScheduledJobSchedulerService implements OnModuleInit {
         return '/api/agoda';
       case 'Booking':
         return '/api/booking';
+      case 'Trip':
+        return '/api/trip';
       default:
         return '/api/expedia'; // Default to Expedia
     }

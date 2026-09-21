@@ -84,7 +84,7 @@ export class ServerController {
   @Get()
   @ApiOperation({ summary: 'Get all servers with pagination and filtering' })
   @ApiQuery({ name: 'search', required: false, description: 'Search by server name or URL' })
-  @ApiQuery({ name: 'platform', required: false, enum: ['expedia', 'agoda', 'booking', 'expedia_retrieval', 'agoda_retrieval', 'expedia_db'], description: 'Filter by platform' })
+  @ApiQuery({ name: 'platform', required: false, enum: ['expedia', 'agoda', 'booking', 'expedia_retrieval', 'agoda_retrieval', 'expedia_db', 'trip_com'], description: 'Filter by platform' })
   @ApiQuery({ name: 'is_active', required: false, type: Boolean, description: 'Filter by active status' })
   @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number', example: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page', example: 10 })
@@ -168,7 +168,7 @@ export class ServerController {
   @ApiQuery({ 
     name: 'platform', 
     required: true, 
-    enum: ['expedia', 'agoda', 'booking', 'expedia_retrieval', 'agoda_retrieval', 'expedia_db'], 
+    enum: ['expedia', 'agoda', 'booking', 'expedia_retrieval', 'agoda_retrieval', 'expedia_db', 'trip_com'], 
     description: 'Platform to filter servers by' 
   })
   @ApiResponse({
@@ -193,7 +193,7 @@ export class ServerController {
           };
         }
 
-        const validPlatforms = ['expedia', 'agoda', 'booking', 'expedia_retrieval', 'agoda_retrieval', 'expedia_db'];
+        const validPlatforms = ['expedia', 'agoda', 'booking', 'expedia_retrieval', 'agoda_retrieval', 'expedia_db', 'trip_com'];
         if (!validPlatforms.includes(platform)) {
           return {
             statusCode: 400,
@@ -202,7 +202,9 @@ export class ServerController {
           };
         }
 
-        const server = await this.serverService.findAvailableServerByPlatform(platform as OtpPlatform);
+        const server = await this.serverService.findAvailableServerByPlatform(
+          platform as OtpPlatform,
+        );
 
         if (!server) {
           return {

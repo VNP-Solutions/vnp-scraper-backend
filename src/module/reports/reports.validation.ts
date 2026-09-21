@@ -66,8 +66,9 @@ export const searchReportsSchema = z
     search_mode: SearchModeEnum.optional().nullable(),
 
     // Free-text search box. Matches Property.name (contains, case-
-    // insensitive) OR exact match on Property.expedia_id / booking_id /
-    // agoda_id when the value is purely numeric. Independent of every
+    // insensitive), exact match on Property.trip_id, OR exact match on
+    // Property.expedia_id / booking_id / agoda_id when the value is purely
+    // numeric. Independent of every
     // other field — combine freely with portfolio_id / property_ids.
     search_term: z.string().trim().optional().nullable(),
 
