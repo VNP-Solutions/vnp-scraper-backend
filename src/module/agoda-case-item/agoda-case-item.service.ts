@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AgodaCaseItem, PostingType } from '@prisma/client';
 import * as XLSX from 'xlsx';
 import { IPropertyCredentialsService } from '../property-credentials/property-credentials.interface';
+import { RetrievalRunDispatchService } from '../retrieval/retrieval-run-dispatch.service';
 import { IRetrievalService } from '../retrieval/retrieval.interface';
 import { buildAgodaCaseItemWipWorkbook } from './agoda-case-item-wip-export.util';
 import {
@@ -54,6 +55,7 @@ export class AgodaCaseItemService implements IAgodaCaseItemService {
     private readonly propertyCredentialsService: IPropertyCredentialsService,
     @Inject('IRetrievalService')
     private readonly retrievalService: IRetrievalService,
+    private readonly retrievalRunDispatch: RetrievalRunDispatchService,
   ) {}
 
   /**
@@ -558,6 +560,13 @@ export class AgodaCaseItemService implements IAgodaCaseItemService {
 
       this.logger.log(
         `Send to Retrieval completed: ${retrievalsCreated.length} retrieval(s) created from ${items.length} item(s)`,
+      );
+
+      // Kick the retrieval run off ourselves so no separate
+      // POST /scraper/api/batch-retrieval-run-job call is needed.
+      this.retrievalRunDispatch.dispatchAgodaBulkRun(
+        retrievalsCreated,
+        'agoda-case-items/send-to-retrieval',
       );
 
       return {

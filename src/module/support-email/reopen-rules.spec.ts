@@ -305,6 +305,140 @@ describe('evaluateReopenDecision', () => {
     expect(decision.shouldReopen).toBe(false);
   });
 
+  describe('tolerant column matching', () => {
+    it('resolves headers that carry extra wording', () => {
+      const columns = resolveColumns([
+        'Hotel ID (HID)',
+        'Booking ID No.',
+        'Checkout Date (Local Time)',
+        'Booking Matched Status Name (v2)',
+        'USD Total Include GST Amount',
+        'Supplier Local Currency Code',
+      ]);
+
+      expect(columns.hotelId).toBe('Hotel ID (HID)');
+      expect(columns.bookingId).toBe('Booking ID No.');
+      expect(columns.checkoutDate).toBe('Checkout Date (Local Time)');
+      expect(columns.matchedStatus).toBe('Booking Matched Status Name (v2)');
+      expect(columns.amount).toBe('USD Total Include GST Amount');
+      expect(columns.currency).toBe('Supplier Local Currency Code');
+    });
+
+    it('prefers an exact header over a loose one', () => {
+      const columns = resolveColumns([
+        'Checkout Date (Local Time)',
+        'Checkout Date',
+      ]);
+      expect(columns.checkoutDate).toBe('Checkout Date');
+    });
+
+    it('drops an ambiguous amount rather than picking one', () => {
+      // Include vs Exclude GST are different figures; guessing would charge
+      // the wrong amount, so neither is chosen.
+      const columns = resolveColumns([
+        'Booking Matched Status Name',
+        'USD Total Include GST',
+        'USD Total Excluding GST',
+      ]);
+      // The exact match still wins here...
+      expect(columns.amount).toBe('USD Total Include GST');
+
+      const ambiguous = resolveColumns([
+        'Booking Matched Status Name',
+        'USD Total Include GST (Gross)',
+        'USD Total Excluding GST (Net)',
+      ]);
+      // ...but with no exact match and two candidates, nothing is guessed.
+      expect(ambiguous.amount).toBeNull();
+    });
+  });
+
+  describe('status column recognized by its values', () => {
+    const rowsWithOpaqueHeaders = [
+      { 'Booking ID': '1', Col9: 'Matched-under', 'USD Total Include GST': '25.00' },
+      { 'Booking ID': '2', Col9: 'Matched', 'USD Total Include GST': '10.00' },
+      { 'Booking ID': '3', Col9: 'Matched-over', 'USD Total Include GST': '30.00' },
+    ];
+
+    it('identifies a matched-status column from Agoda status words', () => {
+      const attachment = attachmentFromRows(rowsWithOpaqueHeaders);
+      const decision = evaluateReopenDecision(attachment);
+
+      expect(decision.sheetType).toBe('booking_matched_status');
+      expect(decision.detectedColumns.matchedStatus).toBe('Col9');
+      expect(decision.collect.map((row) => row.bookingId)).toEqual(['1']);
+    });
+
+    it('never identifies an amount column from its values', () => {
+      // Status is recognizable, but the amount header is unrecognizable. The
+      // amount must stay unresolved and the row must reopen, not be guessed
+      // from the only numeric column present.
+      const attachment = attachmentFromRows([
+        { 'Booking ID': '1', Col9: 'Matched-under', Col12: '25.00' },
+        { 'Booking ID': '2', Col9: 'Matched-under', Col12: '10.00' },
+        { 'Booking ID': '3', Col9: 'Matched-under', Col12: '30.00' },
+      ]);
+
+      const decision = evaluateReopenDecision(attachment);
+
+      expect(decision.detectedColumns.matchedStatus).toBe('Col9');
+      expect(decision.detectedColumns.amount).toBeNull();
+      expect(decision.collect).toHaveLength(0);
+      expect(decision.reopen).toHaveLength(3);
+      expect(decision.shouldReopen).toBe(true);
+    });
+
+    it('ignores a column of only generic values such as Open', () => {
+      const attachment = attachmentFromRows([
+        { 'Booking ID': '1', Col9: 'Open', 'USD Total Include GST': '25.00' },
+        { 'Booking ID': '2', Col9: 'Open', 'USD Total Include GST': '10.00' },
+        { 'Booking ID': '3', Col9: 'Open', 'USD Total Include GST': '30.00' },
+      ]);
+
+      const decision = evaluateReopenDecision(attachment);
+      expect(decision.sheetType).toBe('unknown');
+      expect(decision.detectedColumns.matchedStatus).toBeNull();
+    });
+
+    it('does not infer when a header already named the status', () => {
+      const attachment = attachmentFromRows([
+        {
+          'Booking ID': '1',
+          'Payment Status': 'Pending Collection',
+          Col9: 'Matched-under',
+          'LP(USD)': '25.00',
+        },
+        {
+          'Booking ID': '2',
+          'Payment Status': 'Paid',
+          Col9: 'Matched',
+          'LP(USD)': '10.00',
+        },
+        {
+          'Booking ID': '3',
+          'Payment Status': 'Paid',
+          Col9: 'Matched',
+          'LP(USD)': '30.00',
+        },
+      ]);
+
+      const decision = evaluateReopenDecision(attachment);
+      expect(decision.sheetType).toBe('payment_status');
+      expect(decision.detectedColumns.matchedStatus).toBeNull();
+      expect(decision.detectedColumns.paymentStatus).toBe('Payment Status');
+    });
+
+    it('needs at least three values before judging a column', () => {
+      const attachment = attachmentFromRows([
+        { 'Booking ID': '1', Col9: 'Matched-under', 'USD Total Include GST': '25.00' },
+        { 'Booking ID': '2', Col9: 'Matched', 'USD Total Include GST': '10.00' },
+      ]);
+
+      const decision = evaluateReopenDecision(attachment);
+      expect(decision.detectedColumns.matchedStatus).toBeNull();
+    });
+  });
+
   it('returns an empty, non-reopening decision for unparseable attachments', () => {
     const attachment: ParsedAttachment = {
       filename: 'broken.csv',
