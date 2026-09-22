@@ -18,6 +18,34 @@ import {
 
 const MM_DD_YYYY = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
 
+/**
+ * Reads a stored MM/DD/YYYY cell back as a Date. Returns null when the field was
+ * never filled in, which is normal for a WIP item — the retrieval run is what
+ * discovers the real stay dates.
+ */
+function parseStoredDate(value: string | null | undefined): Date | null {
+  if (!value) return null;
+
+  const match = MM_DD_YYYY.exec(value.trim());
+  if (!match) return null;
+
+  const [, month, day, year] = match;
+  const date = new Date(Date.UTC(+year, +month - 1, +day));
+
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/** Reads an amount stored as a string, ignoring any currency symbol. */
+function parseStoredAmount(value: string | null | undefined): number | null {
+  if (value == null || value === '') return null;
+
+  const cleaned = String(value).replace(/[^0-9.-]/g, '');
+  if (!cleaned || cleaned === '-' || cleaned === '.') return null;
+
+  const amount = Number(cleaned);
+  return Number.isFinite(amount) ? amount : null;
+}
+
 /** Normalizes a cell value to MM/DD/YYYY (handles Excel serial dates). */
 function parseImportDateCell(value: unknown): string {
   if (value == null || value === '') return '';
@@ -476,6 +504,73 @@ export class AgodaCaseItemService implements IAgodaCaseItemService {
     }
   }
 
+  /**
+   * Turns the selected AgodaCaseItems into the RetrievalItem rows the retrieval
+   * run charges against, mirroring what the Excel upload and
+   * `POST /api/agoda/send-to-retrieval` write.
+   *
+   * A WIP item often has no stay dates yet — the run is what discovers those —
+   * but RetrievalItem requires them, so the gaps are seeded and get overwritten
+   * once the run reads the booking. A single row that fails is logged and
+   * skipped rather than taking the whole retrieval down with it.
+   */
+  private async createRetrievalItemsFromCaseItems(
+    itemsByReservation: Map<string, any>,
+    retrievalId: string,
+    parentRetrievalId: string,
+    propertyId: string,
+  ): Promise<number> {
+    let created = 0;
+
+    for (const [reservationId, item] of itemsByReservation) {
+      try {
+        const amountToCharge =
+          parseStoredAmount(item.amount_to_charge) ??
+          parseStoredAmount(item.amount);
+        const hasCardInfo = Boolean(item.vcc_card_number);
+
+        await this.retrievalService.createRetrievalItem({
+          retrieval_id: retrievalId,
+          parent_retrieval_id: parentRetrievalId,
+          property_id: propertyId,
+          reservation_id: reservationId,
+          guest_name: item.guest_name || 'Unknown',
+          // Placeholders the run replaces with what it reads off the booking.
+          check_in_date: parseStoredDate(item.check_in) ?? new Date(),
+          check_out_date: parseStoredDate(item.check_out) ?? new Date(),
+          room_type: 'Standard',
+          booked_date: new Date(),
+          booking_amount: parseStoredAmount(item.amount) ?? undefined,
+          has_card_info: hasCardInfo,
+          card_info: hasCardInfo
+            ? {
+                card_number: item.vcc_card_number,
+                expiry_date: item.card_expire || '',
+                cvv: item.card_cvv || undefined,
+              }
+            : undefined,
+          has_payment_info: amountToCharge !== null,
+          payment_info:
+            amountToCharge !== null
+              ? {
+                  amount_to_charge_or_refund: amountToCharge,
+                  amount_to_charge_or_refund_currency: item.currency || 'USD',
+                }
+              : undefined,
+          reservation_status: 'Pending',
+        });
+
+        created++;
+      } catch (error: any) {
+        this.logger.error(
+          `Failed to create RetrievalItem for reservation ${reservationId} (retrieval ${retrievalId}): ${error?.message || error}`,
+        );
+      }
+    }
+
+    return created;
+  }
+
   async sendToRetrieval(
     ids: string[],
     userId: string,
@@ -527,9 +622,31 @@ export class AgodaCaseItemService implements IAgodaCaseItemService {
         const property = firstItem.property;
         const posting_type = firstItem.posting_type || 'pre';
 
+        // The bookings this retrieval has to collect. RetrievalItem is unique on
+        // (retrieval_id, reservation_id), so a booking that appears in more than
+        // one selected case item is only carried once.
+        const itemsByReservation = new Map<string, (typeof propertyItems)[0]>();
+        for (const item of propertyItems) {
+          const reservationId = item.reservation_id?.trim();
+          if (!reservationId || itemsByReservation.has(reservationId)) continue;
+          itemsByReservation.set(reservationId, item);
+        }
+        const reservations = [...itemsByReservation.keys()];
+
+        const missingReservationId = propertyItems.filter(
+          (item) => !item.reservation_id?.trim(),
+        ).length;
+        if (missingReservationId > 0) {
+          this.logger.warn(
+            `⚠️ ${missingReservationId} case item(s) for property ${property.name} have no reservation_id — ` +
+              `they are linked to the retrieval but cannot be collected`,
+          );
+        }
+
         // Create Retrieval
         const retrieval = await this.retrievalService.createRetrieval({
           name: `${property.name} - ${parentRetrievalName}`,
+          reservations,
           user_id: userId,
           parent_retrieval_id: parentRetrieval.id,
           property_id: propertyId,
@@ -553,8 +670,19 @@ export class AgodaCaseItemService implements IAgodaCaseItemService {
         const itemIds = propertyItems.map((item) => item.id);
         await this.repository.updateRetrievalIdForItems(itemIds, retrieval.id);
 
+        // The retrieval run works off RetrievalItems, so without these the
+        // retrieval starts with nothing to collect.
+        const retrievalItemsCreated =
+          await this.createRetrievalItemsFromCaseItems(
+            itemsByReservation,
+            retrieval.id,
+            parentRetrieval.id,
+            propertyId,
+          );
+
         this.logger.log(
-          `Created Retrieval: ${retrieval.id} for property ${property.name} with ${itemIds.length} items`,
+          `Created Retrieval: ${retrieval.id} for property ${property.name} with ${itemIds.length} items ` +
+            `(${reservations.length} reservation(s), ${retrievalItemsCreated} retrieval item(s))`,
         );
       }
 
