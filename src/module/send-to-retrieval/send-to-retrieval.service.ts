@@ -7,7 +7,8 @@
  * retrieval side. One `ParentRetrieval` is written per call, with one
  * `Retrieval` underneath it per property. Each job that gets a retrieval
  * has its `reply_status` set to `SendToRetrieval`, taking it out of the
- * reply-wait cycle the support-email cron polls.
+ * reply-wait cycle the support-email cron polls. The retrievals are then
+ * handed straight to the Agoda retrieval server to run.
  *
  * This never talks to Gmail — without a stored reply the job is skipped,
  * not treated as "nothing to collect".
@@ -27,6 +28,7 @@ import { DatabaseService } from '../database/database.service';
 import { resolveAgodaIdForJob } from '../job/agoda-id.util';
 import { IJobRepository } from '../job/job.interface';
 import { IPropertyRepository } from '../property/property.interface';
+import { RetrievalRunDispatchService } from '../retrieval/retrieval-run-dispatch.service';
 import {
   CreateRetrievalDto,
   CreateRetrievalItemDto,
@@ -74,6 +76,7 @@ export class SendToRetrievalService implements ISendToRetrievalService {
     private readonly retrievalService: IRetrievalService,
     @Inject('IAgodaCaseItemService')
     private readonly agodaCaseItemService: IAgodaCaseItemService,
+    private readonly retrievalRunDispatch: RetrievalRunDispatchService,
     private readonly db: DatabaseService,
   ) {}
 
@@ -543,6 +546,13 @@ export class SendToRetrievalService implements ISendToRetrievalService {
 
     const retrieval = await this.createCollectRetrievals(collectCandidates);
 
+    // Kick the retrieval run off ourselves so no separate
+    // POST /scraper/api/batch-retrieval-run-job call is needed.
+    this.retrievalRunDispatch.dispatchAgodaBulkRun(
+      retrieval.created.map((entry) => entry.retrievalId),
+      'send-to-retrieval',
+    );
+
     const bookingsSent = retrieval.created.reduce(
       (sum, entry) => sum + entry.reservationCount,
       0,
@@ -550,7 +560,10 @@ export class SendToRetrievalService implements ISendToRetrievalService {
 
     const message =
       `Processed ${jobIds.length} jobs. ${retrieval.created.length} retrieval(s) created covering ${bookingsSent} booking(s), ` +
-      `${skipped.length} skipped, ${invalid.length} invalid, ${errors.length} with errors.`;
+      `${skipped.length} skipped, ${invalid.length} invalid, ${errors.length} with errors.` +
+      (retrieval.created.length > 0
+        ? ' The retrieval run has been started on the Agoda server.'
+        : '');
 
     return {
       message,

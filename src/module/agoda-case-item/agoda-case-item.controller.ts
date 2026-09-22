@@ -501,7 +501,10 @@ export class AgodaCaseItemController {
   @ApiOperation({
     summary: 'Send AgodaCaseItems to Retrieval',
     description:
-      'Create ParentRetrieval and Retrievals (grouped by property) from selected AgodaCaseItems. One Retrieval will be created per property. User is automatically taken from JWT token.',
+      'Create ParentRetrieval and Retrievals (grouped by property) from selected AgodaCaseItems. One Retrieval will be created per property. ' +
+      'The created retrievals are then started automatically on the Agoda retrieval server, so no follow-up POST /scraper/api/batch-retrieval-run-job is needed. ' +
+      'The run is dispatched in the background: this response confirms the retrievals were created, not that the scrape finished. ' +
+      'User is automatically taken from JWT token.',
   })
   @ApiBody({ type: SendToRetrievalDto })
   @ApiResponse({
@@ -538,7 +541,7 @@ export class AgodaCaseItemController {
       parentRetrievalName: result.parentRetrievalName,
       retrievalsCount: result.retrievalsCount,
       itemsCount: result.itemsCount,
-      message: `Successfully created ${result.retrievalsCount} retrieval(s) from ${result.itemsCount} item(s)`,
+      message: `Successfully created ${result.retrievalsCount} retrieval(s) from ${result.itemsCount} item(s) and started the retrieval run`,
     };
   }
 
