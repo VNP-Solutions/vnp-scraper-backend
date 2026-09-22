@@ -19,6 +19,13 @@
  * Header spelling, status casing and date formats all vary between exports,
  * so columns and status values are matched on a normalized form and dates
  * are read through a set of tolerant patterns rather than one fixed layout.
+ *
+ * Because Agoda renames columns without warning, resolution degrades in three
+ * steps: an exact header match, then a header merely *containing* a known key,
+ * and finally — for status columns only — recognizing the column by its values.
+ * Amount columns are never identified from their values, and an ambiguous
+ * match is dropped rather than guessed, so the failure mode is an unnecessary
+ * reopen rather than a wrong charge.
  */
 
 import type {
@@ -76,8 +83,58 @@ const COLUMN_KEYS = {
   currency: ['supplierlocalcurrency', 'localcurrency', 'currency'],
 } as const;
 
+/** Every header spelling above, flattened so a header cell can be tested. */
+const ALL_COLUMN_KEYS: ReadonlySet<string> = new Set(
+  Object.values(COLUMN_KEYS).flatMap((keys) => [...keys]),
+);
+
+/**
+ * True when a cell names a column these rules can resolve. Used to locate the
+ * header row in exports that carry title / instruction rows above it.
+ *
+ * Matches loosely, so a drifted heading such as `Checkout Date (Local)` still
+ * counts. Long cells are rejected because Agoda's instruction line quotes
+ * column names inside a paragraph of prose and would otherwise look like a
+ * header row.
+ */
+export function isKnownColumn(header: unknown): boolean {
+  const normalized = normKey(header);
+  if (!normalized || normalized.length > MAX_HEADER_CELL_LENGTH) return false;
+  if (ALL_COLUMN_KEYS.has(normalized)) return true;
+
+  for (const key of ALL_COLUMN_KEYS) {
+    if (normalized.includes(key)) return true;
+  }
+  return false;
+}
+
 /** Matched statuses meaning the money has not been received yet. */
 const UNPAID_MATCHED_STATUSES = ['open', 'matchedunder', 'matchunder'];
+
+/**
+ * Every matched-status value Agoda writes, paid or not. Used only to recognize
+ * a status column by its contents when the header gives nothing away.
+ */
+const MATCHED_STATUS_VALUES = [
+  'matched',
+  'matchedunder',
+  'matchunder',
+  'matchedover',
+  'matchover',
+  'open',
+];
+
+/** Same idea for the Type 1 layout's `Payment Status` values. */
+const PAYMENT_STATUS_VALUES = ['paid', 'pendingcollection', 'pendingcollect'];
+
+/** Share of a column's filled values that must be status words to accept it. */
+const STATUS_VALUE_CONFIDENCE = 0.8;
+
+/** Fewer filled values than this and the column is too small to judge. */
+const MIN_STATUS_SAMPLE = 3;
+
+/** Longest a cell can be and still plausibly be a column heading. */
+export const MAX_HEADER_CELL_LENGTH = 64;
 
 const MONTHS: Record<string, number> = {
   jan: 1,
@@ -115,12 +172,81 @@ function normStatus(value: unknown): string {
   return normKey(value);
 }
 
-/** Resolves the real header name for a logical column, or null if absent. */
+/**
+ * Resolves the real header name for a logical column, or null if absent.
+ *
+ * An exact match always wins. Failing that the header only has to *contain*
+ * one of the keys, so `Checkout Date (Local Time)` and `Departure Dt (Hotel)`
+ * resolve without the list having to name every variant Agoda ships.
+ *
+ * A loose match that is ambiguous — two different headers both containing a
+ * key — resolves to null instead of picking one. Guessing between two columns
+ * is worse than having none: a missing amount reopens the case, while the
+ * wrong amount charges the guest the wrong figure.
+ */
 function findColumn(
   headers: string[],
   keys: readonly string[],
 ): string | null {
-  return headers.find((header) => keys.includes(normKey(header))) ?? null;
+  const exact = headers.find((header) => keys.includes(normKey(header)));
+  if (exact) return exact;
+
+  const loose = headers.filter((header) => {
+    const normalized = normKey(header);
+    if (!normalized || normalized.length > MAX_HEADER_CELL_LENGTH) return false;
+    return keys.some((key) => normalized.includes(key));
+  });
+
+  if (loose.length === 0) return null;
+  return new Set(loose.map(normKey)).size === 1 ? loose[0] : null;
+}
+
+/**
+ * Last-resort status detection for a sheet whose headers name nothing
+ * recognizable: a column whose values are overwhelmingly Agoda's own status
+ * words is that status column.
+ *
+ * Deliberately limited to statuses. Amount columns are never identified this
+ * way — a misread status costs at most an unnecessary reopen, while a misread
+ * amount charges the guest the wrong money.
+ */
+function inferStatusColumns(
+  headers: string[],
+  rows: ReadonlyArray<Record<string, string>>,
+): Array<{ header: string; kind: 'matched' | 'payment' }> {
+  const candidates: Array<{ header: string; kind: 'matched' | 'payment' }> = [];
+
+  for (const header of headers) {
+    if (!header) continue;
+
+    const values = rows
+      .map((row) => normStatus(row[header]))
+      .filter((value) => value !== '');
+
+    if (values.length < MIN_STATUS_SAMPLE) continue;
+
+    const matched = values.filter((value) =>
+      MATCHED_STATUS_VALUES.includes(value),
+    );
+    const payment = values.filter((value) =>
+      PAYMENT_STATUS_VALUES.includes(value),
+    );
+
+    // `open` on its own is too generic to name a matched-status column, so at
+    // least one value has to be an actual match verdict.
+    const hasMatchVerdict = matched.some((value) => value.startsWith('match'));
+
+    if (
+      hasMatchVerdict &&
+      matched.length / values.length >= STATUS_VALUE_CONFIDENCE
+    ) {
+      candidates.push({ header, kind: 'matched' });
+    } else if (payment.length / values.length >= STATUS_VALUE_CONFIDENCE) {
+      candidates.push({ header, kind: 'payment' });
+    }
+  }
+
+  return candidates;
 }
 
 function cell(row: Record<string, string>, column: string | null): string {
@@ -318,14 +444,33 @@ interface ResolvedColumns {
   currency: string | null;
 }
 
-export function resolveColumns(headers: string[]): ResolvedColumns {
-  const matchedStatus = findColumn(headers, COLUMN_KEYS.matchedStatus);
+/**
+ * `rows` is optional and only used to recognize a status column the headers
+ * failed to name; every other column is resolved from the header alone.
+ */
+export function resolveColumns(
+  headers: string[],
+  rows?: ReadonlyArray<Record<string, string>>,
+): ResolvedColumns {
+  let matchedStatus = findColumn(headers, COLUMN_KEYS.matchedStatus);
+  let paymentStatus = findColumn(headers, COLUMN_KEYS.paymentStatus);
+
+  // Only when the headers named no status at all. A recognized header is
+  // always more trustworthy than the values sitting under it, and an ambiguous
+  // guess is dropped rather than resolved arbitrarily.
+  if (!matchedStatus && !paymentStatus && rows?.length) {
+    const inferred = inferStatusColumns(headers, rows);
+    if (inferred.length === 1) {
+      if (inferred[0].kind === 'matched') matchedStatus = inferred[0].header;
+      else paymentStatus = inferred[0].header;
+    }
+  }
 
   return {
     hotelId: findColumn(headers, COLUMN_KEYS.hotelId),
     bookingId: findColumn(headers, COLUMN_KEYS.bookingId),
     checkoutDate: findColumn(headers, COLUMN_KEYS.checkoutDate),
-    paymentStatus: findColumn(headers, COLUMN_KEYS.paymentStatus),
+    paymentStatus,
     bookingStatus: findColumn(headers, COLUMN_KEYS.bookingStatus),
     matchedStatus,
     // Type 2 sheets carry the GST total; Type 1 sheets carry LP (USD).
@@ -470,7 +615,7 @@ export function evaluateReopenDecision(
       ? attachment.columns
       : Object.keys(attachment.rows[0] ?? {});
 
-  const columns = resolveColumns(headers);
+  const columns = resolveColumns(headers, attachment.rows);
 
   const decision: ReopenDecision = {
     sheetType: detectSheetType(columns),

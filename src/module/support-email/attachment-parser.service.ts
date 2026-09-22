@@ -9,7 +9,7 @@ import type { gmail_v1 } from 'googleapis';
 import * as Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { S3UploadService } from '../../common/utils/s3-upload.util';
-import { evaluateReopenDecision } from './reopen-rules';
+import { evaluateReopenDecision, isKnownColumn } from './reopen-rules';
 import type {
   AttachmentFormat,
   ParsedAttachment,
@@ -95,6 +95,43 @@ function parseCsv(buffer: Buffer): {
   };
 }
 
+/**
+ * Agoda's exports put a report title and an instruction line above the real
+ * header, so the first non-empty row is usually not it — picking it leaves
+ * every column unresolved and silently skips the whole sheet.
+ *
+ * Takes the row with the most recognizable column names rather than the first
+ * one with any, because the instruction line quotes column names in its prose
+ * and would otherwise win. Falls back to the first non-empty row when nothing
+ * is recognized anywhere, which is the old behaviour.
+ */
+export function findHeaderRowIndex(allRows: unknown[][]): number {
+  let firstNonEmpty = -1;
+  let bestIndex = -1;
+  let bestHits = 0;
+
+  for (let i = 0; i < allRows.length; i++) {
+    const row = allRows[i];
+    if (!row) continue;
+
+    if (!row.some((cell) => cell !== '' && cell != null)) continue;
+    if (firstNonEmpty === -1) firstNonEmpty = i;
+
+    const hits = row.reduce<number>(
+      (count, cell) => (isKnownColumn(cell) ? count + 1 : count),
+      0,
+    );
+
+    if (hits > bestHits) {
+      bestHits = hits;
+      bestIndex = i;
+    }
+  }
+
+  if (bestIndex !== -1) return bestIndex;
+  return firstNonEmpty === -1 ? 0 : firstNonEmpty;
+}
+
 function parseXlsx(buffer: Buffer): {
   columns: string[];
   rows: Record<string, string>[];
@@ -105,34 +142,32 @@ function parseXlsx(buffer: Buffer): {
 
   const sheet = workbook.Sheets[sheetName];
 
-  // Get all rows as arrays to find the first non-empty row for headers
   const allRows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
     header: 1,
     defval: '',
     raw: false,
   });
 
-  // Find the first non-empty row to use as headers
-  let headerRowIndex = 0;
-  let columns: string[] = [];
+  const headerRowIndex = findHeaderRowIndex(allRows);
+  const columns = (allRows[headerRowIndex] ?? []).map((cell) =>
+    String(cell ?? '').trim(),
+  );
 
-  for (let i = 0; i < allRows.length; i++) {
-    const row = allRows[i];
-    // Check if row has any non-empty cells
-    const hasContent = row && row.some((cell) => cell !== '' && cell != null);
-    if (hasContent) {
-      headerRowIndex = i;
-      columns = row.map((cell) => String(cell ?? '').trim());
-      break;
-    }
-  }
+  // `sheet_to_json` indexes from the sheet's used range, which does not have to
+  // start at row 1, whereas `range` below is an absolute sheet row. Offsetting
+  // by the used range's first row keeps the two in step — otherwise a sheet
+  // padded with leading blank rows reads one row above its own header.
+  const firstSheetRow = sheet['!ref']
+    ? XLSX.utils.decode_range(sheet['!ref']).s.r
+    : 0;
 
-  // Parse rows starting from the row after the header
+  // `range` starts at the header row; xlsx consumes it as the keys and returns
+  // the rows beneath it.
   const rows = XLSX.utils
     .sheet_to_json<Record<string, unknown>>(sheet, {
       defval: '',
       raw: false,
-      range: headerRowIndex, // Start from the header row (xlsx will skip it and start from next row)
+      range: firstSheetRow + headerRowIndex,
     })
     .map(toStringRecord);
 
