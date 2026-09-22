@@ -45,7 +45,9 @@ export class SendToRetrievalController {
       'For each Completed job, reads the newest stored Partner Support reply (captured by POST /api/agoda/retrive-case-email). ' +
       'Skips the job if there is no stored reply yet, if it still needs a case reopen, or if it has no collectable bookings. ' +
       'Otherwise writes one ParentRetrieval per call and one Retrieval per property with the collectable booking IDs in reservations[], ' +
-      "and sets that job's reply_status to SendToRetrieval. Never contacts Gmail.",
+      "and sets that job's reply_status to SendToRetrieval. " +
+      'The created retrievals are then started automatically on the Agoda retrieval server, so no follow-up POST /scraper/api/batch-retrieval-run-job is needed. ' +
+      'The run is dispatched in the background: this response confirms the retrievals were created, not that the scrape finished. Never contacts Gmail.',
   })
   @ApiBody({ type: RunSendToRetrievalJobDto })
   @ApiResponse({
