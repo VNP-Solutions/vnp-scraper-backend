@@ -132,6 +132,25 @@ export interface ReopenSummary {
   collectBookingAmounts: CollectBookingAmount[];
 }
 
+/** Where a stored attachment was read back from when it was re-parsed. */
+export type AttachmentSource = 's3' | 'gmail';
+
+export interface ReparsedAttachment extends ParsedAttachment {
+  /** Null when the file could not be read back from either source. */
+  loadedFrom: AttachmentSource | null;
+}
+
+/** Result of re-running the current rules over an already-stored email. */
+export interface ReparsedSupportEmail {
+  attachments: ReparsedAttachment[];
+  reopen: ReopenSummary;
+  /**
+   * False when a CSV/XLSX on record could not be read back. The roll-up is
+   * then incomplete and must not overwrite what is stored.
+   */
+  complete: boolean;
+}
+
 /** Which way a message in the labelled conversation was travelling. */
 export type SupportEmailMessageDirection = 'incoming' | 'outgoing';
 
@@ -184,9 +203,9 @@ export type SupportEmailOutcome =
 export interface ScrapeSupportEmailOptions {
   /**
    * Only consider messages received after this moment, instead of the
-   * rolling day window. Callers pass the job's `updatedAt` so a run sees
-   * just what has arrived since the job was last touched. Takes precedence
-   * over `lookbackDays`.
+   * rolling day window. Callers pass the job's completion time so a run
+   * sees just what has arrived since the job last completed. Takes
+   * precedence over `lookbackDays`.
    */
   since?: Date;
   /** Lookback window in days, used when `since` is not given. */

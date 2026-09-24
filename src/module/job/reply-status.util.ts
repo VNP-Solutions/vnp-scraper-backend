@@ -1,4 +1,4 @@
-import { OTAProvider, ReplyStatus } from '@prisma/client';
+import { Job, OTAProvider, ReplyStatus } from '@prisma/client';
 
 /** Grace period Agoda gets to reply before a job counts as unanswered. */
 export const REPLY_DEADLINE_HOURS = 48;
@@ -25,6 +25,32 @@ export function parseJobCompletedDate(
   const [, mm, dd, yyyy] = match;
   const date = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/**
+ * The moment from which an Agoda reply to this job's run can be expected,
+ * i.e. the start of the Gmail search window.
+ *
+ * `updatedAt` is deliberately never used: it moves forward on every later
+ * edit — including the `reply_status` write the capture itself makes — so a
+ * reply that arrived before the last edit would drop out of the window for
+ * good. Jobs completed before `job_completed_date` existed still carry
+ * `reply_deadline_at`, which was set exactly 48h after completion, and
+ * `createdAt` always precedes completion.
+ */
+export function resolveReplySearchCutoff(
+  job: Pick<Job, 'job_completed_date' | 'reply_deadline_at' | 'createdAt'>,
+): Date {
+  const completedDate = parseJobCompletedDate(job.job_completed_date);
+  if (completedDate) return completedDate;
+
+  if (job.reply_deadline_at) {
+    return new Date(
+      job.reply_deadline_at.getTime() - REPLY_DEADLINE_HOURS * 60 * 60 * 1000,
+    );
+  }
+
+  return job.createdAt;
 }
 
 /**
