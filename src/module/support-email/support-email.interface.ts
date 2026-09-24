@@ -1,7 +1,11 @@
 import type { ReplyStatus, SupportEmail } from '@prisma/client';
 import type {
+  AttachmentSource,
   BulkSupportEmailResults,
+  ParsedAttachment,
   ParsedSupportEmail,
+  ReopenSummary,
+  ReparsedSupportEmail,
   ScrapeSupportEmailOptions,
   SupportEmailOutcome,
 } from './support-email.types';
@@ -64,6 +68,18 @@ export interface ISupportEmailRepository {
     id: string,
     replyStatus: ReplyStatus,
   ): Promise<SupportEmail | null>;
+  /**
+   * Overwrites the parser-derived fields (attachment metadata, reopen /
+   * collect verdict, reply_status) on an already-stored email.
+   */
+  updateParsedResult(
+    id: string,
+    result: {
+      attachments: ParsedAttachment[];
+      reopen: ReopenSummary;
+      replyStatus: ReplyStatus;
+    },
+  ): Promise<SupportEmail>;
 }
 
 /** Gmail search + parse orchestration for one Agoda ID or a batch of jobs. */
@@ -76,6 +92,53 @@ export interface ISupportEmailScraperService {
     jobIds: string[],
     options?: ScrapeSupportEmailOptions,
   ): Promise<BulkSupportEmailResults>;
+  /** Re-runs the current rules over a stored email's attachments; no Gmail search. */
+  reparseStoredEmail(
+    email: SupportEmail,
+    agodaId: string,
+  ): Promise<ReparsedSupportEmail>;
+}
+
+export interface RecheckReplyVerdict {
+  replyStatus: ReplyStatus | null;
+  collect: number;
+  reopen: number;
+}
+
+export interface RecheckReplyAttachment {
+  filename: string;
+  /** Null when the file was not re-read (not a CSV/XLSX, or unreadable). */
+  loadedFrom: AttachmentSource | null;
+  sheetType: string | null;
+  rowCount: number;
+  collect: number;
+  reopen: number;
+  skipped: number;
+  /** Why this file produced no verdict, in plain words. */
+  problem: string | null;
+}
+
+/**
+ * Result of POST /api/agoda/jobs/:jobId/recheck-reply. `message` is written
+ * for the ParserOps team, not for developers.
+ */
+export interface RecheckReplyResult {
+  jobId: string;
+  agodaId: string | null;
+  /**
+   * `stored_email` — an already-captured reply was re-parsed from its file.
+   * `gmail_search` — nothing was stored yet, so Gmail was searched instead.
+   */
+  source: 'stored_email' | 'gmail_search';
+  /** True when the stored email and the job's reply_status were written. */
+  updated: boolean;
+  message: string;
+  supportEmailId: string | null;
+  caseId: string | null;
+  receivedAt: Date | string | null;
+  before: RecheckReplyVerdict | null;
+  after: RecheckReplyVerdict | null;
+  attachments: RecheckReplyAttachment[];
 }
 
 export interface RunSupportEmailJobReplyStatusEntry {
@@ -138,4 +201,12 @@ export interface ISupportEmailService {
     id: string,
     replyStatus: ReplyStatus,
   ): Promise<UpdateSupportEmailReplyStatusResult>;
+  /**
+   * Behind POST /api/agoda/jobs/:jobId/recheck-reply. Re-parses the stored
+   * Partner Support reply for the job's property with the current rules
+   * and overwrites its verdict and the job's reply_status; searches Gmail
+   * only when no reply is stored yet. Throws NotFoundException for an
+   * unknown job.
+   */
+  recheckReply(jobId: string): Promise<RecheckReplyResult>;
 }

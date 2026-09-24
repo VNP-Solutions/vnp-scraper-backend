@@ -20,16 +20,20 @@ import {
   StoreSupportEmailResult,
 } from './support-email.interface';
 import { AGODA_PARTNER_SUPPORT_ADDRESS } from './support-email.types';
-import type { ParsedSupportEmail } from './support-email.types';
+import type {
+  ParsedAttachment,
+  ParsedSupportEmail,
+  ReopenSummary,
+} from './support-email.types';
 
 /**
  * Only metadata is kept. The rows themselves stay in the archived file on
  * S3, so the record cannot drift from what Agoda actually sent.
  */
 function toStorableAttachments(
-  email: ParsedSupportEmail,
+  attachments: ParsedAttachment[],
 ): Prisma.SupportEmailAttachmentCreateInput[] {
-  return email.attachments.map((attachment) => ({
+  return attachments.map((attachment) => ({
     filename: attachment.filename,
     mime_type: attachment.mimeType,
     size_bytes: attachment.sizeBytes,
@@ -42,6 +46,19 @@ function toStorableAttachments(
     s3_key: attachment.s3Key ?? null,
     upload_error: attachment.uploadError ?? null,
   }));
+}
+
+function toReopenFields(reopen: ReopenSummary) {
+  return {
+    should_reopen: reopen.shouldReopen,
+    reopen_booking_ids: reopen.reopenBookingIds,
+    collect_booking_ids: reopen.collectBookingIds,
+    collect_booking_amounts: reopen.collectBookingAmounts.map((entry) => ({
+      booking_id: entry.bookingId,
+      amount: entry.amount,
+      currency: entry.currency,
+    })),
+  };
 }
 
 @Injectable()
@@ -106,18 +123,9 @@ export class SupportEmailRepository implements ISupportEmailRepository {
           reservation_ids: email.body.reservationIds,
           partner_email: email.body.partnerEmail,
 
-          attachments: toStorableAttachments(email),
+          attachments: toStorableAttachments(email.attachments),
 
-          should_reopen: email.reopen.shouldReopen,
-          reopen_booking_ids: email.reopen.reopenBookingIds,
-          collect_booking_ids: email.reopen.collectBookingIds,
-          collect_booking_amounts: email.reopen.collectBookingAmounts.map(
-            (entry) => ({
-              booking_id: entry.bookingId,
-              amount: entry.amount,
-              currency: entry.currency,
-            }),
-          ),
+          ...toReopenFields(email.reopen),
           reply_status: context.replyStatus ?? null,
         },
       });
@@ -181,6 +189,29 @@ export class SupportEmailRepository implements ISupportEmailRepository {
       where: { job_id: jobId },
       // Served by the job_id index; newest first for display.
       orderBy: { received_at: 'desc' },
+    });
+  }
+
+  /**
+   * Overwrites only what the parser and reopen rules derive — attachment
+   * metadata, the reopen/collect verdict and `reply_status` — leaving the
+   * message itself (headers, body, job_id) as first captured.
+   */
+  async updateParsedResult(
+    id: string,
+    result: {
+      attachments: ParsedAttachment[];
+      reopen: ReopenSummary;
+      replyStatus: ReplyStatus;
+    },
+  ): Promise<SupportEmail> {
+    return this.db.supportEmail.update({
+      where: { id },
+      data: {
+        attachments: toStorableAttachments(result.attachments),
+        ...toReopenFields(result.reopen),
+        reply_status: result.replyStatus,
+      },
     });
   }
 
