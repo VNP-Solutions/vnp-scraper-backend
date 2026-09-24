@@ -7,10 +7,9 @@
  * attachment.
  *
  * The window is either a rolling number of days or everything since a caller
- * supplied cutoff — the reply-status flow passes the job's
- * `job_completed_date` (falling back to `updatedAt` for jobs completed
- * before that field existed) so it only sees what has arrived since the job
- * last completed.
+ * supplied cutoff — the reply-status flow passes the job's completion time
+ * (see `resolveReplySearchCutoff`) so it only sees what has arrived since
+ * the job last completed.
  *
  * The captured email is persisted once per Gmail message; results are also
  * returned to the caller.
@@ -18,23 +17,29 @@
 
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { JobStatus } from '@prisma/client';
+import { JobStatus, SupportEmail } from '@prisma/client';
 import { google, type gmail_v1 } from 'googleapis';
+import { S3UploadService } from '../../common/utils/s3-upload.util';
 import { GoogleOAuthConfig } from '../google-oauth/google-oauth.config';
 import { GoogleOAuthService } from '../google-oauth/google-oauth.service';
 import { resolveAgodaIdForJob } from '../job/agoda-id.util';
 import { IJobRepository } from '../job/job.interface';
 import {
   deriveEmailReplyStatus,
-  parseJobCompletedDate,
+  resolveReplySearchCutoff,
 } from '../job/reply-status.util';
 import { IPropertyRepository } from '../property/property.interface';
-import { AttachmentParserService } from './attachment-parser.service';
+import {
+  AttachmentParserService,
+  collectAttachmentRefs,
+  parseAttachmentBuffer,
+} from './attachment-parser.service';
 import {
   findHeader,
   normalizeSenderAddress,
   parseSupportEmailBody,
 } from './email-body-parser';
+import { evaluateReopenDecision } from './reopen-rules';
 import {
   ISupportEmailRepository,
   ISupportEmailScraperService,
@@ -49,6 +54,8 @@ import {
   type ParsedAttachment,
   type ParsedSupportEmail,
   type ReopenSummary,
+  type ReparsedAttachment,
+  type ReparsedSupportEmail,
   type ScrapeSupportEmailOptions,
   type SupportEmailMessageDirection,
   type SupportEmailOutcome,
@@ -63,6 +70,11 @@ interface CandidateMessage {
   sender: string;
   receivedAt: string | null;
   direction: SupportEmailMessageDirection;
+}
+
+interface GmailAttachmentCache {
+  gmail?: gmail_v1.Gmail;
+  refs?: ReturnType<typeof collectAttachmentRefs>;
 }
 
 function toIsoDate(internalDate: string | null | undefined): string | null {
@@ -80,6 +92,7 @@ export class SupportEmailScraperService implements ISupportEmailScraperService {
     private readonly googleOAuthService: GoogleOAuthService,
     private readonly configService: ConfigService,
     private readonly attachmentParserService: AttachmentParserService,
+    private readonly s3UploadService: S3UploadService,
     @Inject('ISupportEmailRepository')
     private readonly repository: ISupportEmailRepository,
     @Inject('IJobRepository')
@@ -538,15 +551,153 @@ export class SupportEmailScraperService implements ISupportEmailScraperService {
   }
 
   /**
+   * Reads one stored attachment back from Gmail by message ID. This is a
+   * direct fetch, not a search, so no date window can hide it. `refs` caches
+   * the message's attachment list across files on the same email.
+   */
+  private async downloadFromGmail(
+    messageId: string,
+    filename: string,
+    cache: GmailAttachmentCache,
+  ): Promise<Buffer> {
+    cache.gmail ??= await this.getGmailClient();
+
+    if (!cache.refs) {
+      const message = await cache.gmail.users.messages.get({
+        userId: 'me',
+        id: messageId,
+        format: 'full',
+      });
+      cache.refs = collectAttachmentRefs(message.data.payload ?? undefined);
+    }
+
+    const ref = cache.refs.find((candidate) => candidate.filename === filename);
+    if (!ref) {
+      throw new Error(`${filename} is no longer on Gmail message ${messageId}`);
+    }
+
+    const response = await cache.gmail.users.messages.attachments.get({
+      userId: 'me',
+      messageId,
+      id: ref.attachmentId,
+    });
+    if (!response.data.data) {
+      throw new Error('Gmail returned an empty attachment body');
+    }
+
+    return Buffer.from(response.data.data, 'base64url');
+  }
+
+  /**
+   * Runs the current parser and reopen rules over the attachments of an
+   * email that is already stored, without searching Gmail. Each file is
+   * read back from its S3 archive, or fetched from its Gmail message when
+   * the archive is missing or unreadable.
+   */
+  async reparseStoredEmail(
+    email: SupportEmail,
+    agodaId: string,
+  ): Promise<ReparsedSupportEmail> {
+    const gmailCache: GmailAttachmentCache = {};
+    const attachments: ReparsedAttachment[] = [];
+    let complete = true;
+
+    for (const stored of email.attachments) {
+      const archive = {
+        s3Url: stored.s3_url ?? null,
+        s3Key: stored.s3_key ?? null,
+        uploadError: stored.upload_error ?? undefined,
+      };
+
+      if (stored.format === 'unknown') {
+        attachments.push({
+          filename: stored.filename,
+          mimeType: stored.mime_type,
+          sizeBytes: stored.size_bytes,
+          format: 'unknown',
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          parseError: stored.parse_error ?? 'Unsupported attachment type',
+          ...archive,
+          loadedFrom: null,
+        });
+        continue;
+      }
+
+      let buffer: Buffer | null = null;
+      let loadedFrom: ReparsedAttachment['loadedFrom'] = null;
+      const loadErrors: string[] = [];
+
+      if (stored.s3_key) {
+        try {
+          buffer = await this.s3UploadService.downloadBuffer(stored.s3_key);
+          loadedFrom = 's3';
+        } catch (error: any) {
+          loadErrors.push(`S3: ${error?.message || String(error)}`);
+        }
+      } else {
+        loadErrors.push('S3: no archived copy');
+      }
+
+      if (!buffer) {
+        try {
+          buffer = await this.downloadFromGmail(
+            email.message_id,
+            stored.filename,
+            gmailCache,
+          );
+          loadedFrom = 'gmail';
+        } catch (error: any) {
+          loadErrors.push(`Gmail: ${error?.message || String(error)}`);
+        }
+      }
+
+      if (!buffer) {
+        complete = false;
+        this.logger.warn(
+          `⚠️ Could not read back ${stored.filename} for support email ${email.id}: ${loadErrors.join('; ')}`,
+        );
+        attachments.push({
+          filename: stored.filename,
+          mimeType: stored.mime_type,
+          sizeBytes: stored.size_bytes,
+          format: stored.format,
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          parseError: `Could not read the file back (${loadErrors.join('; ')})`,
+          ...archive,
+          loadedFrom: null,
+        });
+        continue;
+      }
+
+      const parsed = parseAttachmentBuffer(
+        stored.filename,
+        stored.mime_type,
+        buffer,
+      );
+      const attachment: ReparsedAttachment = { ...parsed, ...archive, loadedFrom };
+      attachment.reopenDecision = evaluateReopenDecision(attachment, { agodaId });
+      attachments.push(attachment);
+    }
+
+    return {
+      attachments,
+      reopen: this.summarizeReopen(attachments),
+      complete,
+    };
+  }
+
+  /**
    * Runs the scrape for a batch of job IDs, isolating per-job failures.
    *
    * Only jobs whose property run finished are worth looking at, and each is
    * read from its own `job_completed_date` so a run reports what has
    * arrived since the job last completed rather than re-reading mail an
-   * earlier run already saw. `job_completed_date` is a fixed snapshot taken
-   * at completion time, unlike `updatedAt`, which keeps moving forward on
-   * later, unrelated edits (e.g. a manual reply_status correction) — jobs
-   * completed before this field existed fall back to `updatedAt`.
+   * earlier run already saw. See `resolveReplySearchCutoff` for how jobs
+   * completed before `job_completed_date` existed are handled.
    */
   async scrapeSupportEmailsForJobs(
     jobIds: string[],
@@ -585,8 +736,7 @@ export class SupportEmailScraperService implements ISupportEmailScraperService {
           continue;
         }
 
-        const since =
-          parseJobCompletedDate(job.job_completed_date) ?? job.updatedAt;
+        const since = resolveReplySearchCutoff(job);
 
         const outcome = await this.scrapeAgodaSupportEmail(
           propertyData.agodaId,

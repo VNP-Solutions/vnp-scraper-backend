@@ -24,6 +24,7 @@ import { ValidateBody } from '../../common/decorators/validate.decorator';
 import { ResponseHandler } from '../../common/utils/response-handler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
+  RecheckReplyResponseDto,
   RunSupportEmailJobDto,
   RunSupportEmailJobResponseDto,
   SupportEmailByIdResponseDto,
@@ -99,6 +100,39 @@ export class SupportEmailController {
         error: error?.message || String(error),
       });
     }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/api/agoda/jobs/:jobId/recheck-reply')
+  @ApiOperation({
+    summary: "Recalculate a job's Agoda reply from the stored report",
+    description:
+      "Finds the latest stored Partner Support reply for the job's property and re-runs the current parser and " +
+      'reopen rules over its attachment, read back from S3 (or fetched from the Gmail message directly when the ' +
+      'archive is missing). Overwrites that email\'s reopen/collect verdict and writes the resulting reply_status ' +
+      "onto the job. No Gmail search, so the job's completion date does not matter. Only when no reply is stored " +
+      'for this run yet does it fall back to the normal Gmail capture. `message` explains the outcome in plain words.',
+  })
+  @ApiParam({ name: 'jobId', description: 'MongoDB ObjectId of the job' })
+  @ApiResponse({
+    status: 200,
+    description: 'Recheck finished (see data.updated for whether anything was written)',
+    type: RecheckReplyResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Job not found' })
+  async recheckReply(@Param('jobId') jobId: string, @Res() res: Response) {
+    return ResponseHandler.handler(
+      res,
+      async () => {
+        const result = await this.supportEmailService.recheckReply(jobId);
+        return {
+          statusCode: HttpStatus.OK,
+          message: result.message,
+          data: result,
+        };
+      },
+      this.logger,
+    );
   }
 
   @UseGuards(JwtAuthGuard)

@@ -8,18 +8,96 @@
  */
 
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { ReplyStatus, SupportEmail } from '@prisma/client';
+import { Job, ReplyStatus, SupportEmail } from '@prisma/client';
+import { resolveAgodaIdForJob } from '../job/agoda-id.util';
 import { IJobRepository } from '../job/job.interface';
-import { deriveEmailReplyStatus } from '../job/reply-status.util';
+import {
+  deriveEmailReplyStatus,
+  resolveReplySearchCutoff,
+} from '../job/reply-status.util';
+import { IPropertyRepository } from '../property/property.interface';
 import {
   ISupportEmailRepository,
   ISupportEmailScraperService,
   ISupportEmailService,
+  RecheckReplyAttachment,
+  RecheckReplyResult,
+  RecheckReplyVerdict,
   RunSupportEmailJobReplyStatusEntry,
   RunSupportEmailJobResult,
   SupportEmailsForJobResult,
   UpdateSupportEmailReplyStatusResult,
 } from './support-email.interface';
+import type {
+  ParsedAttachment,
+  ReopenSummary,
+  ReparsedAttachment,
+} from './support-email.types';
+
+/** "17 Sep 2026" — the date format shown to the ParserOps team. */
+function formatDay(value: Date | string | null | undefined): string {
+  if (!value) return 'an unknown date';
+  return new Date(value).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function toRecheckAttachment(
+  attachment: ParsedAttachment | ReparsedAttachment,
+  loadedFrom: RecheckReplyAttachment['loadedFrom'],
+): RecheckReplyAttachment {
+  const decision = attachment.reopenDecision;
+
+  let problem: string | null = null;
+  if (attachment.format === 'unknown') {
+    problem = 'Not a CSV/XLSX report, so it was ignored.';
+  } else if (attachment.parseError) {
+    problem = attachment.parseError;
+  } else if (decision?.sheetType === 'unknown' && attachment.rowCount > 0) {
+    problem =
+      "The report's columns were not recognised, so none of its rows could be classified.";
+  }
+
+  return {
+    filename: attachment.filename,
+    loadedFrom,
+    sheetType: decision?.sheetType ?? null,
+    rowCount: attachment.rowCount,
+    collect: decision?.collect.length ?? 0,
+    reopen: decision?.reopen.length ?? 0,
+    skipped: decision?.skipped.length ?? 0,
+    problem,
+  };
+}
+
+function toVerdict(
+  reopen: ReopenSummary,
+  replyStatus: ReplyStatus,
+): RecheckReplyVerdict {
+  return {
+    replyStatus,
+    collect: reopen.collectBookingIds.length,
+    reopen: reopen.reopenBookingIds.length,
+  };
+}
+
+function describeVerdict(verdict: RecheckReplyVerdict): string {
+  return `${verdict.collect} booking(s) to collect, ${verdict.reopen} to reopen`;
+}
+
+/** Appended when a report was received but could not be classified. */
+function attachmentWarning(attachments: RecheckReplyAttachment[]): string {
+  const broken = attachments.filter(
+    (attachment) => attachment.loadedFrom !== null && attachment.problem,
+  );
+  if (broken.length === 0) return '';
+  return (
+    ` Warning: ${broken.map((attachment) => attachment.filename).join(', ')} ` +
+    'could not be read properly — please pass this job to the dev team.'
+  );
+}
 
 @Injectable()
 export class SupportEmailService implements ISupportEmailService {
@@ -32,6 +110,8 @@ export class SupportEmailService implements ISupportEmailService {
     private readonly jobRepository: IJobRepository,
     @Inject('ISupportEmailRepository')
     private readonly supportEmailRepository: ISupportEmailRepository,
+    @Inject('IPropertyRepository')
+    private readonly propertyRepository: IPropertyRepository,
   ) {}
 
   /**
@@ -185,5 +265,206 @@ export class SupportEmailService implements ISupportEmailService {
     }
 
     return { email, jobUpdated };
+  }
+
+  async recheckReply(jobId: string): Promise<RecheckReplyResult> {
+    const job = await this.jobRepository.findById(jobId);
+    if (!job) {
+      throw new NotFoundException(`Job with ID ${jobId} not found`);
+    }
+
+    const agodaId = await resolveAgodaIdForJob(job, this.propertyRepository);
+    if (!agodaId) {
+      return {
+        jobId,
+        agodaId: null,
+        source: 'stored_email',
+        updated: false,
+        message:
+          "This job's property has no Agoda ID, so there is no Agoda reply to look up. " +
+          'Add the Agoda ID to the property and try again.',
+        supportEmailId: null,
+        caseId: null,
+        receivedAt: null,
+        before: null,
+        after: null,
+        attachments: [],
+      };
+    }
+
+    const cutoff = resolveReplySearchCutoff(job);
+    const stored =
+      await this.supportEmailRepository.findLatestPartnerSupportReply(agodaId);
+
+    // A reply from before this run completed answers an earlier run, not
+    // this one, so only a newer message in Gmail can settle this run.
+    if (!stored || (stored.received_at && stored.received_at < cutoff)) {
+      return this.recheckFromGmail(job, agodaId, cutoff);
+    }
+
+    return this.recheckStoredReply(job, agodaId, stored);
+  }
+
+  private async recheckStoredReply(
+    job: Job,
+    agodaId: string,
+    stored: SupportEmail,
+  ): Promise<RecheckReplyResult> {
+    const reparsed = await this.scraperService.reparseStoredEmail(
+      stored,
+      agodaId,
+    );
+    const attachments = reparsed.attachments.map((attachment) =>
+      toRecheckAttachment(attachment, attachment.loadedFrom),
+    );
+
+    const base = {
+      jobId: job.id,
+      agodaId,
+      source: 'stored_email' as const,
+      supportEmailId: stored.id,
+      caseId: stored.case_id,
+      receivedAt: stored.received_at,
+      before: {
+        replyStatus: stored.reply_status,
+        collect: stored.collect_booking_ids.length,
+        reopen: stored.reopen_booking_ids.length,
+      },
+      attachments,
+    };
+    const replyLabel = `Agoda's reply from ${formatDay(stored.received_at)}${stored.case_id ? ` (case ${stored.case_id})` : ''}`;
+
+    if (!reparsed.complete) {
+      return {
+        ...base,
+        updated: false,
+        after: null,
+        message:
+          `Could not open the report attached to ${replyLabel}, so nothing was changed. ` +
+          'Please pass this job to the dev team.',
+      };
+    }
+
+    const replyStatus = deriveEmailReplyStatus(reparsed.reopen);
+    await this.supportEmailRepository.updateParsedResult(stored.id, {
+      attachments: reparsed.attachments,
+      reopen: reparsed.reopen,
+      replyStatus,
+    });
+    await this.jobRepository.updateReplyStatus(job.id, replyStatus);
+
+    const after = toVerdict(reparsed.reopen, replyStatus);
+    const changed =
+      base.before.collect !== after.collect ||
+      base.before.reopen !== after.reopen ||
+      base.before.replyStatus !== after.replyStatus;
+
+    const summary =
+      reparsed.attachments.length === 0
+        ? `${replyLabel} has no report attached, so there is nothing to collect or reopen.`
+        : `Recalculated ${replyLabel}: ${describeVerdict(after)}.`;
+
+    this.logger.log(
+      `🔁 Rechecked support email ${stored.id} for job ${job.id}: ` +
+        `collect ${base.before.collect}→${after.collect}, reopen ${base.before.reopen}→${after.reopen}, ` +
+        `replyStatus ${base.before.replyStatus ?? 'n/a'}→${replyStatus}`,
+    );
+
+    return {
+      ...base,
+      updated: true,
+      after,
+      message:
+        `${summary} Status is now ${replyStatus}.` +
+        (changed
+          ? ` Before this check it showed ${describeVerdict(base.before)}.`
+          : ' Nothing changed.') +
+        attachmentWarning(attachments),
+    };
+  }
+
+  /** No reply stored for this run yet — fall back to the normal Gmail capture. */
+  private async recheckFromGmail(
+    job: Job,
+    agodaId: string,
+    cutoff: Date,
+  ): Promise<RecheckReplyResult> {
+    const base = {
+      jobId: job.id,
+      agodaId,
+      source: 'gmail_search' as const,
+      supportEmailId: null,
+      caseId: null,
+      receivedAt: null,
+      before: null,
+      after: null,
+      attachments: [],
+    };
+
+    const { results } = await this.runJob([job.id]);
+
+    const invalid = results.invalid[0];
+    if (invalid) {
+      return { ...base, updated: false, message: invalid.reason };
+    }
+
+    const failure = results.errors[0];
+    if (failure) {
+      return {
+        ...base,
+        updated: false,
+        message:
+          `Something went wrong while searching Gmail (${failure.error}). ` +
+          'Please pass this job to the dev team.',
+      };
+    }
+
+    const outcome = results.processed[0]?.outcome;
+
+    if (outcome?.status === 'parsed') {
+      const { email } = outcome;
+      const replyStatus = deriveEmailReplyStatus(email.reopen);
+      const after = toVerdict(email.reopen, replyStatus);
+      const attachments = email.attachments.map((attachment) =>
+        toRecheckAttachment(
+          attachment,
+          attachment.format === 'unknown' ? null : 'gmail',
+        ),
+      );
+
+      return {
+        ...base,
+        updated: true,
+        supportEmailId: outcome.storage.recordId,
+        caseId: email.body.caseId,
+        receivedAt: email.receivedAt,
+        after,
+        attachments,
+        message:
+          `Found Agoda's reply from ${formatDay(email.receivedAt)} in Gmail` +
+          `${email.body.caseId ? ` (case ${email.body.caseId})` : ''}: ${describeVerdict(after)}. ` +
+          `Status is now ${replyStatus}.` +
+          attachmentWarning(attachments),
+      };
+    }
+
+    if (outcome?.status === 'not_from_partner_support') {
+      return {
+        ...base,
+        updated: false,
+        message:
+          `The newest email about hotel ${agodaId} since ${formatDay(cutoff)} is from ${outcome.from}, ` +
+          "not Agoda Partner Support, so Agoda hasn't replied to this run yet.",
+      };
+    }
+
+    return {
+      ...base,
+      updated: false,
+      message:
+        `No reply from Agoda has arrived in Gmail since ${formatDay(cutoff)}. ` +
+        "If you can see Agoda's reply in Gmail, check that it has the Agoda label " +
+        `and mentions hotel ID ${agodaId}, then pass this job to the dev team.`,
+    };
   }
 }

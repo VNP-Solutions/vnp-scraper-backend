@@ -111,6 +111,50 @@ export class SupportEmailByIdResponseDto {
   data: Record<string, any>;
 }
 
+export class RecheckReplyResponseDto {
+  @ApiProperty({ example: 200 })
+  statusCode: number;
+
+  @ApiProperty({
+    example:
+      "Recalculated Agoda's reply from 17 Sep 2026 (case 108327712): 69 booking(s) to collect, 0 to reopen. " +
+      'Status is now RepliedGreen. Before this check it showed 0 booking(s) to collect, 0 to reopen.',
+  })
+  message: string;
+
+  @ApiProperty({
+    description:
+      '`source` is `stored_email` when an already-captured reply was re-parsed from its file, or ' +
+      '`gmail_search` when nothing was stored yet. `updated` is false when nothing was written ' +
+      '(e.g. no reply found, or the report could not be opened). `before` / `after` compare the ' +
+      'stored verdict with the recalculated one.',
+    example: {
+      jobId: '6aaad6b5d84b3e95fdd7637d',
+      agodaId: '2652034',
+      source: 'stored_email',
+      updated: true,
+      supportEmailId: '6ab4fe115b9e579d61309b38',
+      caseId: '108327712',
+      receivedAt: '2026-09-17T15:42:34.000Z',
+      before: { replyStatus: 'RepliedGreen', collect: 0, reopen: 0 },
+      after: { replyStatus: 'RepliedGreen', collect: 69, reopen: 0 },
+      attachments: [
+        {
+          filename: 'Aged Booking Product Decision Report (38).xlsx',
+          loadedFrom: 's3',
+          sheetType: 'booking_matched_status',
+          rowCount: 429,
+          collect: 69,
+          reopen: 0,
+          skipped: 360,
+          problem: null,
+        },
+      ],
+    },
+  })
+  data: Record<string, any>;
+}
+
 export class UpdateSupportEmailReplyStatusDto
   implements UpdateSupportEmailReplyStatusType
 {
